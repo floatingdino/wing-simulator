@@ -2,10 +2,10 @@
 id: T031
 title: Input stage + filter block (standard)
 stage: S3
-status: todo
-owner: -
+status: in_progress
+owner: agent-T031-T032
 depends: [T030, T004]
-branch: -
+branch: task/T031-T032
 ---
 
 ## Goal
@@ -16,3 +16,4 @@ Gain/trim, polarity, input delay, mono/stereo handling, filter block standard (l
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 agent-T031-T032: started on branch task/T031-T032 (worktree .claude/worktrees/t031-t032; first worktree was lost to an API interruption before any commit).
