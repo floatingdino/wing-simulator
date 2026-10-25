@@ -5,7 +5,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
-use wing_blocks::model::{create_model, BlockKind, Model, ParamValue};
+use wing_blocks::model::{create_model, BlockKind, ParamValue};
 
 struct Counting;
 
@@ -50,8 +50,8 @@ fn count_allocs(f: impl FnOnce()) -> usize {
 #[test]
 fn fx_eqdyn_models_do_not_allocate() {
     for id in [
-        "GEQ", "PIA", "SOUL", "E88", "E84", "F110", "PULSAR", "MACH4", "LIMITER", "DE-S2", "DEQ3", "C5-CMB",
-        "SPKMAN",
+        "GEQ", "PIA", "SOUL", "E88", "E84", "F110", "PULSAR", "MACH4", "LIMITER", "DE-S2", "DEQ3",
+        "C5-CMB", "SPKMAN",
     ] {
         let mut m = create_model(BlockKind::Fx, id);
         m.prepare(48_000.0, 64);
@@ -59,7 +59,8 @@ fn fx_eqdyn_models_do_not_allocate() {
             let (mut l, mut r) = ([0.0f32; 64], [0.0f32; 64]);
             for b in 0..300usize {
                 for (i, (a, c)) in l.iter_mut().zip(r.iter_mut()).enumerate() {
-                    let v = ((b * 64 + i) as f32 * 0.37).sin() * if b % 3 == 0 { 0.9 } else { 0.02 };
+                    let v =
+                        ((b * 64 + i) as f32 * 0.37).sin() * if b % 3 == 0 { 0.9 } else { 0.02 };
                     *a = v;
                     *c = -0.5 * v;
                 }

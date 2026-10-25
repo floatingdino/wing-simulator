@@ -323,7 +323,10 @@ fn limiter_ceiling_holds_across_attack_changes() {
             r[i] = if i % 9 == 0 { 1.0 } else { x * 0.3 };
         }
         m.process(&mut l, &mut r, None);
-        peak = l.iter().chain(&r).fold(peak, |p, &x| p.max((x as f64).abs()));
+        peak = l
+            .iter()
+            .chain(&r)
+            .fold(peak, |p, &x| p.max((x as f64).abs()));
     }
     assert!(peak <= ceil * (1.0 + 1e-6), "{peak} > {ceil}");
 }
