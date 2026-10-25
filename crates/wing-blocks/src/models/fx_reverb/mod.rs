@@ -13,6 +13,9 @@
 //! | `CHAMBER` | [`chamber`] | 8 | Lexicon-style chamber with echo taps + levels |
 //! | `CONCERT` | [`concert`] | 16 | Lexicon-style concert hall with reflections, depth, chorus |
 //! | `AMBI` | [`ambi`] | 8 | TC/Lexicon-style ambience (ER-dominant, short) |
+//! | `V-ROOM` | [`vintage`] | 16 | Quantec QRS-style vintage room, low-SR band-limit, freeze (T05V) |
+//! | `V-REV` | [`vintage`] | 8 | EMT 250-style chorused loops, front/rear outputs, transformer (T05V) |
+//! | `VSS3` | [`vss3`] | 16 | TC VSS3-style: ER pattern generator + 4-band-decay tail (T05V) |
 //! | `PLATE` | [`plate`] | 16 | Lexicon-style plate with pre-echoes (T05P) |
 //! | `V-PLATE` | [`plate`] | 16 | EMT 140 steel plate (T05P) |
 //! | `BPLATE` | [`plate`] | 16 | "Blue Plate": modern modulated plate, own design (T05P) |
@@ -34,6 +37,8 @@ pub mod plate;
 pub mod room;
 pub mod special;
 pub mod spring;
+pub mod vintage;
+pub mod vss3;
 
 use self::core::{Character, CoreParams, ReverbCore};
 use crate::model::{Model, ParamValue};
@@ -146,6 +151,18 @@ pub fn ambi() -> Reverb<8> {
     Reverb::new(&ambi::SPEC)
 }
 
+/// `V-ROOM` (16 lines).
+pub fn v_room() -> vintage::VintageReverb<16> {
+    vintage::VintageReverb::new(&vintage::V_ROOM)
+}
+/// `V-REV` (8 lines).
+pub fn v_rev() -> vintage::VintageReverb<8> {
+    vintage::VintageReverb::new(&vintage::V_REV)
+}
+/// `VSS3`.
+pub fn vss3() -> vss3::Vss3 {
+    vss3::Vss3::new()
+}
 /// `PLATE` (16 lines).
 pub fn plate() -> Reverb<16> {
     Reverb::new(&plate::PLATE_SPEC)
@@ -171,6 +188,9 @@ pub fn create(id: &str) -> Option<Box<dyn Model>> {
         "CHAMBER" => Box::new(chamber()),
         "CONCERT" => Box::new(concert()),
         "AMBI" => Box::new(ambi()),
+        "V-ROOM" => Box::new(v_room()),
+        "V-REV" => Box::new(v_rev()),
+        "VSS3" => Box::new(vss3()),
         "PLATE" => Box::new(plate()),
         "V-PLATE" => Box::new(vplate()),
         "BPLATE" => Box::new(bplate()),
@@ -242,3 +262,5 @@ mod special_tests;
 mod tests;
 #[cfg(test)]
 mod tests_t05p;
+#[cfg(test)]
+mod tests_vintage;

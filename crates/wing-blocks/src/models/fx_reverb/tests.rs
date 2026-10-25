@@ -5,7 +5,7 @@ use super::*;
 use crate::model::{BlockKind, Model};
 use wing_dsp::biquad::{Biquad, Coeffs};
 
-const FS: f64 = 48_000.0;
+pub(super) const FS: f64 = 48_000.0;
 const IDS: [&str; 5] = ["HALL", "ROOM", "CHAMBER", "CONCERT", "AMBI"];
 
 fn model(id: &str) -> Box<dyn Model> {
@@ -60,14 +60,14 @@ fn neutral(m: &mut dyn Model, id: &str) {
     }
 }
 
-fn run(m: &mut dyn Model, l: &mut [f32], r: &mut [f32]) {
+pub(super) fn run(m: &mut dyn Model, l: &mut [f32], r: &mut [f32]) {
     for (a, b) in l.chunks_mut(64).zip(r.chunks_mut(64)) {
         m.process(a, b, None);
     }
 }
 
 /// Stereo impulse response (unit impulse into L and R).
-fn ir(m: &mut dyn Model, secs: f64) -> (Vec<f32>, Vec<f32>) {
+pub(super) fn ir(m: &mut dyn Model, secs: f64) -> (Vec<f32>, Vec<f32>) {
     m.reset();
     let n = (secs * FS) as usize;
     let (mut l, mut r) = (vec![0.0f32; n], vec![0.0f32; n]);
@@ -78,7 +78,7 @@ fn ir(m: &mut dyn Model, secs: f64) -> (Vec<f32>, Vec<f32>) {
 }
 
 /// T60 in the octave band around `f0` from the Schroeder energy decay curve (linear fit -5..-35 dB).
-fn t60(x: &[f32], f0: f64) -> f64 {
+pub(super) fn t60(x: &[f32], f0: f64) -> f64 {
     let c = Coeffs::bandpass(FS, f0, std::f64::consts::SQRT_2);
     let (mut b1, mut b2) = (Biquad::new(c), Biquad::new(c));
     let y: Vec<f64> = x.iter().map(|&v| b2.tick(b1.tick(v)) as f64).collect();
@@ -203,7 +203,7 @@ fn t60_bass_mult_and_damping() {
 }
 
 /// Normalised echo density (Abel & Huang 2006) of `x` in a window starting at `t0` seconds.
-fn echo_density(x: &[f32], t0: f64, win: usize) -> f64 {
+pub(super) fn echo_density(x: &[f32], t0: f64, win: usize) -> f64 {
     let s = (t0 * FS) as usize;
     let w = &x[s..s + win];
     let sd = (w.iter().map(|&v| (v as f64).powi(2)).sum::<f64>() / win as f64).sqrt();
@@ -225,7 +225,7 @@ fn echo_density_builds_up_to_gaussian() {
     }
 }
 
-fn corr(a: &[f32], b: &[f32], lag: isize) -> f64 {
+pub(super) fn corr(a: &[f32], b: &[f32], lag: isize) -> f64 {
     let (mut ab, mut aa, mut bb) = (0.0, 0.0, 0.0);
     for (i, &x) in a.iter().enumerate() {
         let j = i as isize + lag;
@@ -300,7 +300,7 @@ fn silence_decays_to_exact_zero_without_denormals() {
     assert_eq!(sum, 0.0, "HALL state not flushed");
 }
 
-fn noise(n: usize, seed: u32) -> Vec<f32> {
+pub(super) fn noise(n: usize, seed: u32) -> Vec<f32> {
     let mut s = seed;
     (0..n)
         .map(|_| {
@@ -353,7 +353,7 @@ fn wet_level_is_sane_at_defaults() {
 }
 
 /// |4th-order 6 kHz high-pass| of `x` (click detector for a low-frequency test signal).
-fn hf_trace(x: &[f32]) -> Vec<f32> {
+pub(super) fn hf_trace(x: &[f32]) -> Vec<f32> {
     let c = Coeffs::highpass(FS, 6000.0, std::f64::consts::FRAC_1_SQRT_2);
     let (mut a, mut b) = (Biquad::new(c), Biquad::new(c));
     x.iter().map(|&v| b.tick(a.tick(v)).abs()).collect()
@@ -455,7 +455,7 @@ fn ir_diff(
     (d(&a.0, &b.0), d(&a.1, &b.1))
 }
 
-fn peak(x: &[f32]) -> f32 {
+pub(super) fn peak(x: &[f32]) -> f32 {
     x.iter().fold(0f32, |a, v| a.max(v.abs()))
 }
 

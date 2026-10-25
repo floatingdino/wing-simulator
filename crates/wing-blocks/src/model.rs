@@ -405,6 +405,9 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "CHAMBER") => Box::new(crate::models::fx_reverb::chamber()),
         (BlockKind::Fx, "CONCERT") => Box::new(crate::models::fx_reverb::concert()),
         (BlockKind::Fx, "AMBI") => Box::new(crate::models::fx_reverb::ambi()),
+        (BlockKind::Fx, "V-ROOM") => Box::new(crate::models::fx_reverb::v_room()),
+        (BlockKind::Fx, "V-REV") => Box::new(crate::models::fx_reverb::v_rev()),
+        (BlockKind::Fx, "VSS3") => Box::new(crate::models::fx_reverb::vss3()),
         (BlockKind::Fx, "GATED") => Box::new(crate::models::fx_reverb::special::Gated::new()),
         (BlockKind::Fx, "REVERSE") => Box::new(crate::models::fx_reverb::special::Reverse::new()),
         (BlockKind::Fx, "DEL/REV") => Box::new(crate::models::fx_reverb::special::DelRev::new()),
@@ -577,6 +580,7 @@ mod tests {
             "*EVEN*", "*SOUL*", "*VINTAGE*", "*BUS*", "*MASTER*", "EXT",
             "ENHANCE", "EXCITER", "P-BASS", "SUB-M", "V-IMG", "TAPE",
             "HALL", "ROOM", "CHAMBER", "CONCERT", "AMBI",
+            "V-ROOM", "V-REV", "VSS3",
             "GATED", "REVERSE", "DEL/REV", "SHIMMER",
             "PLATE", "V-PLATE", "BPLATE", "SPRING",
         ];
@@ -591,7 +595,7 @@ mod tests {
     #[test]
     fn stub_is_passthrough() {
         // Every dynamics model is implemented now; FX models are still stubs (T05x).
-        let mut m = create_model(BlockKind::Fx, "V-REV");
+        let mut m = create_model(BlockKind::Fx, "NONE");
         m.prepare(48_000.0, 64);
         m.set_param(1, ParamValue::Float(12.0));
         let mut l: Vec<f32> = (0..64).map(|i| (i as f32 * 0.1).sin()).collect();
