@@ -31,7 +31,6 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use wing_engine::params::ParamPipeline;
-use wing_engine::routing::RoutingControl;
 use wing_engine::rt::{set_current_thread_time_constraint, TimeConstraint};
 use wing_engine::WorkgroupMembership;
 use wing_hostio::HostIoConfig;
@@ -42,6 +41,7 @@ use super::console::{Console, ConsoleConfig};
 use super::hostio::{self, HostOutputs};
 use super::stats::{AudioStats, Snapshot};
 use super::workgroup::WorkInterval;
+use super::ConsoleControl;
 use super::LogFn;
 
 /// How long the RT thread blocks waiting for a driver cycle before re-checking its flags.
@@ -242,7 +242,7 @@ impl AudioService {
     /// [`super::prepare`]).
     pub fn spawn(
         store: Arc<ParamStore>,
-        routing: RoutingControl,
+        routing: ConsoleControl,
         opts: AudioOptions,
         log: LogFn,
     ) -> std::io::Result<Self> {
@@ -330,7 +330,7 @@ pub fn describe_open_error(name: &str, e: &ShmError) -> String {
 
 struct Control {
     store: Arc<ParamStore>,
-    routing: RoutingControl,
+    routing: ConsoleControl,
     opts: AudioOptions,
     log: LogFn,
     stop: Arc<AtomicBool>,
@@ -371,7 +371,8 @@ impl Control {
             if telem.is_none() {
                 telem = self.pipeline.as_ref().and_then(|p| p.telemetry_rx());
             }
-            // TODO(meters): telemetry is drained and dropped until metering consumes it.
+            // Meters do not use the telemetry ring (they go through `ConsoleConfig::meters`);
+            // it is drained so it never fills.
             if let Some(rx) = telem.as_mut() {
                 while rx.pop().is_some() {}
             }
@@ -389,10 +390,17 @@ impl Control {
                     s
                 }
             };
+            if let Some(m) = &self.opts.console.meters {
+                // the meter sender uses real meters while a session runs, synthetic otherwise
+                m.set_attached(session.is_some());
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
         if let Some(s) = session {
             self.end_session(s, "shutdown");
+        }
+        if let Some(m) = &self.opts.console.meters {
+            m.set_attached(false);
         }
         self.pipeline = None;
         self.wi = None;

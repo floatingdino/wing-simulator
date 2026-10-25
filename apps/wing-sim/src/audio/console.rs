@@ -8,24 +8,32 @@
 //! oscillators ──────────────┴─ input router (T024, re-inputs one block late)
 //!   ── 40 ch + 8 aux strips (T035 + fader/pan/sends) ── 16 busses (tiers) ── 4 mains ── 8 mtx
 //!   ── USB-out router (output patch, every BUS/MAIN/MTX leg and user-signal tap) → driver
-//! host bridges read any of: main/1..4, bus/1..16, matrix/1..8, mon/1..2 (= main/1 until
-//! T038), usb_out/n.
+//!   ── monitor section (T038: solo busses with priority over cfg/mon/1|2 src)
+//! host bridges read any of: mon/1..2 (monitor A/B incl. solo), main/1..4, bus/1..16,
+//! matrix/1..8, usb_out/n.
 //! ```
 //!
 //! Bus/main/matrix strip processing (EQ, dynamics, inserts, delay) is T037; the strips sum, fade
 //! and pan only.
+//!
+//! Meters (T039, when [`ConsoleConfig::meters`] is set): the input strips write their IN/PFL/key/GR
+//! cells while processing, and [`Console::cycle`] meters the mix graph's ports after each cycle
+//! (strip outs, bus/main/matrix in/out, USB In/Out, oscillators, mix-output sources; see
+//! `wing_engine::meters::PortMeters::for_mix`).
 
 use std::sync::Arc;
 use std::time::Instant;
 
+use wing_engine::meters::{LevelBank, PortMeters};
 use wing_engine::mix::{build_mix_graph, MixConfig, MixNodes};
 use wing_engine::params::{ParamMap, ParamPipeline, PipelineConfig};
-use wing_engine::routing::{RoutingControl, Side, Strip, USB_CHANNELS};
+use wing_engine::routing::{Side, Strip, USB_CHANNELS};
 use wing_engine::{Engine, EngineConfig, Port, RawWorkgroup};
 use wing_hostio::{BridgeProducer, Tap, TapChannel};
 use wing_model::ParamStore;
 
 use super::stats::AudioStats;
+use super::ConsoleControl;
 
 /// Input channels and aux channels.
 pub const CHANNELS: usize = 40;
@@ -46,6 +54,8 @@ pub struct ConsoleConfig {
     pub rt_workers: bool,
     /// Workgroup workers join (see `workgroup.rs`).
     pub workgroup: Option<RawWorkgroup>,
+    /// Level bank the console meters into (T039); `None`: no metering.
+    pub meters: Option<Arc<LevelBank>>,
 }
 
 impl Default for ConsoleConfig {
@@ -57,6 +67,7 @@ impl Default for ConsoleConfig {
             workers: d.workers,
             rt_workers: d.rt_workers,
             workgroup: None,
+            meters: None,
         }
     }
 }
@@ -77,8 +88,15 @@ impl ConsoleNodes {
                 return Some(Port::node(self.usb_out, t.lane as u32 - 1));
             }
             Tap::UsbOut | Tap::LocalOut => return None,
-            // TODO(T038): monitor section; until then both monitors follow main 1.
-            Tap::Monitor(_) => Strip::Main(1),
+            Tap::Monitor(m @ 1..=2) => {
+                let side = match t.lane {
+                    1 => Side::L,
+                    2 => Side::R,
+                    _ => return None,
+                };
+                return Some(self.mix.monitor_port(m as usize, side));
+            }
+            Tap::Monitor(_) => return None,
             Tap::Main(n) => Strip::Main(n),
             Tap::Bus(n) => Strip::Bus(n),
             Tap::Matrix(n) => Strip::Mtx(n),
@@ -101,14 +119,18 @@ impl ConsoleNodes {
 pub fn build_engine(
     cfg: &ConsoleConfig,
     store: &ParamStore,
-    routing: &mut RoutingControl,
+    ctl: &mut ConsoleControl,
 ) -> Result<(Engine, ConsoleNodes, ParamMap), String> {
     let mix_cfg = MixConfig {
         block_size: cfg.block,
         sample_rate: cfg.sample_rate as f32,
+        logic: Some(ctl.logic.shared()),
+        meters: cfg.meters.clone(),
         ..MixConfig::default()
     };
-    let mg = build_mix_graph(store, routing, mix_cfg).map_err(|e| format!("mix graph: {e}"))?;
+    ctl.logic.refresh(store);
+    let mg =
+        build_mix_graph(store, &mut ctl.routing, mix_cfg).map_err(|e| format!("mix graph: {e}"))?;
     let (graph, map, mix) = mg.finish().map_err(|e| format!("console graph: {e:?}"))?;
     let engine = Engine::new(
         graph,
@@ -140,6 +162,7 @@ pub struct Console {
     feeds: Vec<BridgeFeed>,
     silence: Box<[f32]>,
     stats: Arc<AudioStats>,
+    port_meters: Option<PortMeters>,
     cfg: ConsoleConfig,
 }
 
@@ -150,7 +173,7 @@ impl Console {
     pub fn build(
         cfg: ConsoleConfig,
         store: &ParamStore,
-        routing: &mut RoutingControl,
+        routing: &mut ConsoleControl,
         pipeline: Option<ParamPipeline>,
         bridges: Vec<super::hostio::Feed>,
         stats: Arc<AudioStats>,
@@ -170,6 +193,10 @@ impl Console {
             })
             .collect();
         stats.set_period_ns((cfg.block as f64 * 1e9 / cfg.sample_rate as f64) as u64);
+        let port_meters = cfg
+            .meters
+            .clone()
+            .map(|b| PortMeters::for_mix(b, &nodes.mix));
         Ok(Self {
             engine,
             pipeline,
@@ -177,6 +204,7 @@ impl Console {
             feeds,
             silence: vec![0.0; cfg.block].into(),
             stats,
+            port_meters,
             cfg,
         })
     }
@@ -222,7 +250,7 @@ impl Console {
     }
 
     /// One engine cycle: apply queued parameter changes, fill USB In 1..48 with `input(ch, buf)`,
-    /// process, hand USB Out 1..48 to `output(ch, buf)`, feed the host bridges, publish
+    /// process, meter the ports, hand USB Out 1..48 to `output(ch, buf)`, feed the host bridges, publish
     /// telemetry and record the cycle time. RT-safe (no allocation, locks or syscalls).
     #[inline]
     pub fn cycle(
@@ -236,6 +264,9 @@ impl Console {
             input(ch, self.engine.external_mut(ch));
         }
         self.engine.process_cycle();
+        if let Some(m) = &self.port_meters {
+            m.capture(&self.engine);
+        }
         let c = self.engine.cycle();
         self.pipeline.publish_telemetry(&mut self.engine, c);
         let usb = self.nodes.usb_out;

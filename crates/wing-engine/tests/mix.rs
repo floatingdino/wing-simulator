@@ -4,7 +4,9 @@
 mod common;
 
 use common::rig::*;
-use wing_engine::mix::{bus_tiers, BusOrder, InputSignal as I, MixConfig, MixSignal as M, PanLaw};
+use wing_engine::mix::{
+    bus_tiers, no_processing, BusOrder, InputSignal as I, MixConfig, MixSignal as M, PanLaw,
+};
 use wing_engine::routing::{Side, Strip};
 use wing_engine::Port;
 use wing_model::ParamStore;
@@ -492,7 +494,8 @@ fn taps_feed_usb_outputs_and_reinputs() {
 /// Hand-computed main mix gains of PUBLIC.snap (fw 1.13 scene, migrated by wing-model). Only one
 /// channel carries signal at a time (moved to an otherwise unused USB input); its PFL tap is the
 /// reference, so the channel's own scene processing (EQ, dynamics) does not matter. Constant-power
-/// channel pan (-3 dB centre) and balance bus/main pan, GRP sends at unity [I].
+/// channel pan (-3 dB centre) and balance bus/main pan, GRP sends at unity [I]. Bus/main/matrix
+/// strip processing (T037: the scene's bus EQs and dynamics) is disabled: this checks the mix laws.
 #[test]
 fn public_snap_main_mix() {
     let store = public_store();
@@ -507,7 +510,11 @@ fn public_snap_main_mix() {
     assert_eq!(f("ch/1/send/6/lvl"), -144.0);
     assert_eq!(f("main/1/pan"), 0.0);
 
-    let mut r = rig(&store, MixConfig::default(), 4);
+    let cfg = MixConfig {
+        hooks: Some(no_processing()),
+        ..MixConfig::default()
+    };
+    let mut r = rig(&store, cfg, 4);
     assert_eq!(r.tiers[0], 0); // bus 1 VOX VERB
     assert_eq!(r.tiers[4], 1); // bus 5 VOX <- busses 1, 2
     assert_eq!(r.tiers[5], 1); // bus 6 DRUMS FOH <- bus 4

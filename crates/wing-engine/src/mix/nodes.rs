@@ -1,12 +1,15 @@
 //! Mix processors: the input strip node (channel/aux strip + fader/pan/taps) and the summing strip
 //! node shared by busses, mains and matrices (send sum -> strip hook -> fader/pan).
 
+use std::sync::Arc;
+
 use crate::channel::{ChannelStrip, NoInserts, StripKeys, Tap as StripTap};
 use crate::graph::{NodeIo, ProcessCtx, Processor};
 use crate::params::{ParamMsg, TelemetryWriter};
 use crate::routing::Strip;
 
 use super::law::{self, Matrix, PanLaw, Ramp, IDENTITY, ZERO};
+use super::logic::{flag, MixShared};
 use super::{block, param, MixConfig, SRC_COUNT};
 
 /// Signals an input strip node outputs (stereo pairs, output channel = `2 * index + side`).
@@ -110,13 +113,44 @@ impl Fader {
         }
     }
 
-    /// Fader gain including mute and the external (DCA) offset.
+    /// Fader gain including mute and the external (DCA) offset: `fdr + ext` dB, clamped to
+    /// +10 dB, -oo if either is -oo.
     fn gain(&self) -> f32 {
-        if self.muted() {
+        let off = law::FADER_OFF_DB + 0.01;
+        if self.muted() || self.fdr_db <= off || self.ext_gain_db <= off {
             0.0
         } else {
-            law::fader_gain(self.fdr_db) * law::fader_gain(self.ext_gain_db.min(10.0))
+            law::fader_gain((self.fdr_db + self.ext_gain_db).min(10.0))
         }
+    }
+}
+
+/// RT reader of a strip's DCA / mute-group / solo-in-place state ([`MixShared`]).
+struct LogicLink {
+    shared: Arc<MixShared>,
+    idx: usize,
+    seen: u32,
+}
+
+impl LogicLink {
+    /// Copy the strip's external gain/mute into `f` if a new state was published; returns
+    /// whether `f` changed. RT-safe.
+    #[inline]
+    fn poll(link: &mut Option<Self>, f: &mut Fader) -> bool {
+        let Some(l) = link.as_mut() else {
+            return false;
+        };
+        let g = l.shared.generation();
+        if g == l.seen {
+            return false;
+        }
+        l.seen = g;
+        let gain = l.shared.gain_db(l.idx);
+        let mute = l.shared.flags(l.idx) & flag::MUTE != 0;
+        let changed = gain != f.ext_gain_db || mute != f.ext_mute;
+        f.ext_gain_db = gain;
+        f.ext_mute = mute;
+        changed
     }
 }
 
@@ -155,6 +189,7 @@ pub struct InputStripNode {
     pre: Ramp<4>,
     /// PRE-linked = matrix * PRE (pan).
     prep: Ramp<4>,
+    logic: Option<LogicLink>,
 }
 
 impl InputStripNode {
@@ -178,9 +213,23 @@ impl InputStripNode {
             post: Ramp::new(a),
             pre: Ramp::new(a),
             prep: Ramp::new(a),
+            logic: None,
         };
         s.update_targets();
         s
+    }
+
+    /// Follow the DCA / mute-group / SIP state of strip index `idx` ([`Strip::index`]).
+    pub fn with_logic(mut self, shared: Arc<MixShared>, idx: usize) -> Self {
+        self.logic = Some(LogicLink {
+            shared,
+            idx,
+            seen: u32::MAX,
+        });
+        if LogicLink::poll(&mut self.logic, &mut self.fader) {
+            self.update_targets();
+        }
+        self
     }
 
     pub fn strip(&self) -> &ChannelStrip {
@@ -193,6 +242,9 @@ impl InputStripNode {
 
     /// Jump every gain to its target on the next block (and settle the strip).
     pub fn settle(&mut self) {
+        if LogicLink::poll(&mut self.logic, &mut self.fader) {
+            self.dirty = true;
+        }
         self.apply(&ParamMsg::Commit);
         self.strip.settle();
         for r in [&mut self.post, &mut self.pre, &mut self.prep] {
@@ -245,6 +297,9 @@ impl InputStripNode {
 
 impl Processor for InputStripNode {
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
+        if LogicLink::poll(&mut self.logic, &mut self.fader) {
+            self.update_targets();
+        }
         let ins = io.inputs();
         let b = io.block_size();
         let [pfl_l, pfl_r, pre_l, pre_r, prep_l, prep_r, afl_l, afl_r, post_l, post_r] =
@@ -315,15 +370,18 @@ impl Processor for InputStripNode {
 /// Processing of a bus/main/matrix strip between its sum and its fader (T037 fills it: inserts,
 /// EQ, dynamics, delay). Runs on RT threads: no allocation, locks or syscalls.
 pub trait StripHook: Send {
-    /// Process the summed stereo signal in place.
+    /// Process the summed stereo signal in place (sum -> pre-fader).
     fn process(&mut self, l: &mut [f32], r: &mut [f32]);
+    /// Process the strip output in place after mute, fader, width, pan and `busmono` (output
+    /// delay); PRE/PFL taps are not affected.
+    fn process_post(&mut self, _l: &mut [f32], _r: &mut [f32]) {}
     /// Parameter messages for blocks `>=` [`block::HOOK_BASE`] (and every `Commit`).
     fn set_param(&mut self, _msg: &ParamMsg) {}
     /// Telemetry (polled if the node is registered as a telemetry source).
     fn telemetry(&mut self, _out: &mut TelemetryWriter<'_>) {}
 }
 
-/// No strip processing (until T037).
+/// No strip processing (T036 behaviour; the standard hook is [`super::MixStrip`]).
 pub struct NoProcessing;
 
 impl StripHook for NoProcessing {
@@ -440,6 +498,7 @@ pub struct MixStripNode {
     bus_law: PanLaw,
     send_law: PanLaw,
     grp_level: bool,
+    logic: Option<LogicLink>,
 }
 
 impl MixStripNode {
@@ -489,9 +548,23 @@ impl MixStripNode {
             bus_law: cfg.bus_pan,
             send_law: cfg.send_pan,
             grp_level: cfg.grp_uses_level,
+            logic: None,
         };
         n.update_targets();
         n
+    }
+
+    /// Follow the DCA / mute-group / SIP state of strip index `idx` ([`Strip::index`]).
+    pub fn with_logic(mut self, shared: Arc<MixShared>, idx: usize) -> Self {
+        self.logic = Some(LogicLink {
+            shared,
+            idx,
+            seen: u32::MAX,
+        });
+        if LogicLink::poll(&mut self.logic, &mut self.fader) {
+            self.update_targets();
+        }
+        self
     }
 
     pub fn strip(&self) -> Strip {
@@ -522,6 +595,9 @@ impl MixStripNode {
 
     /// Jump every gain to its target on the next block.
     pub fn settle(&mut self) {
+        if LogicLink::poll(&mut self.logic, &mut self.fader) {
+            self.dirty = true;
+        }
         self.apply(&ParamMsg::Commit);
         self.post.settle();
         self.pre.settle();
@@ -631,6 +707,9 @@ impl MixStripNode {
 
 impl Processor for MixStripNode {
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
+        if LogicLink::poll(&mut self.logic, &mut self.fader) {
+            self.update_targets();
+        }
         let ins = io.inputs();
         let b = io.block_size();
         let [pfl_l, pfl_r, pre_l, pre_r, post_l, post_r] = channels::<6>(io.outputs(), b);
@@ -658,6 +737,7 @@ impl Processor for MixStripNode {
         law::gain_write(pre_r, pfl_r, g0[0], g1[0]);
         let (m0, m1) = self.post.step();
         law::matrix_write(post_l, post_r, pfl_l, pfl_r, m0, m1);
+        self.hook.process_post(post_l, post_r);
     }
 
     fn set_param(&mut self, msg: &ParamMsg) {

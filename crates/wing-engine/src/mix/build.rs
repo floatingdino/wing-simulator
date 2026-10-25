@@ -1,6 +1,7 @@
 //! Construction of the complete engine graph and its parameter bindings.
 
 use std::fmt;
+use std::sync::Arc;
 
 use wing_model::ParamStore;
 
@@ -13,10 +14,15 @@ use crate::routing::{
     USB_CHANNELS,
 };
 
-use super::nodes::{
-    InputSignal, InputStripNode, MixSignal, MixStripNode, NoProcessing, SlotKind, SlotSpec,
-    INPUT_OUTPUTS, MIX_OUTPUTS,
+use super::logic::MixShared;
+use super::monitor::{
+    bind_monitor_params, monitor_inputs, MonitorNode, MONITOR_CHANNELS, MONITOR_OUTPUTS,
 };
+use super::nodes::{
+    InputSignal, InputStripNode, MixSignal, MixStripNode, SlotKind, SlotSpec, INPUT_OUTPUTS,
+    MIX_OUTPUTS,
+};
+use super::strip::{bind_mix_strip, MixStrip};
 use super::{block, param, BusOrder, MixConfig};
 
 /// Error from [`build_mix_graph`].
@@ -62,6 +68,8 @@ pub struct MixNodes {
     pub main: [NodeId; 4],
     /// Matrices 1..8.
     pub mtx: [NodeId; 8],
+    /// Monitor section ([`MonitorNode`]): outputs 0/1 = monitor 1 L/R, 2/3 = monitor 2 L/R.
+    pub monitor: NodeId,
     /// One-block feedback writer for re-inputs.
     pub feedback: NodeId,
     /// USB output router (48 outputs = driver `USB Out 1..48`).
@@ -113,12 +121,25 @@ impl MixNodes {
         }
     }
 
+    /// Monitor `m` (1 or 2) output.
+    pub fn monitor_port(&self, m: usize, side: Side) -> Port {
+        Port::node(self.monitor, 2 * (m as u32 - 1) + side as u32)
+    }
+
+    /// Solo bus of monitor `m` (1 or 2): the soloed strips after their solo gains (meters).
+    pub fn solo_port(&self, m: usize, side: Side) -> Port {
+        Port::node(
+            self.monitor,
+            MONITOR_OUTPUTS + 2 * (m as u32 - 1) + side as u32,
+        )
+    }
+
     /// The output (POST) of any strip.
     pub fn post(&self, s: Strip, side: Side) -> Option<Port> {
         self.strip_port(s, StripPoint::PostProc, side)
     }
 
-    /// Every tap the routing layer can address, wired to its port (SEND/MON legs stay `None`).
+    /// Every tap the routing layer can address, wired to its port (MON legs 1..4 = monitor A/B L/R; SEND legs stay `None`).
     pub fn tap_ports(&self) -> Box<TapPorts> {
         let mut taps = Box::new(NO_TAPS);
         for (id, slot) in taps.iter_mut().enumerate() {
@@ -133,7 +154,12 @@ impl MixNodes {
                         MixGroup::Bus => Some(Strip::Bus(k as u8)),
                         MixGroup::Main => Some(Strip::Main(k as u8)),
                         MixGroup::Mtx => Some(Strip::Mtx(k as u8)),
-                        MixGroup::Send | MixGroup::Mon => None,
+                        MixGroup::Mon => {
+                            *slot = (leg <= MONITOR_OUTPUTS as u16)
+                                .then(|| Port::node(self.monitor, leg as u32 - 1));
+                            continue;
+                        }
+                        MixGroup::Send => None,
                     };
                     s.and_then(|s| self.post(s, side))
                 }
@@ -149,7 +175,7 @@ pub struct MixGraph {
     /// Every node added; the daemon may add more (e.g. host-bridge taps) before building.
     pub graph: GraphBuilder,
     /// Bindings of every mix and strip parameter (`ch`, `aux`, sends, `bus|main|mtx` faders);
-    /// T037 adds `bus|main|mtx` processing bindings with blocks `>=` [`block::HOOK_BASE`].
+    /// incl. `bus|main|mtx` processing (T037) at blocks `>=` [`block::HOOK_BASE`].
     pub params: ParamMapBuilder,
     pub nodes: MixNodes,
     /// Tap ports (also given to the USB output router and the feedback writer).
@@ -157,6 +183,8 @@ pub struct MixGraph {
     /// Bus tier (0-based scheduling stage) per bus; bus `j` receives bus `i` iff `i < j` and
     /// `tier[i] < tier[j]`.
     pub bus_tiers: [u8; 16],
+    /// The DCA / mute-group / solo state the nodes follow.
+    pub logic: Arc<MixShared>,
 }
 
 impl MixGraph {
@@ -257,7 +285,7 @@ fn send_block(src: usize) -> u8 {
 }
 
 /// Bind every channel/aux strip (T035 blocks + fader section), every send and every
-/// bus/main/matrix fader section of `nodes`.
+/// bus/main/matrix fader section and strip processing (T037, [`bind_mix_strip`]) of `nodes`.
 pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), BindError> {
     for i in 0..INPUT_STRIPS {
         let node = nodes.inputs[i];
@@ -298,6 +326,7 @@ pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), 
         let p = format!("bus/{}", j + 1);
         let src = 48 + j;
         b.bind_block(&p, nodes.bus[j], block::OWN, &OWN_MIX)?;
+        bind_mix_strip(b, Strip::Bus(j as u8 + 1), nodes.bus[j])?;
         for m in 0..4 {
             b.bind_block(
                 &format!("{p}/main/{}", m + 1),
@@ -326,6 +355,7 @@ pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), 
     for m in 0..4 {
         let p = format!("main/{}", m + 1);
         b.bind_block(&p, nodes.main[m], block::OWN, &OWN_MIX)?;
+        bind_mix_strip(b, Strip::Main(m as u8 + 1), nodes.main[m])?;
         for k in 0..8 {
             b.bind_block(
                 &format!("{p}/send/MX{}", k + 1),
@@ -342,6 +372,7 @@ pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), 
             block::OWN,
             &OWN_MIX,
         )?;
+        bind_mix_strip(b, Strip::Mtx(k as u8 + 1), nodes.mtx[k])?;
     }
     Ok(())
 }
@@ -355,6 +386,7 @@ pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), 
 /// 3..      16 bus nodes in tiers       (MixStripNode: sum -> hook -> fader/pan)
 /// next     4 mains                     (sum of ch/aux/bus main sends)
 /// next     8 matrices                  (sum of ch/aux/bus/main MX sends)
+/// next     monitor section             (solo busses + cfg/mon 1|2 = MON legs 1..4)
 /// last     feedback writer, USB output router (every tap wired)
 /// ```
 ///
@@ -370,22 +402,30 @@ pub fn build_mix_graph(
     let fs = cfg.sample_rate as f64;
     let bs = cfg.block_size;
     let tiers = bus_tiers(store, cfg.bus_order);
+    let logic = cfg.logic.clone().unwrap_or_default();
     let mut g = GraphBuilder::new(bs, cfg.sample_rate, USB_CHANNELS as u32);
     let fb = TapFeedback::new(bs);
     let io = add_input_stage_with_feedback(&mut g, routing, fb.clone())?;
 
     let mut inputs = [NodeId(0); INPUT_STRIPS];
     for (i, id) in inputs.iter_mut().enumerate() {
-        let (name, strip) = if i < 40 {
+        let (name, mut strip) = if i < 40 {
             (format!("ch{}", i + 1), ChannelStrip::channel(fs, bs))
         } else {
             (format!("aux{}", i - 39), ChannelStrip::aux(fs, bs))
         };
+        // input strip i (ch 1..40, aux 1..8) = the meters' flat strip index
+        strip.set_meter(
+            cfg.meters
+                .clone()
+                .map(|b| crate::meters::StripMeter::at(b, i)),
+        );
         let src = [
             InputRouter::port(io.inputs, i, 0),
             InputRouter::port(io.inputs, i, 1),
         ];
-        *id = g.add_node(name, INPUT_OUTPUTS, &src, InputStripNode::new(strip, &cfg))?;
+        let node = InputStripNode::new(strip, &cfg).with_logic(logic.clone(), i);
+        *id = g.add_node(name, INPUT_OUTPUTS, &src, node)?;
     }
     // ports of an Input slot: Pre, PreLinked, Afl, Post (output channels 2..10)
     let input_ports = |n: NodeId| (2..10).map(move |c| Port::node(n, c));
@@ -411,9 +451,18 @@ pub fn build_mix_graph(
             .collect();
         let hook = match cfg.hooks.as_mut() {
             Some(f) => f(strip),
-            None => Box::new(NoProcessing),
+            None => {
+                let mut m = MixStrip::new(strip, fs, bs);
+                m.set_meter(
+                    cfg.meters
+                        .clone()
+                        .and_then(|b| crate::meters::StripMeter::new(b, strip)),
+                );
+                Box::new(m)
+            }
         };
-        let node = MixStripNode::new(strip, &specs, hook, &cfg);
+        let idx = strip.index().expect("mix strip");
+        let node = MixStripNode::new(strip, &specs, hook, &cfg).with_logic(logic.clone(), idx);
         debug_assert_eq!(node.num_inputs(), ports.len());
         let name = match strip {
             Strip::Bus(n) => format!("bus{n}"),
@@ -465,12 +514,26 @@ pub fn build_mix_graph(
         *id = add_mix(&mut g, Strip::Mtx(k as u8 + 1), &srcs)?;
     }
 
+    let strip_node = |i: usize| match i {
+        0..=47 => inputs[i],
+        48..=63 => bus[i - 48],
+        64..=67 => main[i - 64],
+        _ => mtx[i - 68],
+    };
+    let monitor = g.add_node(
+        "monitor",
+        MONITOR_CHANNELS,
+        &monitor_inputs(strip_node),
+        MonitorNode::new(logic.clone(), &cfg),
+    )?;
+
     let mut nodes = MixNodes {
         io,
         inputs,
         bus,
         main,
         mtx,
+        monitor,
         feedback: NodeId(0),
         usb_out: NodeId(0),
     };
@@ -486,11 +549,13 @@ pub fn build_mix_graph(
 
     let mut params = ParamMapBuilder::new();
     bind_mix_params(&mut params, &nodes)?;
+    bind_monitor_params(&mut params, monitor)?;
     Ok(MixGraph {
         graph: g,
         params,
         nodes,
         taps,
         bus_tiers: tiers,
+        logic,
     })
 }
