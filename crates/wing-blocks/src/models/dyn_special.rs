@@ -31,7 +31,7 @@
 //!
 //! # WARM: VHD preamp
 //! ```text
-//! x -> tilt (pre, col) -> 2x up -> g = K*drv  -> x + ADAA(remainder of tanh(u + b) - tanh(b)) / ((1 - T^2) g) -> 2x down
+//! x -> tilt (pre, col) -> 2x up -> g = drive(drv) -> x + ADAA(remainder of tanh(u + b) - tanh(b)) / ((1 - T^2) g) -> 2x down
 //!   -> tilt (post, 50 % of the pre tilt reversed) -> DC block -> mix with delay-compensated dry -> trim
 //! ```
 //! `T = tanh(b)` is the bias: expanding `tanh(u + b)` gives `H2 ~ T u / 2` and `H3 ~ (1 - 3 T^2) u^2 / 12`
@@ -50,11 +50,13 @@
 //!  33     0   -37.0 dB  -59.4 dB  1.4 %    (defaults)
 //!  33  -100   -31.0 dB  -66.6 dB  2.8 %    even end: 2nd dominant, 3rd cancelled
 //!  33  +100  < -180 dB  -57.9 dB  0.13 %   odd end: 3rd only
-//!  80     0   -29.6 dB  -44.2 dB  3.4 %
-//! 125     0   -26.1 dB  -36.6 dB  5.2 %
-//! 125     0   -21.1 dB  -17.7 dB  15.7 %   at 0 dBFS * 0.9 (hard drive)
+//!  80     0   -26.5 dB  -37.5 dB  4.9 %
+//! 125     0   -21.1 dB  -19.0 dB  14.3 %
+//! 125     0   -27.6 dB  -10.7 dB  29.5 %   at 0 dBFS * 0.9 (hard drive)
 //! ```
-//! Worst alias line for a 10 kHz input at 125 % drive and 0.9 amplitude: -75 dBc (tested < -70 dBc). WAVE has
+//! (T081: exponential drive law, see [`WARM_DRIVE_G_MAX`]; the default row is unchanged.) Worst alias line for
+//! a 10 kHz input: < -100 dBc up to 125 % drive at -20 dBFS; -48 dBc in the extreme corner (125 % drive,
+//! 0.9 amplitude, hrm -100: a near-square 10 kHz wave), bounded in `warm_is_alias_free`. WAVE has
 //! no latency; RIDE none; WARM 39 samples (the oversampler).
 //!
 //! Real-time: `prepare` allocates the oversamplers and scratch; `process`, `set_param`, `commit`, `reset` do
@@ -532,9 +534,17 @@ impl Model for AutoRider {
 // WARM: VHD preamp
 // =============================================================================================================
 
-/// Drive: pre-gain of the shaper `g = WARM_DRIVE_K * drv/100` (schema 10..125 %, default 33). *Assumption*:
-/// calibrated so the default setting adds ~1.4 % THD at -12 dBFS (1 kHz), the 125 % setting ~5 %.
-pub const WARM_DRIVE_K: f32 = 1.5;
+/// Drive: pre-gain of the shaper, exponential in the knob (schema 10..125 %, default 33):
+/// `g = WARM_DRIVE_G_DEFAULT * (WARM_DRIVE_G_MAX / WARM_DRIVE_G_DEFAULT)^((drv - 33) / 92)`, i.e. 0.27 at 10 %,
+/// 0.5 at the default and 6 (+21.6 dB over the default) at 125 %. *Assumption*: the default keeps the T049
+/// calibration (~1.4 % THD at -12 dBFS, 1 kHz); the top of the range must saturate programme at typical
+/// channel levels (-12 dBFS: ~14 % THD; -30 dBFS: still > 1 %), as a preamp drive does. T081: the
+/// former linear law `1.5 * drv/100` topped out at 1.9, which left drive inaudible below ~-15 dBFS.
+pub const WARM_DRIVE_G_DEFAULT: f32 = 0.5;
+pub const WARM_DRIVE_G_MAX: f32 = 6.0;
+/// Drive knob default and span above it (%), the anchors of the exponential law.
+const WARM_DRIVE_REF: f32 = 33.0;
+const WARM_DRIVE_SPAN: f32 = 92.0;
 /// Largest shaper bias `T = tanh(b)` (at `hrm = -100`). 0.577 would cancel the 3rd harmonic exactly
 /// (`1 - 3 T^2 = 0`); 80 % of it keeps a little 3rd. *Assumption*.
 pub const WARM_T_MAX: f32 = 0.46;
@@ -560,6 +570,13 @@ const WARM_SLOTS: [(f32, f32, f32); 5] = [
     (-18.0, 6.0, 0.0),
     (0.0, 100.0, 100.0),
 ];
+
+/// Shaper pre-gain for the drive knob `drv` (%), see [`WARM_DRIVE_G_MAX`].
+#[inline]
+pub fn warm_drive_gain(drv: f32) -> f32 {
+    WARM_DRIVE_G_DEFAULT
+        * (WARM_DRIVE_G_MAX / WARM_DRIVE_G_DEFAULT).powf((drv - WARM_DRIVE_REF) / WARM_DRIVE_SPAN)
+}
 
 /// First-order section `g0 (1 + s/wz) / (1 + s/wp)` (bilinear, each corner prewarped), f64 TDF-II.
 #[derive(Clone, Copy, Debug, Default)]
@@ -728,7 +745,7 @@ impl WarmthPre {
     }
 
     fn shaper(drv: f32, hrm: f32) -> Shaper {
-        let g = (WARM_DRIVE_K * drv * 0.01) as f64;
+        let g = warm_drive_gain(drv) as f64;
         let t = WARM_T_MAX as f64 * (1.0 - (hrm * 0.01) as f64) * 0.5;
         let b = t.atanh();
         Shaper {

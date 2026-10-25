@@ -405,8 +405,9 @@ impl Model for Combinator {
                 }
             },
             3 => match value {
-                // enum index (0 = 24, 1 = 48) or the value itself
-                ParamValue::Float(f) => (f > 36.0) as u32 as f32,
+                // enum index (0 = 24, 1 = 48; the engine pipeline sends it as `Float(index)`, T081) or the
+                // value itself (24 / 48)
+                ParamValue::Float(f) if f >= 2.0 => (f > 36.0) as u32 as f32,
                 other => other.as_i32().clamp(0, 1) as f32,
             },
             4 => value.as_i32().clamp(1, 5) as f32,

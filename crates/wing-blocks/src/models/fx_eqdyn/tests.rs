@@ -400,6 +400,23 @@ fn combinator_bands_sum_flat() {
     }
 }
 
+/// T081: the engine pipeline delivers enum indices as `Float(index)`; the slope must follow them (and the plain
+/// values 24 / 48 still work).
+#[test]
+fn combinator_slope_accepts_float_index() {
+    let mut m = Combinator::new();
+    for (v, want) in [
+        (ParamValue::Float(1.0), 1.0),
+        (ParamValue::Float(0.0), 0.0),
+        (ParamValue::Float(48.0), 1.0),
+        (ParamValue::Float(24.0), 0.0),
+        (ParamValue::Enum(1), 1.0),
+    ] {
+        m.set_param(4, v);
+        assert_eq!(m.param(4), Some(want), "{v:?}");
+    }
+}
+
 #[test]
 fn combinator_crossovers_match_wing() {
     let x = combinator::crossovers();
