@@ -1,0 +1,210 @@
+{
+  "type": "snapshot.4",
+  "ce_data": {
+    "user": {
+      "daw1": {
+        "1": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "STOP",
+            "btn": "T1"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "REWIND",
+            "btn": "T4"
+          }
+        },
+        "2": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "PLAY",
+            "btn": "T2"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "FFWD",
+            "btn": "T5"
+          }
+        },
+        "3": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "CYCLE",
+            "btn": "T8"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "TIME/BEATS",
+            "btn": "OT4"
+          }
+        },
+        "4": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "RECORD",
+            "btn": "T3"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "|UNDO",
+            "btn": "SY6"
+          }
+        }
+      },
+      "daw2": {
+        "1": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "STOP",
+            "btn": "T1"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "REWIND/PREV",
+            "btn": "T4"
+          }
+        },
+        "2": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "PLAY",
+            "btn": "T2"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "FFWD/NEXT",
+            "btn": "T5"
+          }
+        },
+        "3": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "4": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "RECORD",
+            "btn": "T3"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "|EDIT MARKER",
+            "btn": "T6"
+          }
+        }
+      },
+      "daw3": {
+        "1": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "STOP",
+            "btn": "T1"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "REWIND",
+            "btn": "T4"
+          }
+        },
+        "2": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "PLAY",
+            "btn": "T2"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "FFWD",
+            "btn": "T5"
+          }
+        },
+        "3": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": " |TOUCH",
+            "btn": "AU4"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "|READ",
+            "btn": "AU1"
+          }
+        },
+        "4": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": " |LATCH",
+            "btn": "AU5"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "|WRITE",
+            "btn": "AU2"
+          }
+        }
+      },
+      "daw4": {
+        "1": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "NAME/VALUE",
+            "btn": "OT3"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "FLIP",
+            "btn": "OT1"
+          }
+        },
+        "2": {
+          "bu": {
+            "mode": "OFF",
+            "name": "[V-POTS]"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "HOLD |SEL",
+            "btn": "SP2"
+          }
+        },
+        "3": {
+          "bu": {
+            "mode": "OFF",
+            "name": "[RECRDY]"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "[HOLD+] |SEL",
+            "btn": "SP3"
+          }
+        },
+        "4": {
+          "bu": {
+            "mode": "DAWBTN",
+            "name": "ZOOM",
+            "btn": "N5"
+          },
+          "bd": {
+            "mode": "DAWBTN",
+            "name": "SCRUB",
+            "btn": "T11"
+          }
+        }
+      }
+    },
+    "daw": {
+      "on": true,
+      "conn": "USB",
+      "emul": "MCU",
+      "config": "MSTR2EXT",
+      "ccup": true
+    }
+  }
+}

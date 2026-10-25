@@ -78,3 +78,77 @@ separate and must match the mixer firmware.
 2. Optional low-priority follow-up: identify the LZ scheme to harvest the embedded factory scene and node-name
    strings (clear-text assets only). Do not pursue encrypted regions.
 3. Never commit the `.wingfw` (backlog rule 6).
+
+---
+
+# T008 follow-up: the "unidentified LZ" region is plain LZ4 (2026-10-25)
+
+Correction to T005: the file size 38,874,112 bytes is **0x2512C00**, not 0x2502C00 (that earlier hex was a typo).
+
+## Scheme (identified)
+
+- **Raw LZ4 block format** (token | literal-length ext | literals | u16le offset | match-length ext; min match 4),
+  *no* frame header, magic, block sizes or checksums. It is one continuous sequence stream that runs from file
+  offset **0x51EC69** to **0x2512BBD** (67 high-entropy bytes remain before EOF, probably a signature; left alone).
+  Matches reach up to 64 KiB back across logical record boundaries (linked-block style), so the stream must be
+  decoded in one pass. Decompressed size ~44.76 MB (ratio ~1.35). Compression only, no encryption involved.
+- How it was found: literal text in the JSON fragments is followed by `xx 00` 16-bit values and a token byte, i.e. LZ4
+  sequences; a structural parse with offset validation decodes the JSON into byte-exact valid documents.
+  Decoding is self-synchronising, so the start was located by scoring candidate token boundaries
+  (0x51EC49-0x51EC68 sync to a different class; 0x51EC69 gives the fewest unresolved back-references). The true start
+  is not marked; the clear Cortex-M tables immediately before it (zlib/inflate length+distance tables, "0123456789ABCDEF")
+  end at ~0x51EC10. The first 64 KiB of decoded output may include synthetic history and is not trusted;
+  everything used below sits beyond 0x59000 and validates as JSON.
+- The bulk of the 44.7 MB is **UI graphics** (RGB565-looking bitmaps with long runs, ~19 JPEG headers, zero pages),
+  not DSP code, not parameter tables, no node/model name tables. Searches for FX/EQ/dynamics model names
+  (Hall, Vintage, Reverb, E88, ...) and `/ch/`-style node paths in the decoded data found **nothing**. So the model
+  catalogue and node-name table are not here (they would live in the unreadable first 2.2 MB / main app).
+- Tool: `tools/firmware-extract/wingfw_lz4.py` (pure stdlib, `python3 -I wingfw_lz4.py FW OUTDIR [--dump]`, ~0.4 s).
+
+## Harvested (data/firmware/, 524 KB total, not gitignored; contains no firmware bytes beyond clear JSON)
+
+Length-prefixed JSON records (u32le length then text) found in the decoded stream:
+
+| out offset | bytes | content |
+|---|---|---|
+| 0x5951B..0x60F1B (8 records, 0x1200 stride) | 3.3-4.4 KB each | `snapshot.4` DAW-button templates (`ce_data.user.daw1..daw4`: transport/marker/auto-mode button maps, `mode DAWBTN`, `btn T1/OT4/SY1/AU1`...). Likely the built-in DAW-control presets (Mackie/Logic/etc.). |
+| 0x6211B | 315,265 | **Factory default scene**, `snapshot.11`, `creator_fw 3.0.6-193-g60c910ab-dirty:dev_unidyn`, `creator_model wing-fullsize`, serial `S123456789AAA`, created 2025-10-02. Valid JSON. |
+
+Files: `data/firmware/json/*.json` (raw records), `data/firmware/default-scene-paths.json` (1,143 path patterns with
+numeric indices collapsed to `*`: types, counts, min/max, example default value, string enum values seen),
+`data/firmware/path-diff-vs-PUBLIC.json` (path-set diff vs `fixtures/PUBLIC.snap`).
+
+Default scene contents (25,090 leaves): `ae_data` (cfg/mon/solo/rta/mtr/talk/amix, io in/out/altsw, ch x40, aux x8, bus x16, main x4, mtx x8, dca x16, mgrp x8, fx x16,
+cards wlive/wmadi, play, rec), `ce_data` (cfg, layer L/C/R/CMPCT/RCK/EXT/VRT, user, gpio, safes, daw, midi, osc, lib),
+`ae_globals` (clkrate 48000, clksrc INT, usbacfg 48/48, sccfg AUTO, harmt/custsync a-c), `ce_globals` (15 console prefs).
+Defaults only: one model per module (`flt/mdl TILT`, `gate/mdl GATE`, `eq/mdl STD`, `dyn/mdl COMP`, `fx/*/mdl NONE`),
+no preset library, no FX parameters.
+
+## Diff vs PUBLIC.snap (snapshot.8, fw 1.13.9, ngc-full); wing-tree.json does not exist yet so PUBLIC.snap is the baseline
+
+Present only in firmware 3.0.6 `snapshot.11` (166 path patterns; numeric indices collapsed): `active_show`,
+`active_scene`; `ch/aux/bus/main/mtx: dynxo/q`, `ch/*/flt/lcs|hcs` (low/high-cut slope, string), `ch/*/gate/gain`,
+`ch/*/tapwid`; full `dynsc/*` sidechain block and `dyn/mdl|mix|gain|range|ratio|att|hld|rel|acc` on aux; `bus|main|mtx/*/dly/{on,mode,dly}`;
+`aux/*/in/set/dly*`; send blocks keyed `MX1..MX8` (sends to matrices) on ch/aux; `mtx/*/dir/{on,lvl,inv,in}`;
+`cfg/talk/{A,B}/{indiv,MX1..MX8}`, `cfg/mon/*/dirin`; `io/autoaltovr`; `cards/wlive/{auto_play,auto_rec,auto_stop,sdlink}`,
+`cards/wmadi/{mode,rxclock}`; `ce_data`: `cfg/{autosel_*,busspill,cscmode,dcacc,dcaspill,fdrscrnlink,mainspill,mfdr,
+mfdrkeep,mtxspill,rackmode,showfdr}`, `layer/{CMPCT,EXT,RCK,VRT}/*` and `spidx`, `midi/{enscenes,enscenetx,enshowctl}`,
+`safes/area/{CENTER,COMPACT,EXTERN,LEFT,RACK,RIGHT,VIRTUAL}`, user-button maps `D1..D4,U1..U4,MM`; `ce_globals/{datefmt,filesort,showscene,timefmt}`.
+
+Present only in PUBLIC.snap (195 patterns): per-model **FX parameter keys** (`ae_data/fx/*/` ~150 names such as
+`dcy,pdel,damp,xover,mdep,mspd,sw_a..sw_gb,e_*,t_*,l_*,gain_1..5,thr_1..5,byp_1..5,1-att..3-thr`), gate/dyn model
+keys (`gate/{mode,drv,hrm,col,trim,filt,f,g,q,depth,fast,peak}`, `dyn/{in,out}`, `*/dyn/{cmode,cpeak,depth,fast,peak,ingain}`,
+`flt/{low,proc}`, `bus/*/busmode`), per-send `ind/wid`, and older keys that 3.x renamed/moved (`cfg/talk/indiv`,
+`mtx/*/dir/*/...`, `main/*/dyn/{in,time,bias}`, `*/dly/m`, `safes/area/{C,L,R}`, `user/*/*/{bd,bu,enc}/{ch,pg,par,fx}`).
+Takeaway: the schema must be driven by a *union* of versions; firmware 3.x renamed several keys (dly block, safes areas,
+layer set, user buttons) vs 1.13.9.
+
+## Usefulness / what this does NOT give us
+
+- Good: authoritative **default values and types** for the whole snapshot.11 tree (e.g. EQ band default freqs/Q, filter
+  defaults, `peq` 3-band, dyn defaults thr -10/ratio 3/knee 3/att 50/rel 150, gate thr -40/range 40, send modes
+  `GRP|POST|PRE`, layer `type` enum `OFF|CH|BUS|DCA`, input `mode M|ST`, `proc GEDI`, `mon A`), plus a newer-version
+  key set than PUBLIC.snap. Useful for T010/T011 (default scene on first launch, snapshot round-trip).
+- Not available: model enumerations, FX/dynamics/EQ parameter names for non-default models, scene/preset libraries,
+  DSP coefficients, native-protocol node IDs. Those must come from WING-Edit / protocol captures / PUBLIC.snap.
+- Still no DSP: nothing here changes the T005 conclusion.

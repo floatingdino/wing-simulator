@@ -1,0 +1,182 @@
+{
+  "type": "snapshot.4",
+  "ce_data": {
+    "user": {
+      "daw1": {
+        "1": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "2": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "3": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "4": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        }
+      },
+      "daw2": {
+        "1": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "2": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "3": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "4": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        }
+      },
+      "daw3": {
+        "1": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "2": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "3": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "4": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        }
+      },
+      "daw4": {
+        "1": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "2": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "3": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        },
+        "4": {
+          "bu": {
+            "mode": "OFF",
+            "name": ""
+          },
+          "bd": {
+            "mode": "OFF",
+            "name": ""
+          }
+        }
+      }
+    },
+    "daw": {
+      "on": false,
+      "conn": "USB",
+      "emul": "MCU",
+      "config": "CC",
+      "ccup": false
+    }
+  }
+}

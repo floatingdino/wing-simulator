@@ -1,0 +1,11078 @@
+{
+ "/type": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "snapshot.11",
+  "values": [
+   "snapshot.11"
+  ]
+ },
+ "/creator_fw": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "3.0.6-193-g60c910ab-dirty:dev_unidyn",
+  "values": [
+   "3.0.6-193-g60c910ab-dirty:dev_unidyn"
+  ]
+ },
+ "/creator_sn": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "EMU",
+  "values": [
+   "EMU"
+  ]
+ },
+ "/creator_model": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "wing-fullsize",
+  "values": [
+   "wing-fullsize"
+  ]
+ },
+ "/creator_version": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "emulation",
+  "values": [
+   "emulation"
+  ]
+ },
+ "/creator_name": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "S123456789AAA",
+  "values": [
+   "S123456789AAA"
+  ]
+ },
+ "/created": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "2025-10-02 14:27:23",
+  "values": [
+   "2025-10-02 14:27:23"
+  ]
+ },
+ "/active_show": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/active_scene": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/cfg/mainlink": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/cfg/dcamgrp": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/cfg/mon/*/inv": {
+  "types": [
+   "bool"
+  ],
+  "count": 2,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/mon/*/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/wid": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/cfg/mon/*/eq/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 2,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/mon/*/eq/lsg": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/eq/lsf": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 60.13883591,
+  "min": 60.13883591,
+  "max": 60.13883591
+ },
+ "/ae_data/cfg/mon/*/eq/1g": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/eq/1f": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 129.8763428,
+  "min": 129.8763428,
+  "max": 129.8763428
+ },
+ "/ae_data/cfg/mon/*/eq/1q": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/cfg/mon/*/eq/2g": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/eq/2f": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 299.2471619,
+  "min": 299.2471619,
+  "max": 299.2471619
+ },
+ "/ae_data/cfg/mon/*/eq/2q": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/cfg/mon/*/eq/3g": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/eq/3f": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 699.4875488,
+  "min": 699.4875488,
+  "max": 699.4875488
+ },
+ "/ae_data/cfg/mon/*/eq/3q": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/cfg/mon/*/eq/4g": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/eq/4f": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 1499.78833,
+  "min": 1499.78833,
+  "max": 1499.78833
+ },
+ "/ae_data/cfg/mon/*/eq/4q": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/cfg/mon/*/eq/5g": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/eq/5f": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 2992.470947,
+  "min": 2992.470947,
+  "max": 2992.470947
+ },
+ "/ae_data/cfg/mon/*/eq/5q": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/cfg/mon/*/eq/6g": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/eq/6f": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 6013.883789,
+  "min": 6013.883789,
+  "max": 6013.883789
+ },
+ "/ae_data/cfg/mon/*/eq/6q": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/cfg/mon/*/eq/hsg": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/eq/hsf": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 11999.27344,
+  "min": 11999.27344,
+  "max": 11999.27344
+ },
+ "/ae_data/cfg/mon/*/lim": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/dly/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 2,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/mon/*/dly/m": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 0.100000001,
+  "min": 0.100000001,
+  "max": 0.100000001
+ },
+ "/ae_data/cfg/mon/*/dim": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 20,
+  "min": 20,
+  "max": 20
+ },
+ "/ae_data/cfg/mon/*/pfldim": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 12,
+  "min": 12,
+  "max": 12
+ },
+ "/ae_data/cfg/mon/*/eqbdtrim": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/srclvl": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mon/*/srcmix": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/cfg/mon/*/src": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "MAIN.1",
+  "values": [
+   "MAIN.1"
+  ]
+ },
+ "/ae_data/cfg/mon/*/dirin": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/cfg/mon/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/cfg/solo/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "LIVE",
+  "values": [
+   "LIVE"
+  ]
+ },
+ "/ae_data/cfg/solo/mon": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PH",
+  "values": [
+   "PH"
+  ]
+ },
+ "/ae_data/cfg/solo/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/solo/chtap": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PFL",
+  "values": [
+   "PFL"
+  ]
+ },
+ "/ae_data/cfg/solo/bustap": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "AFL",
+  "values": [
+   "AFL"
+  ]
+ },
+ "/ae_data/cfg/solo/maintap": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PFL",
+  "values": [
+   "PFL"
+  ]
+ },
+ "/ae_data/cfg/solo/mtxtap": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PFL",
+  "values": [
+   "PFL"
+  ]
+ },
+ "/ae_data/cfg/solo/srcsolo": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/cfg/rta/rtasrc": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/rta/rtatap": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "IN",
+  "values": [
+   "IN"
+  ]
+ },
+ "/ae_data/cfg/rta/rtadecay": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "MED",
+  "values": [
+   "MED"
+  ]
+ },
+ "/ae_data/cfg/rta/rtadet": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PEAK",
+  "values": [
+   "PEAK"
+  ]
+ },
+ "/ae_data/cfg/rta/rtarange": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 30,
+  "min": 30,
+  "max": 30
+ },
+ "/ae_data/cfg/rta/rtagain": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/rta/rtaauto": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/cfg/rta/eqdecay": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "MED",
+  "values": [
+   "MED"
+  ]
+ },
+ "/ae_data/cfg/rta/eqdet": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PEAK",
+  "values": [
+   "PEAK"
+  ]
+ },
+ "/ae_data/cfg/rta/eqrange": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 30,
+  "min": 30,
+  "max": 30
+ },
+ "/ae_data/cfg/rta/eqgain": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/rta/eqauto": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/cfg/mtr/scopesrc": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/mtr/scopetap": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "IN",
+  "values": [
+   "IN"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrsfc/in": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrsfc/bus": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "POST",
+  "values": [
+   "POST"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrsfc/main": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "POST",
+  "values": [
+   "POST"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrsfc/mtx": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "POST",
+  "values": [
+   "POST"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrsfc/dca": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrpage/in": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrpage/bus": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "POST",
+  "values": [
+   "POST"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrpage/main": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "POST",
+  "values": [
+   "POST"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrpage/mtx": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "POST",
+  "values": [
+   "POST"
+  ]
+ },
+ "/ae_data/cfg/mtr/mtrpage/dca": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/cfg/mtr/mainmtr": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "MAIN.1",
+  "values": [
+   "MAIN.1"
+  ]
+ },
+ "/ae_data/cfg/mtr/mainpos": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "AUTO",
+  "values": [
+   "AUTO"
+  ]
+ },
+ "/ae_data/cfg/talk/assign": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/cfg/talk/A/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "AUTO",
+  "values": [
+   "AUTO"
+  ]
+ },
+ "/ae_data/cfg/talk/A/mondim": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/talk/A/busdim": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/talk/A/indiv": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B1": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B2": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B3": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B4": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B5": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B6": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B7": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B8": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B9": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B10": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B11": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B12": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B13": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B14": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B15": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/B16": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/MX1": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/MX2": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/MX3": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/MX4": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/MX5": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/MX6": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/MX7": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/MX8": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/M1": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/M2": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/M3": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/A/M4": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "AUTO",
+  "values": [
+   "AUTO"
+  ]
+ },
+ "/ae_data/cfg/talk/B/mondim": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/talk/B/busdim": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/cfg/talk/B/indiv": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B1": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B2": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B3": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B4": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B5": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B6": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B7": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B8": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B9": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B10": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B11": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B12": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B13": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B14": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B15": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/B16": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/MX1": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/MX2": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/MX3": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/MX4": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/MX5": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/MX6": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/MX7": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/MX8": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/M1": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/M2": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/M3": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/talk/B/M4": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/cfg/amix/x": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/cfg/amix/y": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/io/altsw": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/autoaltovr": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/io/in/LCL/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 24,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/LCL/*/g": {
+  "types": [
+   "int"
+  ],
+  "count": 24,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/LCL/*/vph": {
+  "types": [
+   "bool"
+  ],
+  "count": 24,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/LCL/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 24,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/LCL/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 24,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/LCL/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 24,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/LCL/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 24,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/LCL/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 24,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/LCL/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 24,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/LCL/*/rmt": {
+  "types": [
+   "str"
+  ],
+  "count": 24,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/in/LCL/*/rcvc": {
+  "types": [
+   "bool"
+  ],
+  "count": 24,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/AUX/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/AUX/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/AUX/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/AUX/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/AUX/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/AUX/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 2,
+  "min": 2,
+  "max": 2
+ },
+ "/ae_data/io/in/AUX/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/A/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/A/*/g": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/A/*/vph": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/A/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/A/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/A/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/A/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/A/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/A/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/A/*/rmt": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/in/A/*/rcvc": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/B/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/B/*/g": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/B/*/vph": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/B/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/B/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/B/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/B/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/B/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/B/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/B/*/rmt": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/in/B/*/rcvc": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/C/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/C/*/g": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/C/*/vph": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/C/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/C/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/C/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/C/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/C/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/C/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/C/*/rmt": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/in/C/*/rcvc": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/SC/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 32,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/SC/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 32,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/SC/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 32,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/SC/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 32,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/SC/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 32,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/SC/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 32,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/SC/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 32,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/USB/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "ST",
+  "values": [
+   "M",
+   "ST"
+  ]
+ },
+ "/ae_data/io/in/USB/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/USB/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 48,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/USB/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 8,
+  "min": 1,
+  "max": 8
+ },
+ "/ae_data/io/in/USB/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "USB 1/2",
+  "values": [
+   "",
+   "USB 1/2"
+  ]
+ },
+ "/ae_data/io/in/USB/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 605,
+  "min": 0,
+  "max": 605
+ },
+ "/ae_data/io/in/USB/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/CRD/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/CRD/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 64,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/CRD/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 64,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/CRD/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 64,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/CRD/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/CRD/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 64,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/CRD/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/MOD/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/MOD/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 64,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/MOD/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 64,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/MOD/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 64,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/MOD/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/MOD/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 64,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/MOD/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/PLAY/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "ST",
+  "values": [
+   "M",
+   "ST"
+  ]
+ },
+ "/ae_data/io/in/PLAY/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/PLAY/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/PLAY/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 8,
+  "min": 1,
+  "max": 8
+ },
+ "/ae_data/io/in/PLAY/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "2TR",
+  "values": [
+   "",
+   "2TR"
+  ]
+ },
+ "/ae_data/io/in/PLAY/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 608,
+  "min": 0,
+  "max": 608
+ },
+ "/ae_data/io/in/PLAY/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/AES/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/AES/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 2,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/AES/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 2,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/AES/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/AES/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/AES/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/AES/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/USR/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 56,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/USR/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 56,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/USR/*/pol": {
+  "types": [
+   "bool"
+  ],
+  "count": 56,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/USR/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 56,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/USR/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 56,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/USR/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 56,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/USR/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 56,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/USR/*/user/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 56,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/in/USR/*/user/in": {
+  "types": [
+   "int"
+  ],
+  "count": 56,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/USR/*/user/tap": {
+  "types": [
+   "str"
+  ],
+  "count": 24,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/io/in/USR/*/user/lr": {
+  "types": [
+   "str"
+  ],
+  "count": 24,
+  "example": "L+R",
+  "values": [
+   "L+R"
+  ]
+ },
+ "/ae_data/io/in/OSC/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/io/in/OSC/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 2,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/io/in/OSC/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/in/OSC/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/OSC/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/io/in/OSC/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/io/in/OSC/*/osc/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": -6,
+  "min": -6,
+  "max": -6
+ },
+ "/ae_data/io/in/OSC/*/osc/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "SINE",
+  "values": [
+   "SINE"
+  ]
+ },
+ "/ae_data/io/in/OSC/*/osc/f": {
+  "types": [
+   "float"
+  ],
+  "count": 2,
+  "example": 999.9920044,
+  "min": 999.9920044,
+  "max": 999.9920044
+ },
+ "/ae_data/io/out/LCL/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "BUS",
+  "values": [
+   "BUS",
+   "MAIN"
+  ]
+ },
+ "/ae_data/io/out/LCL/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 1,
+  "min": 1,
+  "max": 11
+ },
+ "/ae_data/io/out/AUX/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "OFF",
+  "values": [
+   "MON",
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/AUX/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 1,
+  "min": 1,
+  "max": 2
+ },
+ "/ae_data/io/out/A/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/A/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/out/B/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/B/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/out/C/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/C/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/out/SC/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 32,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/SC/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 32,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/out/USB/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 48,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/USB/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 48,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/out/CRD/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/CRD/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 64,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/out/MOD/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/MOD/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 64,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/out/REC/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/REC/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/io/out/AES/*/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/io/out/AES/*/in": {
+  "types": [
+   "int"
+  ],
+  "count": 2,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/ch/*/in/set/srcauto": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/in/set/altsrc": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/in/set/inv": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/in/set/trim": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/in/set/bal": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/in/set/dlymode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/ch/*/in/set/dly": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.100000001,
+  "min": 0.100000001,
+  "max": 0.100000001
+ },
+ "/ae_data/ch/*/in/set/dlyon": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/in/conn/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "LCL",
+  "values": [
+   "LCL",
+   "OFF"
+  ]
+ },
+ "/ae_data/ch/*/in/conn/in": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 1,
+  "min": 1,
+  "max": 8
+ },
+ "/ae_data/ch/*/in/conn/altgrp": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/ch/*/in/conn/altin": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/ch/*/flt/lc": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/flt/lcf": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 100.2374573,
+  "min": 100.2374573,
+  "max": 100.2374573
+ },
+ "/ae_data/ch/*/flt/lcs": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "24",
+  "values": [
+   "24"
+  ]
+ },
+ "/ae_data/ch/*/flt/hc": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/flt/hcf": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 10018.26074,
+  "min": 10018.26074,
+  "max": 10018.26074
+ },
+ "/ae_data/ch/*/flt/hcs": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "12",
+  "values": [
+   "12"
+  ]
+ },
+ "/ae_data/ch/*/flt/tf": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/flt/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "TILT",
+  "values": [
+   "TILT"
+  ]
+ },
+ "/ae_data/ch/*/flt/tilt": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/clink": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/ch/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/ch/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/ch/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/ch/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/fdr": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/wid": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/ch/*/solosafe": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/mon": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "A",
+  "values": [
+   "A"
+  ]
+ },
+ "/ae_data/ch/*/proc": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "GEDI",
+  "values": [
+   "GEDI"
+  ]
+ },
+ "/ae_data/ch/*/ptap": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "5",
+  "values": [
+   "5"
+  ]
+ },
+ "/ae_data/ch/*/peq/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/peq/1g": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/peq/1f": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 99.68543243,
+  "min": 99.68543243,
+  "max": 99.68543243
+ },
+ "/ae_data/ch/*/peq/1q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/ch/*/peq/2g": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/peq/2f": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 999.2504883,
+  "min": 999.2504883,
+  "max": 999.2504883
+ },
+ "/ae_data/ch/*/peq/2q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/ch/*/peq/3g": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/peq/3f": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 10016.52734,
+  "min": 10016.52734,
+  "max": 10016.52734
+ },
+ "/ae_data/ch/*/peq/3q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/ch/*/gate/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/gate/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "GATE",
+  "values": [
+   "GATE"
+  ]
+ },
+ "/ae_data/ch/*/gate/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/ch/*/gate/gain": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/gate/thr": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -40,
+  "min": -40,
+  "max": -40
+ },
+ "/ae_data/ch/*/gate/range": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 40,
+  "min": 40,
+  "max": 40
+ },
+ "/ae_data/ch/*/gate/att": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 10,
+  "min": 10,
+  "max": 10
+ },
+ "/ae_data/ch/*/gate/hld": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 10,
+  "min": 10,
+  "max": 10
+ },
+ "/ae_data/ch/*/gate/rel": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 200.474884,
+  "min": 200.474884,
+  "max": 200.474884
+ },
+ "/ae_data/ch/*/gate/acc": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/gate/ratio": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "1:3",
+  "values": [
+   "1:3"
+  ]
+ },
+ "/ae_data/ch/*/gatesc/type": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/ch/*/gatesc/f": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/ch/*/gatesc/q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/ch/*/gatesc/src": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "SELF",
+  "values": [
+   "SELF"
+  ]
+ },
+ "/ae_data/ch/*/gatesc/tap": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "IN",
+  "values": [
+   "IN"
+  ]
+ },
+ "/ae_data/ch/*/eq/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/eq/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "STD",
+  "values": [
+   "STD"
+  ]
+ },
+ "/ae_data/ch/*/eq/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/ch/*/eq/lg": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/eq/lf": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 80.19641876,
+  "min": 80.19641876,
+  "max": 80.19641876
+ },
+ "/ae_data/ch/*/eq/lq": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/ch/*/eq/leq": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/ch/*/eq/1g": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/eq/1f": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 200,
+  "min": 200,
+  "max": 200
+ },
+ "/ae_data/ch/*/eq/1q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/ch/*/eq/2g": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/eq/2f": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 601.3883667,
+  "min": 601.3883667,
+  "max": 601.3883667
+ },
+ "/ae_data/ch/*/eq/2q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/ch/*/eq/3g": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/eq/3f": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 1499.78833,
+  "min": 1499.78833,
+  "max": 1499.78833
+ },
+ "/ae_data/ch/*/eq/3q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/ch/*/eq/4g": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/eq/4f": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 3990.524414,
+  "min": 3990.524414,
+  "max": 3990.524414
+ },
+ "/ae_data/ch/*/eq/4q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/ch/*/eq/hg": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/eq/hf": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 11999.27539,
+  "min": 11999.27539,
+  "max": 11999.27539
+ },
+ "/ae_data/ch/*/eq/hq": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/ch/*/eq/heq": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/ch/*/dyn/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/dyn/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "COMP",
+  "values": [
+   "COMP"
+  ]
+ },
+ "/ae_data/ch/*/dyn/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/ch/*/dyn/gain": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/dyn/thr": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -10,
+  "min": -10,
+  "max": -10
+ },
+ "/ae_data/ch/*/dyn/ratio": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 3,
+  "min": 3,
+  "max": 3
+ },
+ "/ae_data/ch/*/dyn/knee": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 3,
+  "min": 3,
+  "max": 3
+ },
+ "/ae_data/ch/*/dyn/det": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "RMS",
+  "values": [
+   "RMS"
+  ]
+ },
+ "/ae_data/ch/*/dyn/att": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 50,
+  "min": 50,
+  "max": 50
+ },
+ "/ae_data/ch/*/dyn/hld": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 20,
+  "min": 20,
+  "max": 20
+ },
+ "/ae_data/ch/*/dyn/rel": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 150.3349457,
+  "min": 150.3349457,
+  "max": 150.3349457
+ },
+ "/ae_data/ch/*/dyn/env": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "LOG",
+  "values": [
+   "LOG"
+  ]
+ },
+ "/ae_data/ch/*/dyn/auto": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/ch/*/dynxo/depth": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 6,
+  "min": 6,
+  "max": 6
+ },
+ "/ae_data/ch/*/dynxo/type": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/ch/*/dynxo/f": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/ch/*/dynxo/q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 0.400000006,
+  "min": 0.400000006,
+  "max": 0.400000006
+ },
+ "/ae_data/ch/*/dynsc/type": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/ch/*/dynsc/f": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/ch/*/dynsc/q": {
+  "types": [
+   "float"
+  ],
+  "count": 40,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/ch/*/dynsc/src": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "SELF",
+  "values": [
+   "SELF"
+  ]
+ },
+ "/ae_data/ch/*/dynsc/tap": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "IN",
+  "values": [
+   "IN"
+  ]
+ },
+ "/ae_data/ch/*/preins/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/preins/ins": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/ch/*/main/*/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 160,
+  "example": true,
+  "values": [
+   "False",
+   "True"
+  ]
+ },
+ "/ae_data/ch/*/main/*/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 160,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/main/*/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 160,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/*/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 640,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/*/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 640,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/send/*/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 640,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 640,
+  "example": "PRE",
+  "values": [
+   "GRP",
+   "POST",
+   "PRE"
+  ]
+ },
+ "/ae_data/ch/*/send/*/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 640,
+  "example": 0,
+  "min": 0,
+  "max": 1
+ },
+ "/ae_data/ch/*/send/*/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 640,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX1/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX1/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/send/MX1/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX1/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/ch/*/send/MX1/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX1/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX2/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX2/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/send/MX2/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX2/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/ch/*/send/MX2/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX2/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX3/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX3/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/send/MX3/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX3/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/ch/*/send/MX3/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX3/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX4/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX4/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/send/MX4/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX4/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/ch/*/send/MX4/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX4/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX5/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX5/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/send/MX5/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX5/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/ch/*/send/MX5/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX5/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX6/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX6/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/send/MX6/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX6/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/ch/*/send/MX6/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX6/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX7/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX7/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/send/MX7/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX7/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/ch/*/send/MX7/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX7/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX8/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX8/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/ch/*/send/MX8/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/send/MX8/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/ch/*/send/MX8/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/send/MX8/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/tapwid": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/ch/*/postins/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 40,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/ch/*/postins/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "FX",
+  "values": [
+   "FX"
+  ]
+ },
+ "/ae_data/ch/*/postins/ins": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/ch/*/postins/w": {
+  "types": [
+   "int"
+  ],
+  "count": 40,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/ch/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 40,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/aux/*/in/set/srcauto": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/in/set/altsrc": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/in/set/inv": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/in/set/trim": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/in/set/bal": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/in/set/dlymode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/aux/*/in/set/dly": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.100000001,
+  "min": 0.100000001,
+  "max": 0.100000001
+ },
+ "/ae_data/aux/*/in/set/dlyon": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/in/conn/grp": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "USB",
+  "values": [
+   "OFF",
+   "PLAY",
+   "USB"
+  ]
+ },
+ "/ae_data/aux/*/in/conn/in": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/aux/*/in/conn/altgrp": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/aux/*/in/conn/altin": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/aux/*/clink": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/aux/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/aux/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/aux/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/aux/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/fdr": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/wid": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/aux/*/solosafe": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/mon": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "A",
+  "values": [
+   "A"
+  ]
+ },
+ "/ae_data/aux/*/eq/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/eq/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "STD",
+  "values": [
+   "STD"
+  ]
+ },
+ "/ae_data/aux/*/eq/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/aux/*/eq/lg": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/eq/lf": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 80.19641876,
+  "min": 80.19641876,
+  "max": 80.19641876
+ },
+ "/ae_data/aux/*/eq/lq": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/aux/*/eq/leq": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/aux/*/eq/1g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/eq/1f": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 200,
+  "min": 200,
+  "max": 200
+ },
+ "/ae_data/aux/*/eq/1q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/aux/*/eq/2g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/eq/2f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 601.3883667,
+  "min": 601.3883667,
+  "max": 601.3883667
+ },
+ "/ae_data/aux/*/eq/2q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/aux/*/eq/3g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/eq/3f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 1499.78833,
+  "min": 1499.78833,
+  "max": 1499.78833
+ },
+ "/ae_data/aux/*/eq/3q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/aux/*/eq/4g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/eq/4f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 3990.524414,
+  "min": 3990.524414,
+  "max": 3990.524414
+ },
+ "/ae_data/aux/*/eq/4q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/aux/*/eq/hg": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/eq/hf": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 11999.27539,
+  "min": 11999.27539,
+  "max": 11999.27539
+ },
+ "/ae_data/aux/*/eq/hq": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/aux/*/eq/heq": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/aux/*/dyn/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/dyn/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "GATE",
+  "values": [
+   "GATE"
+  ]
+ },
+ "/ae_data/aux/*/dyn/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/aux/*/dyn/gain": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/dyn/thr": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -36,
+  "min": -36,
+  "max": -36
+ },
+ "/ae_data/aux/*/dyn/range": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 40,
+  "min": 40,
+  "max": 40
+ },
+ "/ae_data/aux/*/dyn/att": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 10,
+  "min": 10,
+  "max": 10
+ },
+ "/ae_data/aux/*/dyn/hld": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 10,
+  "min": 10,
+  "max": 10
+ },
+ "/ae_data/aux/*/dyn/rel": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 200.474884,
+  "min": 200.474884,
+  "max": 200.474884
+ },
+ "/ae_data/aux/*/dyn/acc": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/dyn/ratio": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "1:3",
+  "values": [
+   "1:3"
+  ]
+ },
+ "/ae_data/aux/*/dynsc/type": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/aux/*/dynsc/f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/aux/*/dynsc/q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/aux/*/dynsc/src": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "SELF",
+  "values": [
+   "SELF"
+  ]
+ },
+ "/ae_data/aux/*/dynsc/tap": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "BUS",
+  "values": [
+   "BUS"
+  ]
+ },
+ "/ae_data/aux/*/preins/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/preins/ins": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/aux/*/main/*/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 32,
+  "example": true,
+  "values": [
+   "False",
+   "True"
+  ]
+ },
+ "/ae_data/aux/*/main/*/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 32,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/main/*/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 32,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/*/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 128,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/*/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 128,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/send/*/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 128,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 128,
+  "example": "PRE",
+  "values": [
+   "GRP",
+   "POST",
+   "PRE"
+  ]
+ },
+ "/ae_data/aux/*/send/*/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 128,
+  "example": 0,
+  "min": 0,
+  "max": 1
+ },
+ "/ae_data/aux/*/send/*/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 128,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX1/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX1/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/send/MX1/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX1/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/aux/*/send/MX1/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX1/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX2/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX2/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/send/MX2/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX2/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/aux/*/send/MX2/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX2/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX3/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX3/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/send/MX3/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX3/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/aux/*/send/MX3/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX3/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX4/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX4/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/send/MX4/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX4/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/aux/*/send/MX4/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX4/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX5/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX5/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/send/MX5/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX5/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/aux/*/send/MX5/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX5/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX6/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX6/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/send/MX6/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX6/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/aux/*/send/MX6/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX6/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX7/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX7/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/send/MX7/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX7/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/aux/*/send/MX7/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX7/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX8/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX8/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/aux/*/send/MX8/pon": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/aux/*/send/MX8/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ae_data/aux/*/send/MX8/plink": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/send/MX8/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/aux/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/bus/*/in/set/inv": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/in/set/trim": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/in/set/bal": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 10,
+  "min": 6,
+  "max": 12
+ },
+ "/ae_data/bus/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/bus/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/bus/*/busmono": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/fdr": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": 0
+ },
+ "/ae_data/bus/*/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/wid": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/bus/*/mon": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "A",
+  "values": [
+   "A"
+  ]
+ },
+ "/ae_data/bus/*/eq/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/eq/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "STD",
+  "values": [
+   "STD"
+  ]
+ },
+ "/ae_data/bus/*/eq/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/bus/*/eq/lg": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/eq/lf": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 60.13883591,
+  "min": 60.13883591,
+  "max": 60.13883591
+ },
+ "/ae_data/bus/*/eq/lq": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/bus/*/eq/leq": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/bus/*/eq/1g": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/eq/1f": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 129.8763428,
+  "min": 129.8763428,
+  "max": 129.8763428
+ },
+ "/ae_data/bus/*/eq/1q": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/bus/*/eq/2g": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/eq/2f": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 299.2471619,
+  "min": 299.2471619,
+  "max": 299.2471619
+ },
+ "/ae_data/bus/*/eq/2q": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/bus/*/eq/3g": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/eq/3f": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 699.4875488,
+  "min": 699.4875488,
+  "max": 699.4875488
+ },
+ "/ae_data/bus/*/eq/3q": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/bus/*/eq/4g": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/eq/4f": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 1499.78833,
+  "min": 1499.78833,
+  "max": 1499.78833
+ },
+ "/ae_data/bus/*/eq/4q": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/bus/*/eq/5g": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/eq/5f": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 2992.470947,
+  "min": 2992.470947,
+  "max": 2992.470947
+ },
+ "/ae_data/bus/*/eq/5q": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/bus/*/eq/6g": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/eq/6f": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 6013.883789,
+  "min": 6013.883789,
+  "max": 6013.883789
+ },
+ "/ae_data/bus/*/eq/6q": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/bus/*/eq/hg": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/eq/hf": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 11999.27539,
+  "min": 11999.27539,
+  "max": 11999.27539
+ },
+ "/ae_data/bus/*/eq/hq": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/bus/*/eq/heq": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/bus/*/eq/tilt": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/dyn/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/dyn/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "COMP",
+  "values": [
+   "COMP"
+  ]
+ },
+ "/ae_data/bus/*/dyn/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/bus/*/dyn/gain": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/dyn/thr": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -10,
+  "min": -10,
+  "max": -10
+ },
+ "/ae_data/bus/*/dyn/ratio": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 3,
+  "min": 3,
+  "max": 3
+ },
+ "/ae_data/bus/*/dyn/knee": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 3,
+  "min": 3,
+  "max": 3
+ },
+ "/ae_data/bus/*/dyn/det": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "RMS",
+  "values": [
+   "RMS"
+  ]
+ },
+ "/ae_data/bus/*/dyn/att": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 50,
+  "min": 50,
+  "max": 50
+ },
+ "/ae_data/bus/*/dyn/hld": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 20,
+  "min": 20,
+  "max": 20
+ },
+ "/ae_data/bus/*/dyn/rel": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 150.3349457,
+  "min": 150.3349457,
+  "max": 150.3349457
+ },
+ "/ae_data/bus/*/dyn/env": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "LOG",
+  "values": [
+   "LOG"
+  ]
+ },
+ "/ae_data/bus/*/dyn/auto": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/bus/*/dynxo/depth": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 6,
+  "min": 6,
+  "max": 6
+ },
+ "/ae_data/bus/*/dynxo/type": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/bus/*/dynxo/f": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/bus/*/dynxo/q": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.400000006,
+  "min": 0.400000006,
+  "max": 0.400000006
+ },
+ "/ae_data/bus/*/dynsc/type": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/bus/*/dynsc/f": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/bus/*/dynsc/q": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/bus/*/dynsc/src": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "SELF",
+  "values": [
+   "SELF"
+  ]
+ },
+ "/ae_data/bus/*/dynsc/tap": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "BUS",
+  "values": [
+   "BUS"
+  ]
+ },
+ "/ae_data/bus/*/preins/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/preins/ins": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/bus/*/main/*/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 64,
+  "example": false,
+  "values": [
+   "False",
+   "True"
+  ]
+ },
+ "/ae_data/bus/*/main/*/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 64,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/bus/*/main/*/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 64,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/*/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 256,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/*/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 256,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/bus/*/send/*/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 256,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX1/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX1/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/bus/*/send/MX1/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX2/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX2/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/bus/*/send/MX2/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX3/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX3/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/bus/*/send/MX3/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX4/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX4/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/bus/*/send/MX4/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX5/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX5/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/bus/*/send/MX5/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX6/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX6/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/bus/*/send/MX6/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX7/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX7/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/bus/*/send/MX7/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX8/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/send/MX8/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/bus/*/send/MX8/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/postins/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/postins/ins": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/bus/*/dly/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/bus/*/dly/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/bus/*/dly/dly": {
+  "types": [
+   "float"
+  ],
+  "count": 16,
+  "example": 0.100000001,
+  "min": 0.100000001,
+  "max": 0.100000001
+ },
+ "/ae_data/bus/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/main/*/in/set/inv": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/in/set/trim": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/in/set/bal": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/main/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/main/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/main/*/busmono": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/fdr": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/main/*/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/wid": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/main/*/mon": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "A",
+  "values": [
+   "A"
+  ]
+ },
+ "/ae_data/main/*/eq/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/eq/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "STD",
+  "values": [
+   "STD"
+  ]
+ },
+ "/ae_data/main/*/eq/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/main/*/eq/lg": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/eq/lf": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 60.13883591,
+  "min": 60.13883591,
+  "max": 60.13883591
+ },
+ "/ae_data/main/*/eq/lq": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/main/*/eq/leq": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/main/*/eq/1g": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/eq/1f": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 129.8763428,
+  "min": 129.8763428,
+  "max": 129.8763428
+ },
+ "/ae_data/main/*/eq/1q": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/main/*/eq/2g": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/eq/2f": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 299.2471619,
+  "min": 299.2471619,
+  "max": 299.2471619
+ },
+ "/ae_data/main/*/eq/2q": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/main/*/eq/3g": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/eq/3f": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 699.4875488,
+  "min": 699.4875488,
+  "max": 699.4875488
+ },
+ "/ae_data/main/*/eq/3q": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/main/*/eq/4g": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/eq/4f": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 1499.78833,
+  "min": 1499.78833,
+  "max": 1499.78833
+ },
+ "/ae_data/main/*/eq/4q": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/main/*/eq/5g": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/eq/5f": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 2992.470947,
+  "min": 2992.470947,
+  "max": 2992.470947
+ },
+ "/ae_data/main/*/eq/5q": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/main/*/eq/6g": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/eq/6f": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 6013.883789,
+  "min": 6013.883789,
+  "max": 6013.883789
+ },
+ "/ae_data/main/*/eq/6q": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/main/*/eq/hg": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/eq/hf": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 11999.27539,
+  "min": 11999.27539,
+  "max": 11999.27539
+ },
+ "/ae_data/main/*/eq/hq": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/main/*/eq/heq": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/main/*/eq/tilt": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/dyn/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/dyn/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "COMP",
+  "values": [
+   "COMP"
+  ]
+ },
+ "/ae_data/main/*/dyn/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/main/*/dyn/gain": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/main/*/dyn/thr": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -10,
+  "min": -10,
+  "max": -10
+ },
+ "/ae_data/main/*/dyn/ratio": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 3,
+  "min": 3,
+  "max": 3
+ },
+ "/ae_data/main/*/dyn/knee": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 3,
+  "min": 3,
+  "max": 3
+ },
+ "/ae_data/main/*/dyn/det": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "RMS",
+  "values": [
+   "RMS"
+  ]
+ },
+ "/ae_data/main/*/dyn/att": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 50,
+  "min": 50,
+  "max": 50
+ },
+ "/ae_data/main/*/dyn/hld": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 20,
+  "min": 20,
+  "max": 20
+ },
+ "/ae_data/main/*/dyn/rel": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 150.3349457,
+  "min": 150.3349457,
+  "max": 150.3349457
+ },
+ "/ae_data/main/*/dyn/env": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "LOG",
+  "values": [
+   "LOG"
+  ]
+ },
+ "/ae_data/main/*/dyn/auto": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/main/*/dynxo/depth": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 6,
+  "min": 6,
+  "max": 6
+ },
+ "/ae_data/main/*/dynxo/type": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/main/*/dynxo/f": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/main/*/dynxo/q": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.400000006,
+  "min": 0.400000006,
+  "max": 0.400000006
+ },
+ "/ae_data/main/*/dynsc/type": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/main/*/dynsc/f": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/main/*/dynsc/q": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/main/*/dynsc/src": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "SELF",
+  "values": [
+   "SELF"
+  ]
+ },
+ "/ae_data/main/*/dynsc/tap": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "BUS",
+  "values": [
+   "BUS"
+  ]
+ },
+ "/ae_data/main/*/preins/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/preins/ins": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/main/*/send/MX1/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX1/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/main/*/send/MX1/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX2/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX2/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/main/*/send/MX2/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX3/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX3/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/main/*/send/MX3/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX4/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX4/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/main/*/send/MX4/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX5/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX5/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/main/*/send/MX5/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX6/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX6/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/main/*/send/MX6/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX7/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX7/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/main/*/send/MX7/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX8/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/send/MX8/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/main/*/send/MX8/pre": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/postins/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/postins/ins": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/main/*/dly/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/main/*/dly/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/main/*/dly/dly": {
+  "types": [
+   "float"
+  ],
+  "count": 4,
+  "example": 0.100000001,
+  "min": 0.100000001,
+  "max": 0.100000001
+ },
+ "/ae_data/main/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/mtx/*/in/set/inv": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/in/set/trim": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/in/set/bal": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/dir/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/dir/lvl": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/mtx/*/dir/inv": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/dir/in": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/mtx/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/mtx/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/mtx/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/mtx/*/busmono": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/fdr": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/mtx/*/pan": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/wid": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/mtx/*/mon": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "A",
+  "values": [
+   "A"
+  ]
+ },
+ "/ae_data/mtx/*/eq/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/eq/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "STD",
+  "values": [
+   "STD"
+  ]
+ },
+ "/ae_data/mtx/*/eq/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/mtx/*/eq/lg": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/eq/lf": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 60.13883591,
+  "min": 60.13883591,
+  "max": 60.13883591
+ },
+ "/ae_data/mtx/*/eq/lq": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/mtx/*/eq/leq": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/mtx/*/eq/1g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/eq/1f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 129.8763428,
+  "min": 129.8763428,
+  "max": 129.8763428
+ },
+ "/ae_data/mtx/*/eq/1q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/mtx/*/eq/2g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/eq/2f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 299.2471619,
+  "min": 299.2471619,
+  "max": 299.2471619
+ },
+ "/ae_data/mtx/*/eq/2q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/mtx/*/eq/3g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/eq/3f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 699.4875488,
+  "min": 699.4875488,
+  "max": 699.4875488
+ },
+ "/ae_data/mtx/*/eq/3q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/mtx/*/eq/4g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/eq/4f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 1499.78833,
+  "min": 1499.78833,
+  "max": 1499.78833
+ },
+ "/ae_data/mtx/*/eq/4q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/mtx/*/eq/5g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/eq/5f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 2992.470947,
+  "min": 2992.470947,
+  "max": 2992.470947
+ },
+ "/ae_data/mtx/*/eq/5q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/mtx/*/eq/6g": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/eq/6f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 6013.883789,
+  "min": 6013.883789,
+  "max": 6013.883789
+ },
+ "/ae_data/mtx/*/eq/6q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/mtx/*/eq/hg": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/eq/hf": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 11999.27539,
+  "min": 11999.27539,
+  "max": 11999.27539
+ },
+ "/ae_data/mtx/*/eq/hq": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.997970223,
+  "min": 0.997970223,
+  "max": 0.997970223
+ },
+ "/ae_data/mtx/*/eq/heq": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "SHV",
+  "values": [
+   "SHV"
+  ]
+ },
+ "/ae_data/mtx/*/eq/tilt": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/dyn/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/dyn/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "COMP",
+  "values": [
+   "COMP"
+  ]
+ },
+ "/ae_data/mtx/*/dyn/mix": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/mtx/*/dyn/gain": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/mtx/*/dyn/thr": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": -10,
+  "min": -10,
+  "max": -10
+ },
+ "/ae_data/mtx/*/dyn/ratio": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 3,
+  "min": 3,
+  "max": 3
+ },
+ "/ae_data/mtx/*/dyn/knee": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 3,
+  "min": 3,
+  "max": 3
+ },
+ "/ae_data/mtx/*/dyn/det": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "RMS",
+  "values": [
+   "RMS"
+  ]
+ },
+ "/ae_data/mtx/*/dyn/att": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 50,
+  "min": 50,
+  "max": 50
+ },
+ "/ae_data/mtx/*/dyn/hld": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 20,
+  "min": 20,
+  "max": 20
+ },
+ "/ae_data/mtx/*/dyn/rel": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 150.3349457,
+  "min": 150.3349457,
+  "max": 150.3349457
+ },
+ "/ae_data/mtx/*/dyn/env": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "LOG",
+  "values": [
+   "LOG"
+  ]
+ },
+ "/ae_data/mtx/*/dyn/auto": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/mtx/*/dynxo/depth": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 6,
+  "min": 6,
+  "max": 6
+ },
+ "/ae_data/mtx/*/dynxo/type": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/mtx/*/dynxo/f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/mtx/*/dynxo/q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.400000006,
+  "min": 0.400000006,
+  "max": 0.400000006
+ },
+ "/ae_data/mtx/*/dynsc/type": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/mtx/*/dynsc/f": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 1002.37439,
+  "min": 1002.37439,
+  "max": 1002.37439
+ },
+ "/ae_data/mtx/*/dynsc/q": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 1.995881796,
+  "min": 1.995881796,
+  "max": 1.995881796
+ },
+ "/ae_data/mtx/*/dynsc/src": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "SELF",
+  "values": [
+   "SELF"
+  ]
+ },
+ "/ae_data/mtx/*/dynsc/tap": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "BUS",
+  "values": [
+   "BUS"
+  ]
+ },
+ "/ae_data/mtx/*/preins/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/preins/ins": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/mtx/*/postins/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/postins/ins": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/mtx/*/dly/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/mtx/*/dly/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "M",
+  "values": [
+   "M"
+  ]
+ },
+ "/ae_data/mtx/*/dly/dly": {
+  "types": [
+   "float"
+  ],
+  "count": 8,
+  "example": 0.100000001,
+  "min": 0.100000001,
+  "max": 0.100000001
+ },
+ "/ae_data/mtx/*/tags": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/dca/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ae_data/dca/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ae_data/dca/*/icon": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ae_data/dca/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/dca/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 16,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/dca/*/fdr": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": -144,
+  "min": -144,
+  "max": -144
+ },
+ "/ae_data/dca/*/mon": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "A",
+  "values": [
+   "A"
+  ]
+ },
+ "/ae_data/mgrp/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "MGRP.1",
+  "values": [
+   "MGRP.1",
+   "MGRP.2",
+   "MGRP.3",
+   "MGRP.4",
+   "MGRP.5",
+   "MGRP.6",
+   "MGRP.7",
+   "MGRP.8"
+  ]
+ },
+ "/ae_data/mgrp/*/mute": {
+  "types": [
+   "bool"
+  ],
+  "count": 8,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/fx/*/mdl": {
+  "types": [
+   "str"
+  ],
+  "count": 16,
+  "example": "NONE",
+  "values": [
+   "NONE"
+  ]
+ },
+ "/ae_data/fx/*/fxmix": {
+  "types": [
+   "int"
+  ],
+  "count": 16,
+  "example": 100,
+  "min": 100,
+  "max": 100
+ },
+ "/ae_data/cards/wlive/sdlink": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "IND",
+  "values": [
+   "IND"
+  ]
+ },
+ "/ae_data/cards/wlive/autoin": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ae_data/cards/wlive/meters": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/cards/wlive/auto_stop": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "KEEP",
+  "values": [
+   "KEEP"
+  ]
+ },
+ "/ae_data/cards/wlive/auto_play": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "KEEP",
+  "values": [
+   "KEEP"
+  ]
+ },
+ "/ae_data/cards/wlive/auto_rec": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "KEEP",
+  "values": [
+   "KEEP"
+  ]
+ },
+ "/ae_data/cards/wlive/*/cfg/rectracks": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "32",
+  "values": [
+   "32"
+  ]
+ },
+ "/ae_data/cards/wlive/*/cfg/playmode": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "PLAY",
+  "values": [
+   "PLAY"
+  ]
+ },
+ "/ae_data/cards/wmadi/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "SFP1",
+  "values": [
+   "SFP1"
+  ]
+ },
+ "/ae_data/cards/wmadi/rxclock": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_data/play/repeat": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ae_data/rec/resolution": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "24",
+  "values": [
+   "24"
+  ]
+ },
+ "/ae_data/rec/channels": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "2",
+  "values": [
+   "2"
+  ]
+ },
+ "/ce_data/cfg/lights/btns": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 25,
+  "min": 25,
+  "max": 25
+ },
+ "/ce_data/cfg/lights/leds": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 90,
+  "min": 90,
+  "max": 90
+ },
+ "/ce_data/cfg/lights/meters": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 40,
+  "min": 40,
+  "max": 40
+ },
+ "/ce_data/cfg/lights/rgbleds": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 25,
+  "min": 25,
+  "max": 25
+ },
+ "/ce_data/cfg/lights/chlcds": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 60,
+  "min": 60,
+  "max": 60
+ },
+ "/ce_data/cfg/lights/chlcdctr": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 50,
+  "min": 50,
+  "max": 50
+ },
+ "/ce_data/cfg/lights/chedit": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 80,
+  "min": 80,
+  "max": 80
+ },
+ "/ce_data/cfg/lights/main": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 80,
+  "min": 80,
+  "max": 80
+ },
+ "/ce_data/cfg/lights/glow": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/cfg/lights/patch": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/cfg/lights/lamp": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/cfg/rta/homedisp": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "1/3",
+  "values": [
+   "1/3"
+  ]
+ },
+ "/ce_data/cfg/rta/homecol": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "BL50",
+  "values": [
+   "BL50"
+  ]
+ },
+ "/ce_data/cfg/rta/hometap": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "IN",
+  "values": [
+   "IN"
+  ]
+ },
+ "/ce_data/cfg/rta/eqdisp": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "1/4",
+  "values": [
+   "1/4"
+  ]
+ },
+ "/ce_data/cfg/rta/eqcol": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "BL75",
+  "values": [
+   "BL75"
+  ]
+ },
+ "/ce_data/cfg/rta/cheqtap": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ce_data/cfg/rta/chflttap": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PRE",
+  "values": [
+   "PRE"
+  ]
+ },
+ "/ce_data/cfg/muteovr": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_data/cfg/soloexcl": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_data/cfg/selfsolo": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_data/cfg/solofsel": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/sof2solo": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/layerlinkl": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/layerlinkr": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/autoview": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/csctouch": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_data/cfg/autosel_L": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/autosel_C": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/autosel_R": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/autosel_CMPCT": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/autosel_RCK": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/autosel_EXT": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/autosel_VRT": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/fdrbanking": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/fdrscrnlink": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/soffdr": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "L/C",
+  "values": [
+   "L/C"
+  ]
+ },
+ "/ce_data/cfg/sofbutton": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "AUTO",
+  "values": [
+   "AUTO"
+  ]
+ },
+ "/ce_data/cfg/sofframe": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_data/cfg/sofmode": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/seldblclick": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "BUSFX",
+  "values": [
+   "BUSFX"
+  ]
+ },
+ "/ce_data/cfg/usrmode": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "BUS",
+  "values": [
+   "BUS"
+  ]
+ },
+ "/ce_data/cfg/mfdr": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "MAIN.1",
+  "values": [
+   "MAIN.1"
+  ]
+ },
+ "/ce_data/cfg/mfdrkeep": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/cscmode": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "BUS",
+  "values": [
+   "BUS"
+  ]
+ },
+ "/ce_data/cfg/rackmode": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "CH",
+  "values": [
+   "CH"
+  ]
+ },
+ "/ce_data/cfg/busspill": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/mainspill": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/mtxspill": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_data/cfg/dcaspill": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/dcacc": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/cfg/showfdr": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/layer/L/sel": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/L/spidx": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/L/*/ofs": {
+  "types": [
+   "int"
+  ],
+  "count": 7,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/L/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 7,
+  "example": "CH1-12",
+  "values": [
+   "BUSES",
+   "CH1-12",
+   "CH13-24",
+   "CH25-36",
+   "CH37-AUX",
+   "USER1",
+   "USER2"
+  ]
+ },
+ "/ce_data/layer/L/*/*/type": {
+  "types": [
+   "str"
+  ],
+  "count": 168,
+  "example": "CH",
+  "values": [
+   "BUS",
+   "CH",
+   "OFF"
+  ]
+ },
+ "/ce_data/layer/L/*/*/i": {
+  "types": [
+   "int"
+  ],
+  "count": 168,
+  "example": 1,
+  "min": 0,
+  "max": 48
+ },
+ "/ce_data/layer/L/*/*/dst": {
+  "types": [
+   "int"
+  ],
+  "count": 168,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/C/sel": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/C/spidx": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/C/*/ofs": {
+  "types": [
+   "int"
+  ],
+  "count": 6,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/C/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 6,
+  "example": "DCA",
+  "values": [
+   "AUX",
+   "BUSES",
+   "DCA",
+   "MAIN",
+   "USER1",
+   "USER2"
+  ]
+ },
+ "/ce_data/layer/C/*/*/type": {
+  "types": [
+   "str"
+  ],
+  "count": 96,
+  "example": "DCA",
+  "values": [
+   "BUS",
+   "CH",
+   "DCA",
+   "OFF"
+  ]
+ },
+ "/ce_data/layer/C/*/*/i": {
+  "types": [
+   "int"
+  ],
+  "count": 96,
+  "example": 1,
+  "min": 0,
+  "max": 48
+ },
+ "/ce_data/layer/C/*/*/dst": {
+  "types": [
+   "int"
+  ],
+  "count": 96,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/R/sel": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/R/spidx": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/R/*/ofs": {
+  "types": [
+   "int"
+  ],
+  "count": 7,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/R/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 7,
+  "example": "MAIN",
+  "values": [
+   "AUX",
+   "BUSES",
+   "CH1-40",
+   "DCA",
+   "MAIN",
+   "USER1",
+   "USER2"
+  ]
+ },
+ "/ce_data/layer/R/*/*/type": {
+  "types": [
+   "str"
+  ],
+  "count": 136,
+  "example": "BUS",
+  "values": [
+   "BUS",
+   "CH",
+   "DCA",
+   "OFF"
+  ]
+ },
+ "/ce_data/layer/R/*/*/i": {
+  "types": [
+   "int"
+  ],
+  "count": 136,
+  "example": 17,
+  "min": 0,
+  "max": 48
+ },
+ "/ce_data/layer/R/*/*/dst": {
+  "types": [
+   "int"
+  ],
+  "count": 136,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/CMPCT/sel": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/CMPCT/spidx": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/CMPCT/*/ofs": {
+  "types": [
+   "int"
+  ],
+  "count": 9,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/CMPCT/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 9,
+  "example": "CH1-12",
+  "values": [
+   "BUSES",
+   "CH1-12",
+   "CH13-24",
+   "CH25-36",
+   "CH37-AUX",
+   "DCA",
+   "MAIN/MTX",
+   "USER 1",
+   "USER 2"
+  ]
+ },
+ "/ce_data/layer/CMPCT/*/*/type": {
+  "types": [
+   "str"
+  ],
+  "count": 216,
+  "example": "CH",
+  "values": [
+   "BUS",
+   "CH",
+   "DCA",
+   "OFF"
+  ]
+ },
+ "/ce_data/layer/CMPCT/*/*/i": {
+  "types": [
+   "int"
+  ],
+  "count": 216,
+  "example": 1,
+  "min": 0,
+  "max": 48
+ },
+ "/ce_data/layer/CMPCT/*/*/dst": {
+  "types": [
+   "int"
+  ],
+  "count": 216,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/RCK/sel": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/RCK/spidx": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/RCK/*/ofs": {
+  "types": [
+   "int"
+  ],
+  "count": 5,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/RCK/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 5,
+  "example": "CHANNELS",
+  "values": [
+   "AUX",
+   "BUSES",
+   "CHANNELS",
+   "DCA",
+   "MAIN/MTX"
+  ]
+ },
+ "/ce_data/layer/RCK/*/*/type": {
+  "types": [
+   "str"
+  ],
+  "count": 104,
+  "example": "CH",
+  "values": [
+   "BUS",
+   "CH",
+   "DCA",
+   "OFF"
+  ]
+ },
+ "/ce_data/layer/RCK/*/*/i": {
+  "types": [
+   "int"
+  ],
+  "count": 104,
+  "example": 1,
+  "min": 0,
+  "max": 48
+ },
+ "/ce_data/layer/RCK/*/*/dst": {
+  "types": [
+   "int"
+  ],
+  "count": 104,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/EXT/sel": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/EXT/spidx": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/EXT/*/ofs": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/EXT/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/layer/EXT/*/*/type": {
+  "types": [
+   "str"
+  ],
+  "count": 128,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/layer/EXT/*/*/i": {
+  "types": [
+   "int"
+  ],
+  "count": 128,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/EXT/*/*/dst": {
+  "types": [
+   "int"
+  ],
+  "count": 128,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/VRT/sel": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/layer/VRT/spidx": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/VRT/*/ofs": {
+  "types": [
+   "int"
+  ],
+  "count": 8,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/VRT/*/name": {
+  "types": [
+   "str"
+  ],
+  "count": 8,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/layer/VRT/*/*/type": {
+  "types": [
+   "str"
+  ],
+  "count": 128,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/layer/VRT/*/*/i": {
+  "types": [
+   "int"
+  ],
+  "count": 128,
+  "example": 0,
+  "min": 0,
+  "max": 0
+ },
+ "/ce_data/layer/VRT/*/*/dst": {
+  "types": [
+   "int"
+  ],
+  "count": 128,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/sel": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "USER",
+  "values": [
+   "USER"
+  ]
+ },
+ "/ce_data/user/cmode": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "PAN",
+  "values": [
+   "PAN"
+  ]
+ },
+ "/ce_data/user/gpio/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/gpio/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "GPIO 1",
+  "values": [
+   "GPIO 1",
+   "GPIO 2",
+   "GPIO 3",
+   "GPIO 4"
+  ]
+ },
+ "/ce_data/user/user/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/user/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/user/*/bd/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/user/*/bd/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/daw1/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "DAWBTN",
+  "values": [
+   "DAWBTN"
+  ]
+ },
+ "/ce_data/user/daw1/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "STOP",
+  "values": [
+   "CYCLE",
+   "PLAY",
+   "RECORD",
+   "STOP"
+  ]
+ },
+ "/ce_data/user/daw1/*/bu/btn": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "T1",
+  "values": [
+   "T1",
+   "T2",
+   "T3",
+   "T8"
+  ]
+ },
+ "/ce_data/user/daw1/*/bd/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "DAWBTN",
+  "values": [
+   "DAWBTN"
+  ]
+ },
+ "/ce_data/user/daw1/*/bd/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "REWIND",
+  "values": [
+   "FFWD",
+   "REWIND",
+   "TIME/BEATS",
+   "|UNDO"
+  ]
+ },
+ "/ce_data/user/daw1/*/bd/btn": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "T4",
+  "values": [
+   "OT4",
+   "SY6",
+   "T4",
+   "T5"
+  ]
+ },
+ "/ce_data/user/daw2/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "DAWBTN",
+  "values": [
+   "DAWBTN",
+   "OFF"
+  ]
+ },
+ "/ce_data/user/daw2/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "STOP",
+  "values": [
+   "",
+   "PLAY",
+   "RECORD",
+   "STOP"
+  ]
+ },
+ "/ce_data/user/daw2/*/bu/btn": {
+  "types": [
+   "str"
+  ],
+  "count": 3,
+  "example": "T1",
+  "values": [
+   "T1",
+   "T2",
+   "T3"
+  ]
+ },
+ "/ce_data/user/daw2/*/bd/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "DAWBTN",
+  "values": [
+   "DAWBTN",
+   "OFF"
+  ]
+ },
+ "/ce_data/user/daw2/*/bd/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "REWIND/PREV",
+  "values": [
+   "",
+   "FFWD/NEXT",
+   "REWIND/PREV",
+   "|EDIT MARKER"
+  ]
+ },
+ "/ce_data/user/daw2/*/bd/btn": {
+  "types": [
+   "str"
+  ],
+  "count": 3,
+  "example": "T4",
+  "values": [
+   "T4",
+   "T5",
+   "T6"
+  ]
+ },
+ "/ce_data/user/daw3/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "DAWBTN",
+  "values": [
+   "DAWBTN"
+  ]
+ },
+ "/ce_data/user/daw3/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "STOP",
+  "values": [
+   " |LATCH",
+   " |TOUCH",
+   "PLAY",
+   "STOP"
+  ]
+ },
+ "/ce_data/user/daw3/*/bu/btn": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "T1",
+  "values": [
+   "AU4",
+   "AU5",
+   "T1",
+   "T2"
+  ]
+ },
+ "/ce_data/user/daw3/*/bd/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "DAWBTN",
+  "values": [
+   "DAWBTN"
+  ]
+ },
+ "/ce_data/user/daw3/*/bd/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "REWIND",
+  "values": [
+   "FFWD",
+   "REWIND",
+   "|READ",
+   "|WRITE"
+  ]
+ },
+ "/ce_data/user/daw3/*/bd/btn": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "T4",
+  "values": [
+   "AU1",
+   "AU2",
+   "T4",
+   "T5"
+  ]
+ },
+ "/ce_data/user/daw4/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "DAWBTN",
+  "values": [
+   "DAWBTN",
+   "OFF"
+  ]
+ },
+ "/ce_data/user/daw4/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "NAME/VALUE",
+  "values": [
+   "NAME/VALUE",
+   "ZOOM",
+   "[RECRDY]",
+   "[V-POTS]"
+  ]
+ },
+ "/ce_data/user/daw4/*/bu/btn": {
+  "types": [
+   "str"
+  ],
+  "count": 2,
+  "example": "OT3",
+  "values": [
+   "N5",
+   "OT3"
+  ]
+ },
+ "/ce_data/user/daw4/*/bd/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "DAWBTN",
+  "values": [
+   "DAWBTN"
+  ]
+ },
+ "/ce_data/user/daw4/*/bd/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "FLIP",
+  "values": [
+   "FLIP",
+   "HOLD |SEL",
+   "SCRUB",
+   "[HOLD+] |SEL"
+  ]
+ },
+ "/ce_data/user/daw4/*/bd/btn": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OT1",
+  "values": [
+   "OT1",
+   "SP2",
+   "SP3",
+   "T11"
+  ]
+ },
+ "/ce_data/user/*/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 64,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/*/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 64,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/*/*/enc/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/*/*/enc/name": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/*/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/*/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/*/*/bd/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/*/*/bd/name": {
+  "types": [
+   "str"
+  ],
+  "count": 64,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/U1/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/U1/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/U1/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/U1/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/U2/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/U2/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/U2/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/U2/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/U3/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/U3/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/U3/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/U3/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/U4/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/U4/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/U4/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/U4/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/MM/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/MM/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/MM/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/MM/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/D1/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/D1/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/D1/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/D1/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/D2/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/D2/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/D2/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/D2/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/D3/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/D3/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/D3/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/D3/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/D4/*/led": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/user/D4/*/col": {
+  "types": [
+   "int"
+  ],
+  "count": 4,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/user/D4/*/bu/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/user/D4/*/bu/name": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "",
+  "values": [
+   ""
+  ]
+ },
+ "/ce_data/user/cuser/*": {
+  "types": [
+   "int"
+  ],
+  "count": 3,
+  "example": 1,
+  "min": 1,
+  "max": 1
+ },
+ "/ce_data/gpio/*/mode": {
+  "types": [
+   "str"
+  ],
+  "count": 4,
+  "example": "TGLNO",
+  "values": [
+   "TGLNO"
+  ]
+ },
+ "/ce_data/gpio/*/gpstate": {
+  "types": [
+   "bool"
+  ],
+  "count": 4,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/safes/ch": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                        ",
+  "values": [
+   "                                        "
+  ]
+ },
+ "/ce_data/safes/aux": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "        ",
+  "values": [
+   "        "
+  ]
+ },
+ "/ce_data/safes/bus": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                ",
+  "values": [
+   "                "
+  ]
+ },
+ "/ce_data/safes/main": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "    ",
+  "values": [
+   "    "
+  ]
+ },
+ "/ce_data/safes/mtx": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "        ",
+  "values": [
+   "        "
+  ]
+ },
+ "/ce_data/safes/dca": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                ",
+  "values": [
+   "                "
+  ]
+ },
+ "/ce_data/safes/mute": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "        ",
+  "values": [
+   "        "
+  ]
+ },
+ "/ce_data/safes/fx": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                ",
+  "values": [
+   "                "
+  ]
+ },
+ "/ce_data/safes/source/LCL": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "        ",
+  "values": [
+   "        "
+  ]
+ },
+ "/ce_data/safes/source/AUX": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "        ",
+  "values": [
+   "        "
+  ]
+ },
+ "/ce_data/safes/source/A": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                ",
+  "values": [
+   "                                                "
+  ]
+ },
+ "/ce_data/safes/source/B": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                ",
+  "values": [
+   "                                                "
+  ]
+ },
+ "/ce_data/safes/source/C": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                ",
+  "values": [
+   "                                                "
+  ]
+ },
+ "/ce_data/safes/source/SC": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                ",
+  "values": [
+   "                                "
+  ]
+ },
+ "/ce_data/safes/source/USB": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                ",
+  "values": [
+   "                                                "
+  ]
+ },
+ "/ce_data/safes/source/CRD": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                                ",
+  "values": [
+   "                                                                "
+  ]
+ },
+ "/ce_data/safes/source/MOD": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                                ",
+  "values": [
+   "                                                                "
+  ]
+ },
+ "/ce_data/safes/source/PLAY": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "    ",
+  "values": [
+   "    "
+  ]
+ },
+ "/ce_data/safes/source/AES": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "  ",
+  "values": [
+   "  "
+  ]
+ },
+ "/ce_data/safes/source/USR": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                        ",
+  "values": [
+   "                        "
+  ]
+ },
+ "/ce_data/safes/source/OSC": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "  ",
+  "values": [
+   "  "
+  ]
+ },
+ "/ce_data/safes/output/LCL": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "        ",
+  "values": [
+   "        "
+  ]
+ },
+ "/ce_data/safes/output/AUX": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "        ",
+  "values": [
+   "        "
+  ]
+ },
+ "/ce_data/safes/output/A": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                ",
+  "values": [
+   "                                                "
+  ]
+ },
+ "/ce_data/safes/output/B": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                ",
+  "values": [
+   "                                                "
+  ]
+ },
+ "/ce_data/safes/output/C": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                ",
+  "values": [
+   "                                                "
+  ]
+ },
+ "/ce_data/safes/output/SC": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                ",
+  "values": [
+   "                                "
+  ]
+ },
+ "/ce_data/safes/output/USB": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                ",
+  "values": [
+   "                                                "
+  ]
+ },
+ "/ce_data/safes/output/CRD": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                                ",
+  "values": [
+   "                                                                "
+  ]
+ },
+ "/ce_data/safes/output/MOD": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                                                                ",
+  "values": [
+   "                                                                "
+  ]
+ },
+ "/ce_data/safes/output/REC": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "    ",
+  "values": [
+   "    "
+  ]
+ },
+ "/ce_data/safes/output/AES": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "  ",
+  "values": [
+   "  "
+  ]
+ },
+ "/ce_data/safes/area/LEFT": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "       ",
+  "values": [
+   "       "
+  ]
+ },
+ "/ce_data/safes/area/CENTER": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "      ",
+  "values": [
+   "      "
+  ]
+ },
+ "/ce_data/safes/area/RIGHT": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "       ",
+  "values": [
+   "       "
+  ]
+ },
+ "/ce_data/safes/area/COMPACT": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "         ",
+  "values": [
+   "         "
+  ]
+ },
+ "/ce_data/safes/area/RACK": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "     ",
+  "values": [
+   "     "
+  ]
+ },
+ "/ce_data/safes/area/EXTERN": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "        ",
+  "values": [
+   "        "
+  ]
+ },
+ "/ce_data/safes/area/VIRTUAL": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "        ",
+  "values": [
+   "        "
+  ]
+ },
+ "/ce_data/safes/custom": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "                      ",
+  "values": [
+   "                      "
+  ]
+ },
+ "/ce_data/safes/setup": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "  ",
+  "values": [
+   "  "
+  ]
+ },
+ "/ce_data/daw/on": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/daw/conn": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "USB",
+  "values": [
+   "USB"
+  ]
+ },
+ "/ce_data/daw/emul": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "MCU",
+  "values": [
+   "MCU"
+  ]
+ },
+ "/ce_data/daw/config": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "MSTR",
+  "values": [
+   "MSTR"
+  ]
+ },
+ "/ce_data/daw/ccup": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_data/daw/disjog": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_data/daw/preset": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "-",
+  "values": [
+   "-"
+  ]
+ },
+ "/ce_data/midi/enchctl": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/midi/enfxctl": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/midi/encustctl": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/midi/ensysex": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/midi/enmidicc": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/midi/enscenes": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/midi/enshowctl": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/midi/enscenetx": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "OFF",
+  "values": [
+   "OFF"
+  ]
+ },
+ "/ce_data/osc/ronly": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_globals/clkrate": {
+  "types": [
+   "int"
+  ],
+  "count": 1,
+  "example": 48000,
+  "min": 48000,
+  "max": 48000
+ },
+ "/ae_globals/clksrc": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "INT",
+  "values": [
+   "INT"
+  ]
+ },
+ "/ae_globals/startmute": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_globals/usbacfg": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "48/48",
+  "values": [
+   "48/48"
+  ]
+ },
+ "/ae_globals/sccfg": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "AUTO",
+  "values": [
+   "AUTO"
+  ]
+ },
+ "/ae_globals/harmt/a": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_globals/harmt/b": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_globals/harmt/c": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_globals/custsync/a": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_globals/custsync/b": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ae_globals/custsync/c": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_globals/fdrsel": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_globals/fdrres": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "AUTO",
+  "values": [
+   "AUTO"
+  ]
+ },
+ "/ce_globals/fdrspd": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "MED",
+  "values": [
+   "MED"
+  ]
+ },
+ "/ce_globals/mousetchdis": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_globals/mousespd": {
+  "types": [
+   "float"
+  ],
+  "count": 1,
+  "example": 1.769999981,
+  "min": 1.769999981,
+  "max": 1.769999981
+ },
+ "/ce_globals/tapflash": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "ON",
+  "values": [
+   "ON"
+  ]
+ },
+ "/ce_globals/srcdisp": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_globals/lockmtr": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_globals/showscene": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": false,
+  "values": [
+   "False"
+  ]
+ },
+ "/ce_globals/cf_load": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_globals/cf_upd": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_globals/usewheel": {
+  "types": [
+   "bool"
+  ],
+  "count": 1,
+  "example": true,
+  "values": [
+   "True"
+  ]
+ },
+ "/ce_globals/timefmt": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "24H",
+  "values": [
+   "24H"
+  ]
+ },
+ "/ce_globals/datefmt": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "YMD",
+  "values": [
+   "YMD"
+  ]
+ },
+ "/ce_globals/filesort": {
+  "types": [
+   "str"
+  ],
+  "count": 1,
+  "example": "TYPE",
+  "values": [
+   "TYPE"
+  ]
+ }
+}
