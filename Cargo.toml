@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/wing-proto",
+    "crates/wing-model",
+    "crates/wing-dsp",
+    "crates/wing-blocks",
+    "crates/wing-engine",
+    "crates/wing-shm",
+    "apps/wing-sim",
+    "apps/wing-render",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1
