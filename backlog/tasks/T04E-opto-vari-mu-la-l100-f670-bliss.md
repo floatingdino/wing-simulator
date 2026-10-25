@@ -2,7 +2,7 @@
 id: T04E
 title: Opto/vari-mu: LA, L100, F670, BLISS
 stage: S4
-status: review
+status: done
 owner: agent-T04E
 depends: [T045, T034]
 branch: task/T04E
@@ -67,3 +67,4 @@ LA-2A, LTA100, Fairchild 670, Eternal Bliss per models.md §3.2; program-depende
     hook) for knob laws, ratios and whether colouration exists; optional 2x-oversampled tube path if hardware shows
     strong HF saturation; L100 FAST attack with instantaneous-power detection ripples on LF content (by design,
     verify against hardware).
+- 2026-10-25 coordinator: follow-up — aliasing at +6 dBFS/15 kHz is -47 dBc (target -60); consider 2x oversampling around the tube stage in T070 perf/quality pass.
