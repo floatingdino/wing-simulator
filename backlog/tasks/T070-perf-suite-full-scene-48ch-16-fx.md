@@ -2,7 +2,7 @@
 id: T070
 title: Perf suite: full scene 48ch + 16 FX
 stage: S7
-status: review
+status: done
 owner: agent-T070
 depends: [T03E, T050]
 branch: task/T070
