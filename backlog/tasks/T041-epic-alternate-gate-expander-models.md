@@ -1,0 +1,18 @@
+---
+id: T041
+title: EPIC: alternate gate/expander models
+stage: S4
+status: todo
+owner: -
+depends: [T004, T035]
+branch: -
+---
+
+## Goal
+Coordinator decomposes into one task per model.
+
+## Acceptance criteria
+- [ ] Child tasks created
+
+## Log
+- 2026-10-25 coordinator: created.

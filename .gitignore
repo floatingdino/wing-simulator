@@ -1,0 +1,9 @@
+.DS_Store
+target/
+build/
+*.wingfw
+WING-Edit.app/
+.claude/worktrees/
+/scratch/
+*.wav
+!fixtures/audio/*.wav
