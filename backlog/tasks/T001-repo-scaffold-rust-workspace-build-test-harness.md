@@ -2,7 +2,7 @@
 id: T001
 title: Repo scaffold: Rust workspace + build/test harness
 stage: S0
-status: review
+status: done
 owner: eng-agent-T001
 depends: []
 branch: task/T001
