@@ -232,7 +232,20 @@ fn run(a: Args) -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
-    match parse_args(std::env::args().skip(1)).and_then(run) {
+    let mut argv = std::env::args().skip(1).peekable();
+    if argv.peek().is_some_and(|a| a == "--bench") {
+        argv.next();
+        let r = wing_render::perf::parse_bench_args(argv)
+            .and_then(|a| wing_render::perf::bench_main(&a));
+        return match r {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("wing-render --bench: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    match parse_args(argv).and_then(run) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("wing-render: {e}");

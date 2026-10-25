@@ -17,8 +17,10 @@ path = "src/main.rs"
 serde_json.workspace = true
 wing-model = { path = "../../crates/wing-model" }
 wing-engine = { path = "../../crates/wing-engine" }
+wing-blocks = { path = "../../crates/wing-blocks" }
 wing-sim = { path = "../wing-sim" }
 
 [dev-dependencies]
+criterion.workspace = true
 wing-shm = { path = "../../crates/wing-shm" }
 wing-hostio = { path = "../../crates/wing-hostio" }

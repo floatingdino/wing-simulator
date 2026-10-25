@@ -14,6 +14,7 @@
 
 pub mod inputs;
 pub mod loudness;
+pub mod perf;
 pub mod render;
 pub mod rpp;
 

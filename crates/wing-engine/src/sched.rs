@@ -425,6 +425,20 @@ impl Engine {
         unsafe { self.shared.graph.run_serial_shared(&ctx) };
     }
 
+    /// As [`Engine::process_cycle_serial`], adding each node's wall time (ns) to `ns[schedule
+    /// position]` (`ns.len() >= num_nodes`; positions follow [`Graph::schedule`]). Perf tooling:
+    /// the per-node cost profile the level scheduler has to balance.
+    pub fn process_cycle_profiled(&mut self, ns: &mut [u64]) {
+        self.epoch += 1;
+        let ctx = ProcessCtx {
+            cycle: self.epoch,
+            block_size: self.shared.graph.block_size(),
+            sample_rate: self.shared.graph.sample_rate(),
+        };
+        // SAFETY: as for `process_cycle_serial`.
+        unsafe { self.shared.graph.run_serial_profiled(&ctx, ns) };
+    }
+
     pub(crate) fn stats_inner(&self) -> &Stats {
         &self.stats
     }

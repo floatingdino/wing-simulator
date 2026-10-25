@@ -438,6 +438,11 @@ impl Graph {
         &self.slots[self.position[id.index()]].name
     }
 
+    /// Number of output channels of a node.
+    pub fn num_outputs_of(&self, id: NodeId) -> usize {
+        self.slots[self.position[id.index()]].num_outputs
+    }
+
     /// Input ports of a node.
     pub fn inputs_of(&self, id: NodeId) -> &[Port] {
         &self.slots[self.position[id.index()]].ports
@@ -542,6 +547,19 @@ impl Graph {
     pub(crate) unsafe fn run_serial_shared(&self, ctx: &ProcessCtx) {
         for pos in 0..self.slots.len() {
             self.run_node(pos, ctx);
+        }
+    }
+
+    /// As [`Graph::run_serial_shared`], adding each node's wall time (ns) to `ns[schedule
+    /// position]` (perf tooling; one clock read per node).
+    ///
+    /// # Safety
+    /// As [`Graph::run_serial_shared`].
+    pub(crate) unsafe fn run_serial_profiled(&self, ctx: &ProcessCtx, ns: &mut [u64]) {
+        for (pos, acc) in ns.iter_mut().enumerate().take(self.slots.len()) {
+            let t = std::time::Instant::now();
+            self.run_node(pos, ctx);
+            *acc += t.elapsed().as_nanos() as u64;
         }
     }
 }
