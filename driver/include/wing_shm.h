@@ -51,6 +51,16 @@
  * from_daemon at (T - input_delay_frames). input_delay_frames is reported to
  * the HAL as input stream latency so DAWs compensate. It gives the daemon a
  * processing window of roughly (IO buffer + input_delay_frames) frames.
+ * The creator chooses input_delay_frames (the driver: its configured value,
+ * T021). A driver whose configured delay differs from an existing segment's
+ * treats the segment as incompatible and recreates it, exactly like a version
+ * mismatch, so the value stays immutable for the segment's lifetime.
+ *
+ * Fallback (T021): when the daemon is dead (heartbeat), on another epoch, or
+ * its from_daemon data for a block is late, the driver crossfades to loopback
+ * and back; it only uses from_daemon data written contiguously since it last
+ * saw the daemon (re)connect (pid change, write_time going backwards or
+ * jumping) so stale ring content is never played.
  *
  * Record-only clients: if the HAL runs input IO without output IO,
  * to_daemon.write_time does not advance. The driver publishes `input_time`
@@ -203,16 +213,17 @@ static inline uint32_t wing_shm_ring_index(int64_t t, uint32_t ring_frames)
 
 /* Fill a freshly created (zeroed, ftruncate'd) segment's header. `magic` is
  * published last (release) so attachers never see a half-written header. */
-static inline void wing_shm_init_header(wing_shm_header* h,
+static inline void wing_shm_init_header_delay(wing_shm_header* h,
     uint32_t sample_rate,
     uint64_t segment_id,
-    uint64_t creator_pid)
+    uint64_t creator_pid,
+    uint32_t input_delay_frames)
 {
     h->version = WING_SHM_VERSION;
     h->header_bytes = WING_SHM_HEADER_BYTES;
     h->channels = WING_SHM_CHANNELS;
     h->ring_frames = WING_SHM_RING_FRAMES;
-    h->input_delay_frames = WING_SHM_DEFAULT_INPUT_DELAY_FRAMES;
+    h->input_delay_frames = input_delay_frames;
     h->total_bytes = WING_SHM_TOTAL_BYTES;
     h->to_daemon_offset = WING_SHM_HEADER_BYTES;
     h->from_daemon_offset = WING_SHM_HEADER_BYTES + WING_SHM_RING_BYTES;
@@ -220,6 +231,15 @@ static inline void wing_shm_init_header(wing_shm_header* h,
     h->creator_pid = creator_pid;
     WING_STORE_RLX(&h->sample_rate, sample_rate);
     WING_STORE_REL(&h->magic, WING_SHM_MAGIC);
+}
+
+static inline void wing_shm_init_header(wing_shm_header* h,
+    uint32_t sample_rate,
+    uint64_t segment_id,
+    uint64_t creator_pid)
+{
+    wing_shm_init_header_delay(
+        h, sample_rate, segment_id, creator_pid, WING_SHM_DEFAULT_INPUT_DELAY_FRAMES);
 }
 
 /* Returns 0 if a mapped header is compatible with this build.

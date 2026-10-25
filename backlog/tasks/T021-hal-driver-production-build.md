@@ -2,10 +2,10 @@
 id: T021
 title: HAL driver production build
 stage: S2
-status: todo
-owner: -
+status: in_progress
+owner: eng-agent
 depends: [T006, T020]
-branch: -
+branch: task/T021
 ---
 
 ## Goal

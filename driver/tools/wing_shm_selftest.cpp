@@ -4,24 +4,45 @@
 // It drives wingsim::ShmLink (the exact code the HAL plug-in uses) with
 // simulated HAL IO cycles on a private shm name, and checks:
 //   1. loopback:   no daemon        -> input(T) == output(T - delay)
-//   2. daemon:     wing_shm_client  -> input(T) == gain * output(T - delay)
+//   2. daemon:     client process   -> input(T) == gain * output(T - delay)
 //   3. new epoch:  IO restart (sample time back to 0) is followed by the daemon
 //   3b. (--record-only) input IO without output IO: the daemon clocks from
 //       input_time and keeps from_daemon ahead (no underruns, silence in)
+//   5. stall:      SIGSTOP/SIGCONT the daemon mid-stream -> crossfade to
+//                  loopback and back, no clicks
+//   6. crash:      SIGKILL the daemon mid-stream, from_daemon ring scribbled
+//                  with garbage, new daemon started -> crossfade out, stale
+//                  ring data never played, crossfade back in, no clicks
 //   4. detach:     client exits     -> back to loopback
 //
+// Phases 5/6 play a DC level per channel, so any discontinuity in the input is
+// a click; a crossfade moves at most |daemon - loopback| / kFadeFrames per frame.
+//
 //   wing_shm_selftest --client path/to/client [--record-only]
+//   wing_shm_selftest --client path/to/client --sweep [--sweep-seconds S]
+//       [--sweep-delays 0,32,64,...] [--sweep-buffers 64,128,256]
+//
+// --sweep measures, per IO buffer size and input delay, how many blocks the
+// daemon delivers late when the "driver" runs on a time-constraint thread at
+// real-time pace: the minimum glitch-free input delay on this machine.
 //
 // The client is the C++ wing_shm_client (ctest) or the Rust wing-shm daemon
 // side (crates/wing-shm/tests/cpp_selftest.rs, which passes --record-only).
 #include "ShmLink.hpp"
 
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#include <mach/thread_policy.h>
+
+#include <chrono>
 #include <cmath>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <spawn.h>
+#include <sstream>
 #include <string>
 #include <sys/mman.h>
 #include <sys/wait.h>
@@ -52,57 +73,109 @@ float Sig(uint32_t c, int64_t s)
     return (float)((s * 7 + (int64_t)c * 131) % 1000) / 1000.0f - 0.5f;
 }
 
+// DC level per channel (continuity tests).
+float Level(uint32_t c)
+{
+    return 0.01f * (float)(c + 1);
+}
+
+enum class Signal { Saw, Dc };
+
 struct Stats
 {
     long checked = 0;
     long mismatched = 0;
     long silent = 0;
+    // Continuity (Signal::Dc): frames whose step from the previous frame
+    // exceeds a crossfade's per-frame slope, and the largest such ratio.
+    long clicks = 0;
+    double maxStepRatio = 0;
+    long loopbackFrames = 0; // frames == +level (fallback)
+    long tailExact = 0;      // frames == expect * level in the final 10 %
+    long tailChecked = 0;
 };
 
 // Simulates `cycles` HAL IO cycles starting at sample time `t0`.
 // HAL order per cycle: ReadInput(now - buf) then WriteMix(now + buf).
-// Verifies input frames against expect_gain * Sig(t - delay) where the source
-// output had been written.
+// Saw: verifies input frames against expect_gain * Sig(t - delay) where the
+// source output had been written. Dc: continuity + tail level.
+// `hook(k)` runs before cycle k (fault injection).
 Stats RunCycles(wingsim::ShmLink& link,
     int64_t t0,
     int cycles,
     float expectGain,
-    bool realtime)
+    bool realtime,
+    Signal sig = Signal::Saw,
+    const std::function<void(int)>& hook = nullptr)
 {
     Stats st;
-    std::vector<float> out(kBuf * kCh), in(kBuf * kCh);
+    std::vector<float> out(kBuf * kCh), in(kBuf * kCh), prev(kCh, 0.0f);
     const int64_t delay = link.InputDelayFrames();
     const int64_t firstWritten = t0 + kBuf;
+    bool havePrev = false;
+    const auto period = std::chrono::nanoseconds(1000000000ll * kBuf / kRate);
+    auto next = std::chrono::steady_clock::now();
 
     for (int k = 0; k < cycles; k++) {
+        if (hook) hook(k);
         const int64_t now = t0 + (int64_t)k * kBuf;
         const int64_t ti = now - kBuf;
         const int64_t to = now + kBuf;
+        const bool tail = k >= cycles - cycles / 10;
 
         link.ReadInput(ti, in.data(), kBuf, kCh);
         for (uint32_t f = 0; f < kBuf; f++) {
             const int64_t src = ti + f - delay;
             if (src < firstWritten) continue;
-            bool allZero = true, ok = true;
-            for (uint32_t c = 0; c < kCh; c++) {
-                const float v = in[f * kCh + c];
-                if (v != 0.0f) allZero = false;
-                if (std::fabs(v - expectGain * Sig(c, src)) > 1e-6f) ok = false;
+            const float* v = &in[f * kCh];
+            if (sig == Signal::Saw) {
+                bool allZero = true, ok = true;
+                for (uint32_t c = 0; c < kCh; c++) {
+                    if (v[c] != 0.0f) allZero = false;
+                    if (std::fabs(v[c] - expectGain * Sig(c, src)) > 1e-6f) ok = false;
+                }
+                st.checked++;
+                if (allZero) st.silent++;
+                if (!ok) st.mismatched++;
+                continue;
             }
             st.checked++;
-            if (allZero) st.silent++;
-            if (!ok) st.mismatched++;
+            bool loop = true, exact = true, click = false;
+            for (uint32_t c = 0; c < kCh; c++) {
+                const float a = Level(c);
+                if (std::fabs(v[c] - a) > 1e-6f) loop = false;
+                if (std::fabs(v[c] - expectGain * a) > 1e-6f) exact = false;
+                if (havePrev) {
+                    // Largest legal step: a full-scale crossfade between +a and
+                    // gain*a, or between a and 0 (held/silence), per frame.
+                    const float maxStep =
+                        std::max(std::fabs(a - expectGain * a), a) /
+                            (float)wingsim::ShmLink::kFadeFrames * 1.01f + 1e-6f;
+                    const double r = std::fabs(v[c] - prev[c]) / maxStep;
+                    st.maxStepRatio = std::max(st.maxStepRatio, r);
+                    if (r > 1.0) click = true;
+                }
+                prev[c] = v[c];
+            }
+            havePrev = true;
+            if (loop) st.loopbackFrames++;
+            if (click) st.clicks++;
+            if (tail) {
+                st.tailChecked++;
+                if (exact) st.tailExact++;
+            }
         }
 
         for (uint32_t f = 0; f < kBuf; f++) {
             for (uint32_t c = 0; c < kCh; c++) {
-                out[f * kCh + c] = Sig(c, to + f);
+                out[f * kCh + c] = sig == Signal::Saw ? Sig(c, to + f) : Level(c);
             }
         }
         link.WriteOutput(to, out.data(), kBuf, kCh);
 
         if (realtime) {
-            std::this_thread::sleep_for(std::chrono::microseconds(1000000 * kBuf / kRate));
+            next += period;
+            std::this_thread::sleep_until(next);
         }
     }
     return st;
@@ -110,8 +183,138 @@ Stats RunCycles(wingsim::ShmLink& link,
 
 void Print(const char* label, const Stats& s)
 {
-    std::printf("      %s: checked %ld frames, mismatched %ld, silent %ld\n", label, s.checked,
+    std::printf("      %s: checked %ld frames, mismatched %ld, silent %ld", label, s.checked,
         s.mismatched, s.silent);
+    if (s.clicks || s.maxStepRatio > 0 || s.tailChecked) {
+        std::printf(", clicks %ld (max step %.2f x fade slope), loopback frames %ld, "
+                    "tail exact %ld/%ld",
+            s.clicks, s.maxStepRatio, s.loopbackFrames, s.tailExact, s.tailChecked);
+    }
+    std::printf("\n");
+}
+
+pid_t Spawn(const std::string& client, const char* name, float gain, int seconds)
+{
+    char gainStr[16], secStr[16];
+    std::snprintf(gainStr, sizeof gainStr, "%g", gain);
+    std::snprintf(secStr, sizeof secStr, "%d", seconds);
+    const char* args[] = {client.c_str(), "--name", name, "--gain", gainStr, "--seconds", secStr,
+        nullptr};
+    pid_t pid = 0;
+    if (posix_spawn(&pid, client.c_str(), nullptr, nullptr, const_cast<char**>(args), environ) !=
+        0) {
+        std::perror("posix_spawn");
+        return -1;
+    }
+    return pid;
+}
+
+bool WaitAlive(wingsim::ShmLink& link, int ms)
+{
+    for (int i = 0; i < ms / 10; i++) {
+        if (link.DaemonAlive()) return true;
+        usleep(10000);
+    }
+    return link.DaemonAlive();
+}
+
+// Make the calling thread a time-constraint (real-time) thread, like the HAL
+// IO thread inside coreaudiod.
+void MakeRealtime(uint32_t buf)
+{
+    mach_timebase_info_data_t tb{};
+    mach_timebase_info(&tb);
+    const double nsPerTick = (double)tb.numer / tb.denom;
+    const double periodNs = 1e9 * buf / kRate;
+    thread_time_constraint_policy_data_t p{};
+    p.period = (uint32_t)(periodNs / nsPerTick);
+    p.computation = (uint32_t)(periodNs * 0.25 / nsPerTick);
+    p.constraint = (uint32_t)(periodNs * 0.75 / nsPerTick);
+    p.preemptible = 1;
+    thread_policy_set(mach_thread_self(), THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&p,
+        THREAD_TIME_CONSTRAINT_POLICY_COUNT);
+}
+
+std::vector<uint32_t> ParseList(const std::string& s)
+{
+    std::vector<uint32_t> v;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        if (!item.empty()) v.push_back((uint32_t)std::strtoul(item.c_str(), nullptr, 10));
+    }
+    return v;
+}
+
+// One sweep point: real-time "driver" thread, client process, `seconds` of IO.
+// Returns blocks the daemon delivered late (after a 0.5 s warm-up).
+long SweepPoint(const std::string& client, uint32_t buf, uint32_t delay, double seconds)
+{
+    char name[32];
+    std::snprintf(name, sizeof name, "/wingsim.swp.%d", (int)getpid());
+    shm_unlink(name);
+    wingsim::ShmLink link;
+    if (!link.Open(kRate, name, delay) || !link.IsShared()) return -1;
+    link.SetRunning(true);
+    pid_t pid = Spawn(client, name, -1.0f, (int)seconds + 5);
+    if (pid <= 0 || !WaitAlive(link, 2000)) {
+        if (pid > 0) kill(pid, SIGKILL);
+        return -1;
+    }
+    link.BeginEpoch(kRate);
+
+    long late = -1;
+    std::thread drv([&] {
+        MakeRealtime(buf);
+        std::vector<float> out(buf * kCh, 0.25f), in(buf * kCh);
+        const int cycles = (int)(seconds * kRate / buf);
+        const int warm = (int)(0.5 * kRate / buf);
+        const auto period = std::chrono::nanoseconds(1000000000ll * buf / kRate);
+        auto next = std::chrono::steady_clock::now();
+        uint64_t base = 0;
+        for (int k = 0; k < warm + cycles; k++) {
+            if (k == warm) base = link.GetStats().underrunBlocks;
+            const int64_t now = (int64_t)k * buf;
+            link.ReadInput(now - buf, in.data(), buf, kCh);
+            link.WriteOutput(now + buf, out.data(), buf, kCh);
+            next += period;
+            std::this_thread::sleep_until(next);
+        }
+        late = (long)(link.GetStats().underrunBlocks - base);
+    });
+    drv.join();
+    kill(pid, SIGTERM);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    link.Close();
+    shm_unlink(name);
+    return late;
+}
+
+int Sweep(const std::string& client, const std::vector<uint32_t>& buffers,
+    const std::vector<uint32_t>& delays, double seconds)
+{
+    std::printf("sweep: late daemon blocks over %.0f s per point (driver thread time-constraint, "
+                "client %s)\n",
+        seconds, client.c_str());
+    std::printf("%-8s", "delay");
+    for (uint32_t b : buffers) std::printf("  buf %-5u", b);
+    std::printf("\n");
+    long minOk = -1;
+    for (uint32_t d : delays) {
+        std::printf("%-8u", d);
+        bool allZero = true;
+        for (uint32_t b : buffers) {
+            const long late = SweepPoint(client, b, d, seconds);
+            std::printf("  %-9ld", late);
+            std::fflush(stdout);
+            if (late != 0) allZero = false;
+        }
+        std::printf("\n");
+        if (allZero && minOk < 0) minOk = d;
+    }
+    std::printf("minimum glitch-free input delay: %ld frames\n", minOk);
+    return minOk >= 0 ? 0 : 1;
 }
 
 } // namespace
@@ -119,14 +322,26 @@ void Print(const char* label, const Stats& s)
 int main(int argc, char** argv)
 {
     std::string client;
-    bool recordOnly = false;
+    bool recordOnly = false, sweep = false;
+    double sweepSeconds = 10;
+    std::vector<uint32_t> sweepDelays = {0, 16, 32, 64, 96, 128, 192, 256};
+    std::vector<uint32_t> sweepBuffers = {64, 128, 256};
     for (int i = 1; i < argc; i++) {
-        if (std::string(argv[i]) == "--client" && i + 1 < argc) client = argv[++i];
-        else if (std::string(argv[i]) == "--record-only") recordOnly = true;
+        const std::string a = argv[i];
+        if (a == "--client" && i + 1 < argc) client = argv[++i];
+        else if (a == "--record-only") recordOnly = true;
+        else if (a == "--sweep") sweep = true;
+        else if (a == "--sweep-seconds" && i + 1 < argc) sweepSeconds = std::atof(argv[++i]);
+        else if (a == "--sweep-delays" && i + 1 < argc) sweepDelays = ParseList(argv[++i]);
+        else if (a == "--sweep-buffers" && i + 1 < argc) sweepBuffers = ParseList(argv[++i]);
     }
     if (client.empty()) {
-        std::fprintf(stderr, "usage: wing_shm_selftest --client PATH\n");
+        std::fprintf(stderr, "usage: wing_shm_selftest --client PATH [--record-only] [--sweep "
+                             "[--sweep-seconds S] [--sweep-delays L] [--sweep-buffers L]]\n");
         return 2;
+    }
+    if (sweep) {
+        return Sweep(client, sweepBuffers, sweepDelays, sweepSeconds);
     }
 
     char name[32];
@@ -141,6 +356,21 @@ int main(int argc, char** argv)
     }
     link.SetRunning(true);
 
+    // 0. Configurable input delay: a segment with another delay is recreated.
+    {
+        wingsim::ShmLink other;
+        other.Open(kRate, name, 64);
+        Check(other.IsShared() && other.Header()->input_delay_frames == 64 &&
+                  other.Header()->segment_id != link.Header()->segment_id,
+            "segment with a different input delay is recreated with the configured delay");
+        other.Close();
+        // Back to the default delay (recreates again); re-open ours.
+        link.Open(kRate, name);
+        link.SetRunning(true);
+        Check(link.Header()->input_delay_frames == WING_SHM_DEFAULT_INPUT_DELAY_FRAMES,
+            "default input delay restored");
+    }
+
     // 1. Loopback (no daemon heartbeat).
     {
         Stats s = RunCycles(link, 0, 400, 1.0f, false);
@@ -149,23 +379,26 @@ int main(int argc, char** argv)
         Check(WING_LOAD_RLX(&link.Header()->loopback_active) == 1, "loopback flag set");
     }
 
+    // 1b. IO restart: frames before the first output of the new epoch are
+    //     silence, not the previous epoch's audio left in the ring.
+    {
+        link.BeginEpoch(kRate);
+        std::vector<float> in(kBuf * kCh);
+        long stale = 0;
+        for (int k = 0; k < 6; k++) {
+            const int64_t now = (int64_t)k * kBuf;
+            link.ReadInput(now - kBuf, in.data(), kBuf, kCh);
+            for (float v : in) stale += v != 0.0f;
+            std::vector<float> out(kBuf * kCh, 0.0f); // silence written
+            link.WriteOutput(now + kBuf, out.data(), kBuf, kCh);
+        }
+        Check(stale == 0, "new epoch: no stale audio from the previous epoch");
+    }
+
     // 2. Daemon attached.
-    char gainStr[16];
-    std::snprintf(gainStr, sizeof gainStr, "%g", kGain);
-    const char* args[] = {client.c_str(), "--name", name, "--gain", gainStr, "--seconds", "20",
-        nullptr};
-    pid_t pid = 0;
-    if (posix_spawn(&pid, client.c_str(), nullptr, nullptr, const_cast<char**>(args), environ) !=
-        0) {
-        std::perror("posix_spawn");
-        return 1;
-    }
-    bool alive = false;
-    for (int i = 0; i < 200 && !alive; i++) {
-        alive = link.DaemonAlive();
-        if (!alive) usleep(10000);
-    }
-    Check(alive, "daemon heartbeat detected");
+    pid_t pid = Spawn(client, name, kGain, 30);
+    if (pid <= 0) return 1;
+    Check(WaitAlive(link, 2000), "daemon heartbeat detected");
 
     link.BeginEpoch(kRate); // like HAL StartIO: daemon resyncs to the new epoch
     usleep(20000);
@@ -214,6 +447,54 @@ int main(int argc, char** argv)
             "record-only: daemon clocks from input_time (<=1% underruns, silence)");
     }
 
+    // 5. Stall: SIGSTOP the daemon mid-stream for ~0.5 s, then SIGCONT.
+    link.BeginEpoch(kRate);
+    usleep(20000);
+    {
+        const auto before = link.GetStats();
+        Stats s = RunCycles(link, 0, 1100, kGain, true, Signal::Dc, [&](int k) {
+            if (k == 200) kill(pid, SIGSTOP);
+            if (k == 400) kill(pid, SIGCONT);
+        });
+        const auto after = link.GetStats();
+        Print("stall", s);
+        std::printf("      to-fallback %llu, to-daemon %llu\n",
+            (unsigned long long)(after.toFallback - before.toFallback),
+            (unsigned long long)(after.toDaemon - before.toDaemon));
+        Check(s.clicks == 0, "stall: no clicks (crossfade to loopback and back)");
+        Check(s.loopbackFrames > 0 && after.toFallback > before.toFallback,
+            "stall: falls back to loopback while the daemon is stopped");
+        Check(s.tailChecked > 0 && s.tailExact == s.tailChecked && after.toDaemon > before.toDaemon,
+            "stall: back on the daemon after it resumes");
+    }
+
+    // 6. Crash + restart: SIGKILL (heartbeat left stale, not cleared), scribble
+    //    the from_daemon ring, start a new daemon.
+    link.BeginEpoch(kRate);
+    usleep(20000);
+    {
+        const auto before = link.GetStats();
+        Stats s = RunCycles(link, 0, 1100, kGain, true, Signal::Dc, [&](int k) {
+            if (k == 200) {
+                kill(pid, SIGKILL);
+                int st = 0;
+                waitpid(pid, &st, 0);
+            }
+            if (k == 260) {
+                float* r = wing_shm_ring(link.Header(), WING_SHM_HEADER_BYTES + WING_SHM_RING_BYTES);
+                for (size_t i = 0; i < (size_t)kCh * WING_SHM_RING_FRAMES; i++) r[i] = 7.0f;
+            }
+            if (k == 300) pid = Spawn(client, name, kGain, 30);
+        });
+        const auto after = link.GetStats();
+        Print("crash+restart", s);
+        Check(s.clicks == 0, "crash: no clicks, stale ring data never played");
+        Check(s.loopbackFrames > 0, "crash: falls back to loopback");
+        Check(s.tailChecked > 0 && s.tailExact == s.tailChecked && after.toDaemon > before.toDaemon,
+            "restart: new daemon picked up, crossfaded back in");
+        if (pid <= 0) return 1;
+    }
+
     // 4. Detach -> loopback.
     kill(pid, SIGTERM);
     int status = 0;
@@ -225,6 +506,15 @@ int main(int argc, char** argv)
         Stats s = RunCycles(link, 0, 200, 1.0f, false);
         Print("loopback again", s);
         Check(s.checked > 0 && s.mismatched == 0, "falls back to loopback after detach");
+    }
+
+    // Revalidate: the name is removed / recreated behind the driver's back.
+    {
+        const uint64_t id = link.Header()->segment_id;
+        Check(!link.Revalidate(kRate), "revalidate: same segment kept");
+        shm_unlink(name);
+        Check(link.Revalidate(kRate) && link.IsShared() && link.Header()->segment_id != id,
+            "revalidate: removed name is recreated");
     }
 
     link.Close();
