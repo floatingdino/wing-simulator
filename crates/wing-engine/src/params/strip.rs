@@ -20,7 +20,7 @@ use super::std_models::std_factory;
 use super::telemetry::kind;
 use super::{ParamMsg, TelemetryWriter};
 use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
-use crate::latency::TapLine;
+use crate::latency::{smooth_fade, TapLine};
 
 /// Block indices of [`ParamStrip`].
 pub mod block {
@@ -244,10 +244,16 @@ const MAX_INSTANCES: usize = 64;
 /// any other selection is applied when the running fade completes. Models without an instance
 /// pass audio through.
 ///
-/// Latency (T03E, see [`crate::latency`]): the slot has a constant latency, the maximum
+/// Latency (T03E, see [`crate::latency`]): by default the slot has a constant latency, the maximum
 /// [`RtModel::latency`] of its instances. An input delay line feeds the dry path at that latency and
 /// each model (and its key) at `slot latency - model latency`, so dry/wet blends, crossfades and
 /// on/off are phase-aligned whatever the model, and an incoming model sees continuous input.
+///
+/// With [`ModelSlot::with_dynamic_latency`] (T05U: FX, gate and dynamics slots of the engine strips) the
+/// slot's latency is that of the *loaded* model: each model gets the live input and the dry path is
+/// delayed by the model's own latency (blends stay aligned). A swap between models of different latency
+/// crossfades the dry path between the two delays in step with the model crossfade (also while the slot
+/// is off), so the latency change is click-free; the owning strip's alignment pad absorbs it.
 pub struct ModelSlot {
     instances: Box<[Box<dyn RtModel>]>,
     /// WING enum index -> instance index (or BYPASS).
@@ -285,8 +291,18 @@ pub struct ModelSlot {
     key_l: Vec<f32>,
     key_r: Vec<f32>,
     key_len: usize,
-    /// Constant slot latency (max instance latency).
+    /// Max instance latency (delay-line capacity; the constant slot latency unless `dynamic`).
     lat: usize,
+    /// Latency follows the loaded model (T05U).
+    dynamic: bool,
+    /// Dry-path delay of the audible side and of the fade-out side of a dry-delay crossfade.
+    dry_cur: usize,
+    dry_prev: usize,
+    /// Dry-delay crossfade running (dynamic slots: the models' latencies differ).
+    dfading: bool,
+    dpos: u32,
+    /// Scratch for the fade-out dry tap.
+    tmp: Vec<f32>,
     /// Latency of each instance.
     inst_lat: Box<[usize]>,
     /// Input history (L, R); taps: dry at `lat`, model k at `lat - inst_lat[k]`.
@@ -372,12 +388,31 @@ impl ModelSlot {
             key_r: vec![0.0; n],
             key_len: 0,
             lat,
+            dynamic: false,
+            dry_cur: lat,
+            dry_prev: lat,
+            dfading: false,
+            dpos: 0,
+            tmp: vec![0.0; kn],
             inst_lat,
             in_line: line(),
             key_line: line(),
             kd_cur: kd(),
             kd_prev: kd(),
         }
+    }
+
+    /// Make the slot's latency follow the loaded model instead of the constant maximum (T05U; see the
+    /// type doc). Construction time (clears signal state).
+    pub fn with_dynamic_latency(mut self) -> Self {
+        self.dynamic = true;
+        self.settle();
+        self
+    }
+
+    /// Whether the latency follows the loaded model.
+    pub fn is_dynamic_latency(&self) -> bool {
+        self.dynamic
     }
 
     /// Upper limit of `mix` in % (100 for gate/dyn, 125 for EQ).
@@ -432,6 +467,9 @@ impl ModelSlot {
             self.prev = self.cur;
             self.cur = self.logical;
         }
+        self.dfading = false;
+        self.dry_cur = self.dry_delay(self.cur);
+        self.dry_prev = self.dry_cur;
         for t in self.in_line.iter_mut().chain(self.key_line.iter_mut()) {
             t.reset();
         }
@@ -446,21 +484,52 @@ impl ModelSlot {
         !self.idle
     }
 
-    /// Constant slot latency in samples (the maximum latency of the hostable models), independent of
-    /// the selected model and of on/mix.
+    /// Slot latency in samples, independent of on/mix: the maximum latency of the hostable models
+    /// (constant, T03E), or for a dynamic slot the latency of the selected model (where the slot is
+    /// heading while a swap crossfades, T05U).
     pub fn latency(&self) -> usize {
+        if self.dynamic {
+            self.lat_of(self.logical)
+        } else {
+            self.lat
+        }
+    }
+
+    /// Highest latency the slot can have (the maximum over its models).
+    pub fn max_latency(&self) -> usize {
         self.lat
     }
 
-    /// Own latency of the audible model (samples); the slot pads it to [`ModelSlot::latency`].
+    /// Own latency of the audible model (samples); a constant-latency slot pads it to
+    /// [`ModelSlot::latency`].
     pub fn model_latency(&self) -> usize {
-        self.inst_lat.get(self.cur as usize).copied().unwrap_or(0)
+        self.lat_of(self.cur)
+    }
+
+    #[inline]
+    fn lat_of(&self, k: u8) -> usize {
+        self.inst_lat.get(k as usize).copied().unwrap_or(0)
+    }
+
+    /// Dry-path delay while instance `k` is audible.
+    #[inline]
+    fn dry_delay(&self, k: u8) -> usize {
+        if self.dynamic {
+            self.lat_of(k)
+        } else {
+            self.lat
+        }
     }
 
     /// Input delay for instance `k` (BYPASS = identity, latency 0).
     #[inline]
     fn pre_delay(&self, k: u8) -> usize {
-        self.lat - self.inst_lat.get(k as usize).copied().unwrap_or(0)
+        self.dry_delay(k) - self.lat_of(k)
+    }
+
+    /// Whether the dry path is crossfading between two delays (dynamic slot swap).
+    pub fn is_realigning(&self) -> bool {
+        self.dfading
     }
 
     /// Crossfade length in samples (0 = hard switch; tests use it for the click baseline).
@@ -528,11 +597,17 @@ impl ModelSlot {
                 // reverse the running fade back to the previous model (no reset: it is audible)
                 std::mem::swap(&mut self.cur, &mut self.prev);
                 self.xf_pos = self.xf_len - self.xf_pos.min(self.xf_len);
+                if self.dfading {
+                    // the dry-delay fade started with the model fade: reverse it in step
+                    std::mem::swap(&mut self.dry_cur, &mut self.dry_prev);
+                    self.dpos = self.xf_pos;
+                }
             }
             // otherwise: picked up when the running fade completes
-        } else if k != self.cur {
+        } else if k != self.cur && !self.dfading {
             self.start_fade(k);
         }
+        // otherwise a dry-delay fade (slot idle) defers the swap until it completes
     }
 
     fn start_fade(&mut self, k: u8) {
@@ -545,12 +620,53 @@ impl ModelSlot {
             self.fading = true;
             self.xf_pos = 0;
         }
+        let d = self.dry_delay(k);
+        if d != self.dry_cur {
+            if self.xf_len == 0 {
+                self.dry_cur = d;
+                self.dry_prev = d;
+            } else {
+                self.dry_prev = self.dry_cur;
+                self.dry_cur = d;
+                self.dfading = true;
+                self.dpos = 0;
+            }
+        }
+    }
+
+    /// The dry path of the last pushed chunk (`n` samples) into `dry_l`/`dry_r`: the input at the dry
+    /// delay, crossfaded between the old and new delay while realigning (advances that fade).
+    fn read_dry(&mut self, n: usize) {
+        self.in_line[0].read(&mut self.dry_l[..n], self.dry_cur);
+        self.in_line[1].read(&mut self.dry_r[..n], self.dry_cur);
+        if !self.dfading {
+            return;
+        }
+        let inv = 1.0 / self.xf_len.max(1) as f32;
+        for c in 0..2 {
+            self.in_line[c].read(&mut self.tmp[..n], self.dry_prev);
+            let d = if c == 0 {
+                &mut self.dry_l[..n]
+            } else {
+                &mut self.dry_r[..n]
+            };
+            for (i, (v, &p)) in d.iter_mut().zip(self.tmp[..n].iter()).enumerate() {
+                let g = smooth_fade((self.dpos + i as u32 + 1) as f32 * inv);
+                *v = p + g * (*v - p);
+            }
+        }
+        self.dpos += n as u32;
+        if self.dpos >= self.xf_len {
+            self.dfading = false;
+            self.dry_prev = self.dry_cur;
+        }
     }
 
     /// Reset instance `k` and, for a model with latency, prime it with the input history it would
     /// have seen over its latency (from the slot's input line), so its output is populated from the
     /// first sample it becomes audible instead of starting with `latency` samples of silence.
     fn reset_instance(&mut self, k: u8) {
+        let d = self.pre_delay(k);
         let Some(m) = self.instances.get_mut(k as usize) else {
             return;
         };
@@ -560,7 +676,6 @@ impl ModelSlot {
             return;
         }
         // the model's next input is x[t - d]; prime with x[t - d - lk .. t - d)
-        let d = self.lat - lk;
         let mut done = 0;
         while done < lk {
             let n = (lk - done).min(self.max_block);
@@ -662,15 +777,18 @@ impl ModelSlot {
             self.idle = true;
             self.key_len = 0;
             self.fading = false; // inaudible: finish instantly
-            if self.logical != self.cur {
+            if self.logical != self.cur && !self.dfading {
                 self.start_fade(self.logical);
             }
             if self.lat > 0 {
-                // bypassed slot: the dry path at the slot's constant latency
+                // bypassed slot: the dry path at the slot latency (crossfaded while realigning)
                 self.in_line[0].push(l);
                 self.in_line[1].push(r);
-                self.in_line[0].read(l, self.lat);
-                self.in_line[1].read(r, self.lat);
+                if self.dfading || self.dry_cur > 0 {
+                    self.read_dry(n);
+                    l.copy_from_slice(&self.dry_l[..n]);
+                    r.copy_from_slice(&self.dry_r[..n]);
+                }
             }
             return;
         }
@@ -679,8 +797,13 @@ impl ModelSlot {
             self.xo.reset();
         }
         self.idle = false;
+        if !self.fading && !self.dfading && self.logical != self.cur {
+            // a swap deferred by a dry-delay fade
+            self.start_fade(self.logical);
+        }
         let full = !self.xo.is_on()
             && !self.fading
+            && !self.dfading
             && !self.wet.is_ramping()
             && self.wet.value() == 1.0
             && !self.makeup.is_ramping()
@@ -690,8 +813,7 @@ impl ModelSlot {
             self.in_line[0].push(l);
             self.in_line[1].push(r);
             if !full {
-                self.in_line[0].read(&mut self.dry_l[..n], lat);
-                self.in_line[1].read(&mut self.dry_r[..n], lat);
+                self.read_dry(n);
             }
         } else if !full {
             self.dry_l[..n].copy_from_slice(l);
@@ -744,7 +866,7 @@ impl ModelSlot {
             ),
         };
         if self.fading {
-            if lat > 0 {
+            if lat > 0 && d_prev > 0 {
                 self.in_line[0].read(&mut self.prev_l[..n], d_prev);
                 self.in_line[1].read(&mut self.prev_r[..n], d_prev);
             } else {
@@ -755,7 +877,7 @@ impl ModelSlot {
                 m.process_keyed(&mut self.prev_l[..n], &mut self.prev_r[..n], sc_prev);
             }
         }
-        if lat > 0 {
+        if lat > 0 && d_cur > 0 {
             self.in_line[0].read(l, d_cur);
             self.in_line[1].read(r, d_cur);
         }
@@ -764,8 +886,11 @@ impl ModelSlot {
         }
         if self.fading {
             let len = self.xf_len as f32;
+            // dynamic slots may blend models of different latency: a raised-cosine fade (no slope step)
+            let dynamic = self.dynamic;
             for i in 0..n {
-                let g = ((self.xf_pos + i as u32) as f32 / len).min(1.0);
+                let x = ((self.xf_pos + i as u32) as f32 / len).min(1.0);
+                let g = if dynamic { smooth_fade(x) } else { x };
                 l[i] = self.prev_l[i] + g * (l[i] - self.prev_l[i]);
                 r[i] = self.prev_r[i] + g * (r[i] - self.prev_r[i]);
             }

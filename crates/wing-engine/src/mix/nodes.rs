@@ -233,10 +233,12 @@ impl InputStripNode {
         self.fx = fx;
         self.ins_seen = Default::default();
         sync_inserts(&mut *self.fx, &mut self.ins_seen, self.strip.inserts());
+        self.fx.set_own_latency(self.strip.own_latency());
         self
     }
 
-    /// Strip latency (samples, T03E: model slots + insert FX + alignment pad).
+    /// Strip latency (samples, T05U: model slots + insert FX + alignment pad = the input family's
+    /// alignment target).
     pub fn latency(&self) -> usize {
         self.strip.latency()
     }
@@ -310,6 +312,7 @@ impl InputStripNode {
             ParamMsg::Commit => {
                 self.strip.apply(msg);
                 sync_inserts(&mut *self.fx, &mut self.ins_seen, self.strip.inserts());
+                self.fx.set_own_latency(self.strip.own_latency());
                 if self.dirty {
                     self.update_targets();
                 }

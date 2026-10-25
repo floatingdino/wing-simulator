@@ -43,7 +43,7 @@ use crate::graph::NodeId;
 use crate::latency::StripAlign;
 use crate::meters::{abs_max, word, StripMeter};
 use crate::params::std_models::{block_kind, model_factory};
-use crate::params::strip::{ModelSlot, SLOT_LAYOUT};
+use crate::params::strip::{ModelSlot, MODEL_XFADE_S, SLOT_LAYOUT};
 use crate::params::telemetry_kind as kind;
 use crate::params::{
     BindError, BlockLayout, ParamMapBuilder, ParamMsg, TelemetryWriter, TARGET_BASE,
@@ -186,8 +186,12 @@ impl MixStrip {
         };
         dly.set_params(&dly_p);
         dly.prepare(fs, max_block);
-        let own = eq.latency() + dyn_.latency();
-        let align = StripAlign::new(own, own);
+        // own: the model slots (constant per slot, T03E); natural: the family worst case
+        let mut align = StripAlign::new(
+            eq.latency() + dyn_.latency(),
+            eq.max_latency() + dyn_.max_latency(),
+        );
+        align.set_fade_samples((MODEL_XFADE_S * fs).round() as usize);
         let trim = InputParams {
             source_mode: SourceMode::Stereo,
             ..InputParams::default()
@@ -265,10 +269,17 @@ impl MixStrip {
             &mut self.ins_seen,
             (self.preins, self.postins),
         );
+        self.fx.set_own_latency(self.own_latency());
     }
 
-    /// Strip latency in samples (model slots + inserts + alignment pad; output delay excluded).
-    /// Constant: it does not depend on the selected models or block switches.
+    /// Latency of the EQ and dynamics slots (constant per slot, T03E).
+    pub fn own_latency(&self) -> usize {
+        self.eq.latency() + self.dyn_.latency()
+    }
+
+    /// Strip latency in samples (model slots + inserts + alignment pad; output delay excluded) = the
+    /// alignment target: the family worst case standalone, the engine family target under an FX rack
+    /// (T05U). It does not depend on block switches.
     pub fn latency(&self) -> usize {
         self.align.total()
     }
@@ -278,7 +289,8 @@ impl MixStrip {
         &self.align
     }
 
-    /// Align the pre-fader output to `target` samples (`None` = EQ + dynamics slot latency). RT-safe.
+    /// Align the pre-fader output to `target` samples (`None` = the engine family target, else the EQ +
+    /// dynamics slots' maximum latency). RT-safe.
     pub fn set_align_latency(&mut self, target: Option<usize>) -> usize {
         self.align.set_target(target)
     }
@@ -295,6 +307,8 @@ impl MixStrip {
         self.eq.settle();
         self.dyn_.settle();
         self.dly.reset();
+        let own = self.own_latency();
+        self.align.set_own_latency(own);
         self.align.reset();
     }
 
@@ -434,17 +448,18 @@ impl MixStrip {
                     &mut self.ins_seen,
                     (self.preins, self.postins),
                 );
+                let own = self.own_latency();
+                self.fx.set_own_latency(own);
             }
         }
     }
 
     /// Process the summed signal up to the pre-fader point, in place (RT-safe).
     pub fn process_pre(&mut self, l: &mut [f32], r: &mut [f32]) {
-        // insert FX latency pads the strip (ownership only changes between cycles)
+        // own and insert FX latency and the family target set the pad (they only change between cycles)
         let il = claimed_latency(&*self.fx, &self.preins, &self.postins);
-        if il != self.align.insert_latency() {
-            self.align.set_insert_latency(il);
-        }
+        let t = self.fx.align_target();
+        self.align.sync(self.own_latency(), il, t);
         let (g0, g1) = self.gain.step();
         if g0 != [1.0, 1.0] || g1 != [1.0, 1.0] {
             ramp_in_place(l, g0[0], g1[0]);

@@ -45,9 +45,9 @@
 //! `emode`: `M` = both sides carry the return's first leg, `ST` = the stereo pair, `M/S` = pair decoded as
 //! `L = M + S`, `R = M - S` (the engine router already resolves the legs for `M` and `ST`; the decode is
 //! done here so it applies to whatever the host delivers). `lat` (device round-trip in samples, default 45)
-//! is stored and readable ([`ExternalLoop::latency_param`]) but not reported as processing latency: a
-//! per-slot latency is the maximum over the slot's models (T03E), so reporting a default of 45 would delay
-//! every FX slot.
+//! is stored and readable ([`ExternalLoop::latency_param`]) but not reported as processing latency: the
+//! engine aligns every strip of a family to the largest slot latency in use (T05U), so reporting a default of
+//! 45 would delay every strip of that family whenever an EXT slot is inserted.
 
 use crate::eq::EqVariant;
 use crate::model::{create_model, BlockKind, Model, ModelTelemetry, ParamValue};
