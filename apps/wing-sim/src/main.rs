@@ -4,7 +4,7 @@
 //! ```text
 //! wing-sim [--name WINGSIM] [--ip A.B.C.D] [--fw 3.3.4-0-g0c2b9d4a:release] [--model ngc-full]
 //!          [--serial S] [--scene PATH] [--idle-timeout SECS(0=off)] [--no-meters] [--no-osc]
-//!          [--port 2222] [--osc-port 2223]
+//!          [--port 2222] [--osc-port 2223] [--save-on-exit PATH]
 //! ```
 //! Ctrl-C (SIGINT) or SIGTERM shuts down cleanly.
 
@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use wing_model::ParamStore;
+use wing_model::{ParamStore, Snapshot};
 use wing_proto::discovery::{Identity, Responder, ResponderConfig, DISCOVERY_PORT};
 use wing_proto::osc::{OscAttachment, OscConfig, OscServer, OSC_PORT};
 use wing_proto::server::meters::METER_INTERVAL;
@@ -34,6 +34,7 @@ struct Args {
     identity: Identity,
     ip: Option<Ipv4Addr>,
     scene: Option<String>,
+    save_on_exit: Option<String>,
     idle: Option<Duration>,
     meters: bool,
     osc: bool,
@@ -43,13 +44,14 @@ struct Args {
 
 const USAGE: &str = "usage: wing-sim [--name NAME] [--ip A.B.C.D] [--fw FIRMWARE] [--model MODEL] \
 [--serial SERIAL] [--scene PATH] [--idle-timeout SECS] [--no-meters] [--no-osc] [--port N] \
-[--osc-port N]";
+[--osc-port N] [--save-on-exit PATH]";
 
 fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut a = Args {
         identity: Identity::default(),
         ip: None,
         scene: None,
+        save_on_exit: None,
         idle: Some(Duration::from_secs(10)),
         meters: true,
         osc: true,
@@ -65,6 +67,7 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--serial" => a.identity.serial = val()?,
             "--ip" => a.ip = Some(val()?.parse().map_err(|e| format!("--ip: {e}"))?),
             "--scene" => a.scene = Some(val()?),
+            "--save-on-exit" => a.save_on_exit = Some(val()?),
             "--idle-timeout" => {
                 let s: f64 = val()?.parse().map_err(|e| format!("--idle-timeout: {e}"))?;
                 a.idle = (s > 0.0).then(|| Duration::from_secs_f64(s));
@@ -111,12 +114,33 @@ fn run(args: Args) -> Result<(), String> {
 
     // ---- state ----
     let mut store = ParamStore::new();
-    if let Some(p) = &args.scene {
-        // TODO(T011): load the .snap scene once wing-model has a snapshot loader.
-        log(&format!(
-            "--scene {p}: snapshot loading is not implemented yet (T011); starting from factory defaults"
-        ));
-    }
+    let mut scenes = Vec::new();
+    let snapshot = match &args.scene {
+        Some(p) => {
+            let text = std::fs::read_to_string(p).map_err(|e| format!("--scene {p}: {e}"))?;
+            let (snap, rep) =
+                Snapshot::load(&store, &text).map_err(|e| format!("--scene {p}: {e}"))?;
+            log(&format!(
+                "scene {p}: {} (fw {}{}), {} keys, {} applied, {} migrated ({} lossy), {} unmapped, \
+                 {} rejected, {} adjusted",
+                rep.format,
+                rep.creator_fw,
+                if rep.legacy { ", migrated from 1.x/2.x" } else { "" },
+                rep.keys,
+                rep.applied,
+                rep.migrated.len(),
+                rep.lossy().count(),
+                rep.unmapped.len(),
+                rep.rejected.len(),
+                rep.adjusted.len()
+            ));
+            if let Some(stem) = std::path::Path::new(p).file_stem() {
+                scenes.push(stem.to_string_lossy().into_owned());
+            }
+            snap
+        }
+        None => Snapshot::factory(),
+    };
     let console_model = LiveInfo::console_model_for(&args.identity.model);
     if let Some(id) = store.lookup("$syscfg/$cnsmdl") {
         let _ = store.set_str(id, console_model, wing_model::ORIGIN_LOCAL);
@@ -215,6 +239,7 @@ fn run(args: Args) -> Result<(), String> {
             idle_timeout: args.idle,
             live: LiveInfo {
                 console_model: console_model.into(),
+                scenes,
                 ..LiveInfo::default()
             },
             ..ServerConfig::default()
@@ -296,6 +321,12 @@ fn run(args: Args) -> Result<(), String> {
         s.stop();
     }
     discovery.stop();
+    if let Some(p) = &args.save_on_exit {
+        match std::fs::write(p, snapshot.save(&store)) {
+            Ok(()) => log(&format!("saved scene to {p}")),
+            Err(e) => log(&format!("saving scene to {p} failed: {e}")),
+        }
+    }
     log("stopped");
     Ok(())
 }
