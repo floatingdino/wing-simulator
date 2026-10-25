@@ -495,3 +495,76 @@ For a live capture or hardware owner:
 - Behringer WING-Edit 3.2.1 release notes (minimum-firmware coupling); behringer.world forum threads on meters
   (p=14622).
 - Live observation: `tools/protocol-probe/` scripts and captures (2026-10-25).
+
+## Firmware compatibility check
+
+WING-Edit 3.3.4 rejects our fake console on CONNECT with "Incompatible Mixer
+Firmware! / Please update to the latest version" because of a version gate in
+the arm64 slice. Static analysis (otool/capstone, no execution of the app).
+
+### The rule
+
+The gate reads the device record's firmware string field (`[x19+0x178]`) and
+checks ONLY the major and minor version characters of the string:
+
+- character index 0 (major) must be `'3'` (0x33). `< '3'` fails; `> '3'` passes
+  outright (skips the minor check).
+- character index 2 (minor) must be `>= '1'` (0x31). `< '1'` fails.
+
+So the accepted set is firmware **major.minor >= 3.1** (e.g. `3.1.x`, `3.3.4`).
+`3.0.x` FAILS — index 2 is `'0'` (0x30) < `'1'`. That is exactly why our old
+discovery fw `3.0.5-0-g0c2b9d4a:release` was rejected. The suffix (`-dirty`,
+`:release`, git hash) is NOT part of the gate — it is only parsed by a separate
+display/formatting routine that truncates the string at the first `-` for the
+CONSOLE INFORMATION panel. The patch number (3rd component) is not checked.
+
+### Which data is checked
+
+The check runs inside the CONNECT handler (`0x10024d690` -> compat fn
+`0x10024ede8`) and reads the firmware string already stored in the device
+record — the 6th field of the discovery reply `WING,<ip>,<name>,<model>,
+<serial>,<fw>`. It is evaluated before the session is established (the fn
+returns early if already connected), so it is the **discovery fw field**, not
+anything read over TCP after connecting.
+
+### Evidence (addresses in the arm64 slice, base 0x100000000)
+
+String `"Incompatible Mixer Firmware!"` at `0x1005ea157`,
+`"Please update to the latest version"` at `0x1005ea174`.
+
+Compat function `0x10024ede8`; the decision:
+
+```
+0x10024ef50  ldr   x0, [x19, #0x178]   ; x0 = firmware string (from device record)
+0x10024ef54  ldrb  w8, [x0]            ; first codepoint (UTF-8 decoded inline)
+...
+0x10024f150  cmp   w9, #0x33           ; major char == '3' ?
+0x10024f154  b.ne  #0x10024f3fc        ;   no  -> fail (Incompatible dialog)
+0x10024f158  mov   w1, #2
+0x10024f15c  bl    #0x1003d4294        ; char-at(index=2) -> minor codepoint
+0x10024f160  cmp   w0, #0x31           ; minor char >= '1' ?
+0x10024f164  b.lt  #0x10024f3fc        ;   no  -> fail
+0x10024f168  ...                       ; pass: continue connect/sync
+```
+
+Fail path `0x10024f3fc` builds the two dialog strings from `0x1005ea157` /
+`0x1005ea174` and shows the Incompatible message. `0x1003d4294` is a UTF-8
+char-at(index) helper returning the codepoint. (An earlier formatting routine
+near `0x10024e93c`/`0x10024e974` compares the string against `"-dirty"`
+(`0x1005ea198`) and `"release"` (`0x1005ea19f`) purely to format the FIRMWARE
+display field — it does not gate the connection.)
+
+### Recommended fw string
+
+Use a firmware whose major is `3` and minor `>= 1`, keeping the real WING
+suffix format so the display routine is happy:
+
+```
+3.3.4-0-g0c2b9d4a:release
+```
+
+`tools/protocol-probe/fake_wing.py` default `--fw` has been updated to this
+value. Confidence: high (the compare constants, string addresses, and fail-path
+dialog strings are unambiguous). The only residual uncertainty is whether the
+patch component or suffix matter in a later code path, but the gate itself does
+not inspect them.

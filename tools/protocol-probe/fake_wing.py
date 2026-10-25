@@ -86,7 +86,7 @@ def main() -> int:
     ap.add_argument("--name", default="WINGSIM")
     ap.add_argument("--model", default="ngc-full")
     ap.add_argument("--serial", default="S0000000000SIM")
-    ap.add_argument("--fw", default="3.0.5-0-g0c2b9d4a:release")
+    ap.add_argument("--fw", default="3.3.4-0-g0c2b9d4a:release")
     ap.add_argument("--tcp-mode", default="silent", choices=["silent", "end"])
     ap.add_argument("--no-tcp", action="store_true")
     a = ap.parse_args()
