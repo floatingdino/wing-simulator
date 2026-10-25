@@ -295,7 +295,11 @@ Send level `lvl` in dB (-144 = -oo .. +10), fader law shared with faders [S][E].
 ```
 Side-chain keys can point at any strip (`gatesc.src`/`dynsc.src` = CH.n/AUX.n/BUS.n/MAIN.n/MTX.n). A key from a
 strip computed later than the keyed strip needs one block of delay (or a reordering pass); cycles are possible
-(ch keyed by a bus it feeds) and must be broken with a one-block delay [I].
+(ch keyed by a bus it feeds) and must be broken with a one-block delay [I]. Implemented (T080,
+`crates/wing-engine/src/mix/keys.rs`): every external key is taken from a shared double-buffered key bank and
+is exactly one engine block late, whatever the strip order (no reordering pass; cycles are legal). Schema
+enums: channel `src` = SELF/CH.1-40, `tap` = IN FILT 3 4 5 PFL AFL POST; aux/bus/main/mtx `src` =
+SELF/BUS/MAIN/MTX/AUX, `tap` = BUS DYN PFL AFL EQ INS2.
 
 ## 13. Open questions (to verify on a console / in the manual)
 

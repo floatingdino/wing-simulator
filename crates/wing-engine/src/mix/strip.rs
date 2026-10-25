@@ -12,8 +12,10 @@
 //!   tilt, exact WING coefficients) and the alternate EQ models of the registry; busses offer PIA where
 //!   channels offer MACH4 (the group's model list decides). `mix` 0..125 % scales the band gains.
 //! * **Dynamics slot** (`dyn`, any model of the shared gate/dynamics table), key filter `dynsc
-//!   type/f/q`, crossover `dynxo`. The key is the strip itself (SELF); external `dynsc.src` keys
-//!   need graph wiring and are not resolved yet.
+//!   type/f/q`, crossover `dynxo`. The key is the strip itself (SELF) or, for `dynsc.src` != SELF, the
+//!   `dynsc.tap` of another bus/main/matrix/aux read from the key bank one block late (T080,
+//!   [`crate::mix::keys`]); `dynsc.$solo` (key listen) publishes the detected key for the monitor. The
+//!   strip publishes its own taps (IN, INS1, EQ, DYN, PFL) for other strips' keys.
 //! * **Inserts** (`preins`/`postins` `on ins`) run their FX slot inline through the strip's
 //!   [`InsertHost`] (the FX rack handle, [`crate::fx`]; T050/T044).
 //! * **Output delay** (`dly on`, model group `dly/mode` M/FT/MS/SMP with target `dly`) runs on the
@@ -33,13 +35,12 @@
 //! * **Telemetry**: `TAP_PEAK` per [`MixTap`] (block = tap index) and `GAIN_REDUCTION_DB` at
 //!   [`hook::DYN`].
 
-use wing_blocks::gate::ScFilter;
 use wing_blocks::input::{DelayMode, InputParams, InputStage, SourceMode};
 use wing_blocks::sidechain::XoverKind;
 
 use crate::channel::{
-    claimed_latency, rta_at, slot_key_peak, sync_inserts, InsertHost, InsertPoint, InsertPos,
-    NoInserts, PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT,
+    claimed_latency, listen_post, listen_pre, rta_at, slot_key_peak, sync_inserts, InsertHost,
+    InsertPoint, InsertPos, NoInserts, SideChain, PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT,
 };
 use crate::graph::NodeId;
 use crate::latency::StripAlign;
@@ -53,6 +54,7 @@ use crate::params::{
 use crate::routing::Strip;
 use crate::rta::{RtaProbe, RtaTap};
 
+use super::keys::{key_route, slot as key_slot, KeyBank, KeyFamily, KeyIn, KeyOut};
 use super::law::{self, Ramp};
 use super::nodes::StripHook;
 use super::{block, MixConfig};
@@ -129,16 +131,6 @@ fn peak(l: &[f32], r: &[f32]) -> f32 {
     p
 }
 
-fn sc_filter(i: u32) -> ScFilter {
-    match i {
-        1 => ScFilter::Lp12,
-        2 => ScFilter::Hp12,
-        3 => ScFilter::Bp,
-        4 => ScFilter::Notch,
-        _ => ScFilter::Off,
-    }
-}
-
 /// Bus/main/matrix strip processing; see the module doc. Construct off the RT thread.
 pub struct MixStrip {
     strip: Strip,
@@ -149,7 +141,11 @@ pub struct MixStrip {
     preins: InsertPoint,
     eq: ModelSlot,
     dyn_: ModelSlot,
-    dyn_sc: (ScFilter, f32, f32),
+    dyn_sc: SideChain,
+    /// External dynamics key (T080); `None` until [`StripHook::set_keys`].
+    key_in: Option<KeyIn>,
+    /// Key bank outputs (taps, key listen).
+    key_out: Option<KeyOut>,
     postins: InsertPoint,
     dly: InputStage,
     dly_p: InputParams,
@@ -211,7 +207,9 @@ impl MixStrip {
             preins: InsertPoint::default(),
             eq,
             dyn_,
-            dyn_sc: (ScFilter::Off, 1000.0, 2.0),
+            dyn_sc: SideChain::default(),
+            key_in: None,
+            key_out: None,
             postins: InsertPoint::default(),
             dly,
             dly_p,
@@ -337,6 +335,31 @@ impl MixStrip {
     fn tap(&mut self, t: MixTap, l: &[f32], r: &[f32]) {
         let p = &mut self.telem.tap_peak[t as usize];
         *p = p.max(peak(l, r));
+        // key taps IN..PFL (= MixTap index); the node publishes AFL itself (POST is delayed output)
+        if let Some(k) = self.key_out.as_ref().filter(|_| t != MixTap::Post) {
+            k.tap(t as usize, l, r);
+        }
+    }
+
+    /// Dynamics side-chain settings (`dynsc`).
+    pub fn dyn_sc(&self) -> &SideChain {
+        &self.dyn_sc
+    }
+
+    /// Route the dynamics key through `bank` as strip index `idx` and publish the strip's taps (off the
+    /// RT thread).
+    pub fn set_keys(&mut self, bank: KeyBank, idx: usize) {
+        self.key_out = Some(KeyOut::new(bank.clone(), idx));
+        self.key_in = Some(KeyIn::new(bank));
+        self.sync_keys();
+    }
+
+    /// Follow `dynsc.src`/`tap` (between cycles).
+    fn sync_keys(&mut self) {
+        if let Some(k) = self.key_in.as_mut() {
+            k.route(key_route(KeyFamily::Mix, self.dyn_sc.src, self.dyn_sc.tap));
+            k.sync();
+        }
     }
 
     fn set(&mut self, blk: u8, param: u16, v: f32) {
@@ -364,13 +387,9 @@ impl MixStrip {
             }
             hook::DYN_SC => {
                 let sc = &mut self.dyn_sc;
-                match param {
-                    0 => sc.0 = sc_filter(v as u32),
-                    1 => sc.1 = v,
-                    2 => sc.2 = v,
-                    _ => return, // 3 = src: external keys are not resolved yet (SELF)
+                if sc.set(param, v) {
+                    self.dyn_.set_key_filter(sc.filter, sc.freq, sc.q);
                 }
-                self.dyn_.set_key_filter(sc.0, sc.1, sc.2);
             }
             hook::DYN_XO => {
                 let mut x = *self.dyn_.xover();
@@ -460,6 +479,7 @@ impl MixStrip {
                 );
                 let own = self.own_latency();
                 self.fx.set_own_latency(own);
+                self.sync_keys();
             }
         }
     }
@@ -498,7 +518,24 @@ impl MixStrip {
         } else {
             0.0
         };
-        self.dyn_.process_keyed(l, r, None);
+        let cycle = self.key_out.as_ref().map_or(0, |k| k.cycle());
+        let key = match self.key_in.as_mut() {
+            Some(k) if self.dyn_sc.external() => k.fetch(cycle, l.len()),
+            _ => None,
+        };
+        let listen = self.dyn_sc.listen;
+        if listen {
+            listen_pre(&self.key_out, key_slot::LISTEN_DYN, key, l, r);
+        }
+        self.dyn_.process_keyed(l, r, key);
+        if listen {
+            listen_post(&self.key_out, key_slot::LISTEN_DYN, &self.dyn_);
+        }
+        let dyn_key = if self.meter.is_some() {
+            slot_key_peak(&self.dyn_, key, dyn_in)
+        } else {
+            0.0
+        };
         self.tap(MixTap::Dyn, l, r);
         if let Some(n) = self.postins.claimed() {
             self.fx
@@ -515,7 +552,7 @@ impl MixStrip {
             0.0
         };
         if let Some(m) = &self.meter {
-            m.level(word::DYN_KEY, slot_key_peak(&self.dyn_, None, dyn_in));
+            m.level(word::DYN_KEY, dyn_key);
             m.level(word::DYN_GR, self.telem.dyn_gr_db);
             m.slot_bands(band::DYN, &self.dyn_);
         }
@@ -563,6 +600,16 @@ impl StripHook for MixStrip {
 
     fn latency(&self) -> usize {
         MixStrip::latency(self)
+    }
+
+    fn set_keys(&mut self, bank: KeyBank, idx: usize) {
+        MixStrip::set_keys(self, bank, idx);
+    }
+
+    fn begin_cycle(&mut self, cycle: u64) {
+        if let Some(k) = self.key_out.as_mut() {
+            k.set_cycle(cycle);
+        }
     }
 
     fn telemetry(&mut self, out: &mut TelemetryWriter<'_>) {
