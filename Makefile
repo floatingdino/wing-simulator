@@ -1,4 +1,4 @@
-.PHONY: check check-full fidelity-report fmt build bench app
+.PHONY: check check-full fidelity-report fmt build bench app dist
 
 check:
 	cargo fmt --all --check
@@ -31,3 +31,7 @@ app:
 	apps/WingSimMenu/build.sh
 	cd apps/WingSimMenu && swift test
 	apps/WingSimMenu/smoke.sh
+
+# Release bundle dist/WingSimulator-<version>/ (T073): binaries, driver, app, install/uninstall scripts. No sudo.
+dist:
+	tools/dist/dist.sh

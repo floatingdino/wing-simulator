@@ -56,7 +56,7 @@ public struct BinaryLocator: Sendable {
         if let r = bundle.resourceURL {
             dirs.append(r.appending(path: "bin", directoryHint: .isDirectory))
         }
-        if let root = bundle.object(forInfoDictionaryKey: DaemonPaths.repoRootKey) as? String {
+        if let root = bundle.object(forInfoDictionaryKey: DaemonPaths.repoRootKey) as? String, !root.isEmpty {
             dirs.append(URL(filePath: root, directoryHint: .isDirectory)
                 .appending(path: "target/release", directoryHint: .isDirectory))
         }
