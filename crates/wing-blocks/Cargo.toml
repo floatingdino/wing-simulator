@@ -59,3 +59,7 @@ harness = false
 [[bench]]
 name = "comp_multi"
 harness = false
+
+[[bench]]
+name = "pse"
+harness = false
