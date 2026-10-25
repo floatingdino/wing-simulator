@@ -2,10 +2,10 @@
 id: T071
 title: Soak test 8h
 stage: S7
-status: todo
-owner: -
+status: in_progress
+owner: eng-agent-T071
 depends: [T03B]
-branch: -
+branch: task/T071
 ---
 
 ## Goal

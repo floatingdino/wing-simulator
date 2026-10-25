@@ -65,6 +65,8 @@ pub struct AudioOptions {
     pub hostio: Option<HostIoConfig>,
     /// Log a status line this often while attached (`None`: never).
     pub status_every: Option<Duration>,
+    /// Replaces the CoreAudio side of the host bridges (soak harness / tests); `None`: real devices.
+    pub device_factory: Option<super::hostio::DeviceFactory>,
 }
 
 impl Default for AudioOptions {
@@ -75,6 +77,7 @@ impl Default for AudioOptions {
             rt: true,
             hostio: None,
             status_every: Some(Duration::from_secs(10)),
+            device_factory: None,
         }
     }
 }
@@ -584,7 +587,11 @@ impl Control {
         cfg.sample_rate = rate;
         cfg.workgroup = self.wi.as_ref().map(|w| w.raw());
         let (hosts, feeds, errs) = match &self.opts.hostio {
-            Some(h) => HostOutputs::start(hostio::plan(h, rate, burst)?, h.buffer_frames),
+            Some(h) => HostOutputs::start(
+                hostio::plan(h, rate, burst)?,
+                h.buffer_frames,
+                self.opts.device_factory.as_ref(),
+            ),
             None => (HostOutputs::none(), Vec::new(), Vec::new()),
         };
         for e in errs {

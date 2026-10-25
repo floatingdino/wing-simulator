@@ -165,6 +165,22 @@ pub fn plan(cfg: &HostIoConfig, rate: u32, burst: usize) -> Result<Vec<PlannedBr
         .collect())
 }
 
+/// Replaces the CoreAudio device side of a planned bridge (T071: the soak harness plays the
+/// consumer on a simulated hardware clock, never on a real device). Called with the device
+/// name and the consumer; the returned handle stops the device when dropped.
+#[derive(Clone)]
+pub struct DeviceFactory(pub Arc<DeviceStartFn>);
+
+/// See [`DeviceFactory`].
+pub type DeviceStartFn =
+    dyn Fn(&str, BridgeConsumer) -> Box<dyn std::any::Any + Send> + Send + Sync;
+
+impl std::fmt::Debug for DeviceFactory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DeviceFactory")
+    }
+}
+
 /// A bridge producer and the tap lane of each of its channels (what the console feeds).
 pub type Feed = (BridgeProducer, Vec<TapChannel>);
 
@@ -193,12 +209,19 @@ impl HostOutputs {
     pub fn start(
         planned: Vec<PlannedBridge>,
         buffer_frames: Option<u32>,
+        factory: Option<&DeviceFactory>,
     ) -> (Self, Vec<Feed>, Vec<String>) {
         let mut outputs = Vec::new();
         let mut feeds = Vec::new();
         let mut errors = Vec::new();
         for p in planned {
             let stats = p.producer.stats().clone();
+            if let Some(f) = factory {
+                let handle = (f.0)(&p.device, p.consumer);
+                outputs.push((p.device.clone(), stats, Some(handle)));
+                feeds.push((p.producer, p.taps));
+                continue;
+            }
             #[cfg(target_os = "macos")]
             {
                 use wing_hostio::coreaudio::{HostOutput, HostOutputConfig};
