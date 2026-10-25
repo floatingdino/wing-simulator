@@ -5,18 +5,24 @@
 //! - Order inside the block (signal-flow.md §2, [I]): low cut -> high cut. The filter *tool* (`tf`, `mdl`
 //!   TILT/MAX/AP1/AP2) is a separate task (T046) and not part of this block.
 //!
-//! Response: Butterworth of order slope/6 (working assumption in models.md, **verify** by measurement in
-//! T072), bilinear transform pre-warped at the cutoff, so the magnitude is exactly
-//! `1/sqrt(1 + W^(2n))` (LC: `W^(-2n)`) with `W = tan(pi f/fs) / tan(pi fc/fs)`; -3.01 dB at the cutoff.
-//! Sections run in f64 ([`wing_dsp::Cascade`]) so 20 Hz cuts stay accurate.
+//! Response (T03C, verified against `data/reference-curves/filter.json`): WING-Edit's own designs from
+//! `ae::Cchfilter::update` ([`crate::wingcoef`]), all -3.0 dB at the cutoff:
+//! - LC 6: 1st-order bilinear HP (`hqhp6`; its >2.5 kHz table never applies, LC <= 2 kHz).
+//! - LC 12: `hqhp12` (bilinear Butterworth HP, Q 0.707 below 2.5 kHz).
+//! - LC 18: 1st-order HP + bilinear 2nd-order HP with Q 1.0. LC 24: bilinear HPs with Q 0.541 and 1.307.
+//! - HC 6: Massberg analog-matched 1st-order LP (no cramping near Nyquist). HC 12: `hqlp12`, Massberg
+//!   analog-matched 2nd-order LP with Q 0.707.
+//!
+//! Sections run in f64 ([`wing_dsp::Cascade`]) with WING's f32 coefficients, so 20 Hz cuts stay accurate.
 //!
 //! Smoothing: cutoff frequencies follow a 20 ms one-pole in log2(Hz), coefficients are recomputed every
 //! [`SUB_BLOCK`] samples while gliding. On/off switches crossfade dry/filtered over a 5 ms one-pole; a cut
 //! that is off and faded out costs nothing. A slope change switches immediately (added sections start
 //! from zero state).
 
-use wing_dsp::biquad::{butterworth, CutKind};
-use wing_dsp::{Cascade, OnePoleSmoother};
+use crate::wingcoef::{self, Bq, Ctx};
+use wing_dsp::biquad::{CutKind, Sections};
+use wing_dsp::{Cascade, Coeffs, OnePoleSmoother};
 
 /// Coefficient update interval while a cutoff glides (samples).
 pub const SUB_BLOCK: usize = 16;
@@ -97,11 +103,63 @@ impl FilterParams {
     }
 }
 
+/// WING sections of one cut (`Cchfilter` layout: LC uses 2 slots, HC 1).
+fn wing_cut(kind: CutKind, order: usize, f: f32, fs: f64) -> ([Bq; 2], usize) {
+    let c = Ctx::new(fs);
+    let mut s = [wingcoef::IDENTITY; 2];
+    let n = match (kind, order) {
+        (CutKind::Highpass, 1) => {
+            s[0] = wingcoef::hp6(&c, f);
+            1
+        }
+        (CutKind::Highpass, 2) => {
+            s[0] = wingcoef::hp12(&c, f);
+            1
+        }
+        (CutKind::Highpass, 3) => {
+            s[0] = wingcoef::hp6(&c, f);
+            s[1] = wingcoef::hp12_bilinear(&c, f, 1.0);
+            2
+        }
+        (CutKind::Highpass, _) => {
+            s[0] = wingcoef::hp12_bilinear(&c, f, f32::from_bits(0x3f0a8bd4));
+            s[1] = wingcoef::hp12_bilinear(&c, f, f32::from_bits(0x3fa73d75));
+            2
+        }
+        (CutKind::Lowpass, 1) => {
+            s[0] = wingcoef::lp6(&c, f);
+            1
+        }
+        (CutKind::Lowpass, _) => {
+            s[0] = wingcoef::lp12(&c, f, core::f32::consts::FRAC_1_SQRT_2);
+            1
+        }
+    };
+    (s, n)
+}
+
+fn cut_sections(kind: CutKind, order: usize, f: f32, fs: f64) -> Sections {
+    let (s, n) = wing_cut(kind, order, f, fs);
+    let mut coeffs = [Coeffs::IDENTITY; 4];
+    for (c, b) in coeffs.iter_mut().zip(&s[..n]) {
+        *c = Coeffs {
+            b0: b[0] as f64,
+            b1: b[1] as f64,
+            b2: b[2] as f64,
+            a1: b[3] as f64,
+            a2: b[4] as f64,
+        };
+    }
+    Sections { coeffs, len: n }
+}
+
 /// One stereo cut (LC or HC) with smoothed cutoff and on/off crossfade.
 struct Cut {
     kind: CutKind,
     order: usize,
     on: bool,
+    /// Exact target cutoff (designs use it once the glide settles).
+    freq: f32,
     stages: [Cascade; 2],
     log2_f: OnePoleSmoother,
     mix: OnePoleSmoother,
@@ -114,6 +172,7 @@ impl Cut {
             kind,
             order: 2,
             on: false,
+            freq: 1000.0,
             stages: [Cascade::default(); 2],
             log2_f: OnePoleSmoother::new(10.0, FREQ_TAU_S, 48_000.0),
             mix: OnePoleSmoother::new(0.0, MIX_TAU_S, 48_000.0),
@@ -122,14 +181,19 @@ impl Cut {
     }
 
     fn design(&mut self, fs: f64) {
-        let f = 2f64.powf(self.log2_f.value() as f64);
-        let s = butterworth(self.kind, fs, f, self.order);
+        let f = if self.log2_f.is_settled(1e-6) {
+            self.freq
+        } else {
+            2f64.powf(self.log2_f.value() as f64) as f32
+        };
+        let s = cut_sections(self.kind, self.order, f, fs);
         for c in &mut self.stages {
             c.set_sections(&s);
         }
     }
 
     fn set(&mut self, on: bool, freq: f32, order: usize, fs: f64) {
+        self.freq = freq;
         self.log2_f.set_target(freq.log2());
         self.mix.set_target(if on { 1.0 } else { 0.0 });
         let order_changed = order != self.order;
@@ -260,29 +324,24 @@ impl FilterBlock {
 
     /// Analytic magnitude (dB) of the block at `f` Hz for the current target parameters (UI curves, tests).
     pub fn magnitude_db(&self, f: f64) -> f64 {
+        let (s, n) = self.wing_sections();
+        wingcoef::response(self.fs, &s[..n], f).db()
+    }
+
+    /// The four `Cchfilter` biquads WING-Edit computes (LC, LC, HC, filter tool = identity here) as
+    /// `[b0, b1, b2, a1, a2]`; switched-off cuts are identity.
+    pub fn wing_sections(&self) -> ([Bq; 4], usize) {
         let p = &self.params;
-        let mut db = 0.0;
+        let mut out = [wingcoef::IDENTITY; 4];
         if p.lc_on {
-            db += butterworth(
-                CutKind::Highpass,
-                self.fs,
-                p.lc_freq as f64,
-                p.lc_slope.order(),
-            )
-            .response(self.fs, f)
-            .db();
+            let (s, n) = wing_cut(CutKind::Highpass, p.lc_slope.order(), p.lc_freq, self.fs);
+            out[..n].copy_from_slice(&s[..n]);
         }
         if p.hc_on {
-            db += butterworth(
-                CutKind::Lowpass,
-                self.fs,
-                p.hc_freq as f64,
-                p.hc_slope.order(),
-            )
-            .response(self.fs, f)
-            .db();
+            let (s, _) = wing_cut(CutKind::Lowpass, p.hc_slope.order(), p.hc_freq, self.fs);
+            out[2] = s[0];
         }
-        db
+        (out, 4)
     }
 }
 
@@ -348,7 +407,13 @@ mod tests {
                         (got - want).abs() < 0.1,
                         "LC {fc} Hz order {order} at {f:.1} Hz: got {got:.3} want {want:.3}"
                     );
-                    assert!((b.magnitude_db(f) - want).abs() < 1e-6);
+                    // f32 coefficients: sub-audio points of a 20 Hz cut are rounding-sensitive.
+                    if f >= 20.0 {
+                        assert!(
+                            (b.magnitude_db(f) - want).abs() < 0.05,
+                            "LC = bilinear Butterworth: {fc} {order} {f}"
+                        );
+                    }
                 }
                 let at_fc = dtft(&h, 2.0 * PI * fc / FS).db();
                 assert!((at_fc + 3.0103).abs() < 0.02, "-3 dB at fc: {at_fc}");
@@ -369,8 +434,10 @@ mod tests {
                 });
                 b.prepare(FS, 64);
                 let h = impulse_response(&mut b, 48_000);
+                // WING HC is analog-matched (Massberg): processed = analytic WING design; -3 dB at fc and
+                // Butterworth-like well below Nyquist.
                 for f in freqs() {
-                    let want = analytic_db(CutKind::Lowpass, fc, order, f);
+                    let want = b.magnitude_db(f);
                     if want < -60.0 {
                         continue;
                     }
@@ -379,6 +446,15 @@ mod tests {
                         (got - want).abs() < 0.1,
                         "HC {fc} Hz order {order} at {f:.1} Hz: got {got:.3} want {want:.3}"
                     );
+                    if f < 2000.0 && fc <= 1000.0 {
+                        let bw = analytic_db(CutKind::Lowpass, fc, order, f);
+                        if bw > -40.0 {
+                            assert!((want - bw).abs() < 0.3, "Butterworth-like at {f}");
+                        }
+                    }
+                }
+                if fc < 20_000.0 {
+                    assert!((b.magnitude_db(fc) + 3.01).abs() < 0.05, "-3 dB at fc");
                 }
             }
         }
@@ -403,8 +479,12 @@ mod tests {
         b.prepare(FS, 64);
         let h = impulse_response(&mut b, 48_000);
         for f in freqs() {
-            let want = analytic_db(CutKind::Highpass, 80.0, 4, f)
+            let want = b.magnitude_db(f);
+            let bw = analytic_db(CutKind::Highpass, 80.0, 4, f)
                 + analytic_db(CutKind::Lowpass, 8000.0, 2, f);
+            if f < 4000.0 && bw > -40.0 {
+                assert!((want - bw).abs() < 0.1);
+            }
             if want < -60.0 {
                 continue;
             }

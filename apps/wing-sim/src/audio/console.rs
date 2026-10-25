@@ -1,46 +1,33 @@
 //! The console processing graph run by the daemon, and [`Console`]: engine + parameter pipeline
 //! + host-bridge feeds, processed one engine block at a time.
 //!
+//! The graph is the T036 mix graph ([`wing_engine::mix::build_mix_graph`]):
+//!
 //! ```text
 //! USB In 1..48 (externals) ─┐
-//! oscillators ──────────────┴─ input router (T024) ── 40 ch + 8 aux strips (T035, pre-fader)
-//!                                                       │  (PRE taps → USB-out router)
-//!                                                       ▼
-//!                       provisional main 1 sum (fader, mute, pan, main/1 send; main/1 fader)
-//!                                                       │  (MAIN.1/2 taps → USB-out router)
-//!                                                       ▼
-//!                              USB-out router (output patch) → USB Out 1..48 → driver
-//! host bridges read any of: main/1 (mon/1..2 = main/1 until T038), usb_out/n.
+//! oscillators ──────────────┴─ input router (T024, re-inputs one block late)
+//!   ── 40 ch + 8 aux strips (T035 + fader/pan/sends) ── 16 busses (tiers) ── 4 mains ── 8 mtx
+//!   ── USB-out router (output patch, every BUS/MAIN/MTX leg and user-signal tap) → driver
+//! host bridges read any of: main/1..4, bus/1..16, matrix/1..8, mon/1..2 (= main/1 until
+//! T038), usb_out/n.
 //! ```
 //!
-//! Meters (T039, when [`ConsoleConfig::meters`] is set): the strips write their IN/PFL/key/GR
-//! cells, the provisional main writes every strip's post-fader level, main 1 in/out and the
-//! `$MAIN` 1/2 source legs, and [`Console::cycle`] meters USB In 1..48, the oscillators and
-//! USB Out 1..48 after the cycle (see `wing_engine::meters`).
+//! Bus/main/matrix strip processing (EQ, dynamics, inserts, delay) is T037; the strips sum, fade
+//! and pan only.
 //!
-//! TODO(T036): the provisional main sum is a stand-in for busses/mains/matrices, sends and the
-//! proper WING pan law. It sums every input strip post-fader into main 1 when the strip's
-//! `main/1/on` is set (at `main/1/lvl`), with a linear balance pan, then applies `main/1`
-//! fader/mute/pan. Everything else (busses, main 2-4, matrices, `wid`, `pre`) is ignored.
+//! Meters (T039, when [`ConsoleConfig::meters`] is set): the input strips write their IN/PFL/key/GR
+//! cells while processing, and [`Console::cycle`] meters the mix graph's ports after each cycle
+//! (strip outs, bus/main/matrix in/out, USB In/Out, oscillators, mix-output sources; see
+//! `wing_engine::meters::PortMeters::for_mix`).
 
 use std::sync::Arc;
 use std::time::Instant;
 
-use wing_engine::channel::{bind_aux_strip, bind_channel_strip, ChannelStrip};
-use wing_engine::meters::{
-    abs_max, output_cell, source_cell, strip_cell, word, LevelBank, PortMeters, StripMeter,
-};
-use wing_engine::params::{
-    BindError, BlockLayout, ParamMap, ParamMapBuilder, ParamMsg, ParamPipeline, PipelineConfig,
-};
-use wing_engine::routing::{
-    add_input_stage, add_usb_output, InputRouter, IoNodes, MixGroup, OutAddr, OutGroup,
-    RoutingControl, Side, SourceAddr, SrcGroup, Strip, StripPoint, Tap as RTap, TapPorts, NO_TAPS,
-    USB_CHANNELS,
-};
-use wing_engine::{
-    Engine, EngineConfig, GraphBuilder, NodeId, NodeIo, Port, ProcessCtx, Processor, RawWorkgroup,
-};
+use wing_engine::meters::{LevelBank, PortMeters};
+use wing_engine::mix::{build_mix_graph, MixConfig, MixNodes};
+use wing_engine::params::{ParamMap, ParamPipeline, PipelineConfig};
+use wing_engine::routing::{RoutingControl, Side, Strip, USB_CHANNELS};
+use wing_engine::{Engine, EngineConfig, Port, RawWorkgroup};
 use wing_hostio::{BridgeProducer, Tap, TapChannel};
 use wing_model::ParamStore;
 
@@ -51,10 +38,6 @@ pub const CHANNELS: usize = 40;
 pub const AUXES: usize = 8;
 /// Input strips (ch 1..40 then aux 1..8, the input router's strip order).
 pub const STRIPS: usize = CHANNELS + AUXES;
-/// Block index of `main/1` on the provisional mix node.
-const MAIN_BLOCK: u8 = STRIPS as u8;
-/// Fader value meaning -oo.
-const FADER_MIN_DB: f32 = -144.0;
 
 /// Engine configuration for the console.
 #[derive(Debug, Clone)]
@@ -87,329 +70,56 @@ impl Default for ConsoleConfig {
     }
 }
 
-/// Graph node ids of the console.
-#[derive(Debug, Clone, Copy)]
+/// Graph node ids of the console (the mix graph's nodes).
+#[derive(Debug, Clone)]
 pub struct ConsoleNodes {
-    pub io: IoNodes,
-    /// Strip `i` (ch 1..40 = 0..39, aux 1..8 = 40..47).
-    pub strips: [NodeId; STRIPS],
-    /// Provisional main 1 sum (2 outputs).
-    pub main: NodeId,
+    pub mix: MixNodes,
     /// USB output router (48 outputs = driver USB Out 1..48).
-    pub usb_out: NodeId,
+    pub usb_out: wing_engine::NodeId,
 }
 
 impl ConsoleNodes {
     /// Engine port carrying a host-bridge tap lane, `None` = silence (not modelled yet).
     pub fn tap_port(&self, t: TapChannel) -> Option<Port> {
-        let side = t.lane.checked_sub(1)? as u32;
-        match t.tap {
+        let strip = match t.tap {
+            Tap::UsbOut if (1..=USB_CHANNELS as u16).contains(&t.lane) => {
+                return Some(Port::node(self.usb_out, t.lane as u32 - 1));
+            }
+            Tap::UsbOut | Tap::LocalOut => return None,
             // TODO(T038): monitor section; until then both monitors follow main 1.
-            Tap::Main(1) | Tap::Monitor(_) if side < 2 => Some(Port::node(self.main, side)),
-            Tap::UsbOut if (side as usize) < USB_CHANNELS => Some(Port::node(self.usb_out, side)),
-            _ => None,
-        }
-    }
-}
-
-// ---- provisional main sum ---------------------------------------------------------------------
-
-/// `ch/N`, `aux/N`, `main/1`: fader, mute, pan.
-const STRIP_MIX_LAYOUT: BlockLayout = BlockLayout {
-    params: &[("fdr", 0), ("mute", 1), ("pan", 2)],
-    targets: &[],
-};
-/// `ch/N/main/1`, `aux/N/main/1`: send on/level.
-const MAIN_SEND_LAYOUT: BlockLayout = BlockLayout {
-    params: &[("on", 3), ("lvl", 4)],
-    targets: &[],
-};
-
-fn fader_lin(db: f32) -> f32 {
-    if db <= FADER_MIN_DB {
-        0.0
-    } else {
-        10f32.powf(db / 20.0)
-    }
-}
-
-/// Linear balance pan, unity at centre (provisional, T036 owns the WING pan law).
-fn balance(pan: f32) -> (f32, f32) {
-    let p = pan.clamp(-100.0, 100.0) / 100.0;
-    ((1.0 - p).min(1.0), (1.0 + p).min(1.0))
-}
-
-/// Fader/mute/pan(/send) state of one strip, as a per-side gain ramped linearly over a block.
-#[derive(Clone, Copy, Debug)]
-struct MixGain {
-    fdr_db: f32,
-    mute: bool,
-    pan: f32,
-    on: bool,
-    lvl_db: f32,
-    cur: [f32; 2],
-    target: [f32; 2],
-    /// Post-fader gain per side without the send (fader, mute, pan), for the strip out meter.
-    meter: [f32; 2],
-}
-
-impl MixGain {
-    const fn new() -> Self {
-        Self {
-            fdr_db: FADER_MIN_DB,
-            mute: false,
-            pan: 0.0,
-            on: true,
-            lvl_db: 0.0,
-            cur: [0.0; 2],
-            target: [0.0; 2],
-            meter: [0.0; 2],
-        }
-    }
-
-    fn set(&mut self, param: u16, v: f32) {
-        match param {
-            0 => self.fdr_db = v,
-            1 => self.mute = v >= 0.5,
-            2 => self.pan = v,
-            3 => self.on = v >= 0.5,
-            4 => self.lvl_db = v,
-            _ => return,
-        }
-        let post = if self.mute {
-            0.0
-        } else {
-            fader_lin(self.fdr_db)
+            Tap::Monitor(_) => Strip::Main(1),
+            Tap::Main(n) => Strip::Main(n),
+            Tap::Bus(n) => Strip::Bus(n),
+            Tap::Matrix(n) => Strip::Mtx(n),
         };
-        let g = if self.on {
-            post * fader_lin(self.lvl_db)
-        } else {
-            0.0
+        let side = match t.lane {
+            1 => Side::L,
+            2 => Side::R,
+            _ => return None,
         };
-        let (l, r) = balance(self.pan);
-        self.target = [g * l, g * r];
-        self.meter = [post * l, post * r];
-    }
-
-    fn silent(&self) -> bool {
-        self.cur == [0.0; 2] && self.target == [0.0; 2]
-    }
-
-    /// `out[s] += x[s] * gain[s]` ramping from `cur` to `target` over the block.
-    #[inline]
-    fn accumulate(&mut self, side: usize, x: &[f32], out: &mut [f32]) {
-        let (a, b) = (self.cur[side], self.target[side]);
-        if a == b {
-            for (o, &v) in out.iter_mut().zip(x) {
-                *o += v * a;
-            }
-        } else {
-            let step = (b - a) / x.len().max(1) as f32;
-            for (k, (o, &v)) in out.iter_mut().zip(x).enumerate() {
-                *o += v * (a + step * (k + 1) as f32);
-            }
-        }
-    }
-
-    #[inline]
-    fn apply(&mut self, side: usize, io: &mut [f32]) {
-        let (a, b) = (self.cur[side], self.target[side]);
-        if a == b {
-            if a != 1.0 {
-                io.iter_mut().for_each(|v| *v *= a);
-            }
-        } else {
-            let step = (b - a) / io.len().max(1) as f32;
-            for (k, v) in io.iter_mut().enumerate() {
-                *v *= a + step * (k + 1) as f32;
-            }
-        }
-    }
-
-    fn advance(&mut self) {
-        self.cur = self.target;
-    }
-}
-
-/// Provisional main 1: inputs = 48 strips x (L, R), outputs = main 1 L/R. RT-safe.
-pub struct ProvisionalMain {
-    strips: [MixGain; STRIPS],
-    main: MixGain,
-    meters: Option<Arc<LevelBank>>,
-    /// Cells of `$MAIN` 1/2 (main 1 L/R as a source).
-    main_src: [usize; 2],
-}
-
-impl Default for ProvisionalMain {
-    fn default() -> Self {
-        let mut main = MixGain::new();
-        main.on = true;
-        let src = |n| SourceAddr::new(SrcGroup::Main, n).map_or(usize::MAX, source_cell);
-        Self {
-            strips: [MixGain::new(); STRIPS],
-            main,
-            meters: None,
-            main_src: [src(1), src(2)],
-        }
-    }
-}
-
-impl ProvisionalMain {
-    /// Meter into `bank`: every input strip's post-fader out, main 1 in/pre/out and `$MAIN` 1/2.
-    pub fn with_meters(mut self, bank: Option<Arc<LevelBank>>) -> Self {
-        self.meters = bank;
-        self
-    }
-}
-
-/// Main 1's flat strip index.
-const MAIN1_STRIP: usize = 64;
-
-impl Processor for ProvisionalMain {
-    fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
-        let ins = io.inputs();
-        let b = io.block_size();
-        let out = io.outputs();
-        let (l, rest) = out.split_at_mut(b);
-        let r = &mut rest[..b];
-        l.fill(0.0);
-        r.fill(0.0);
-        for (i, g) in self.strips.iter_mut().enumerate() {
-            if 2 * i + 1 >= ins.len() {
-                continue;
-            }
-            if let Some(m) = &self.meters {
-                // post-fader out = input (PFL) peak x fader/mute/pan gain
-                for side in 0..2 {
-                    if g.meter[side] != 0.0 {
-                        let v = abs_max(ins.get(2 * i + side)) * g.meter[side];
-                        m.peak(strip_cell(i, word::OUT_L + side), v);
-                    }
-                }
-            }
-            if g.silent() {
-                continue;
-            }
-            g.accumulate(0, ins.get(2 * i), l);
-            g.accumulate(1, ins.get(2 * i + 1), r);
-            g.advance();
-        }
-        if let Some(m) = &self.meters {
-            let (pl, pr) = (abs_max(l), abs_max(r));
-            for (w, v) in [
-                (word::IN_L, pl),
-                (word::IN_R, pr),
-                (word::PRE_L, pl),
-                (word::PRE_R, pr),
-            ] {
-                m.peak(strip_cell(MAIN1_STRIP, w), v);
-            }
-        }
-        self.main.apply(0, l);
-        self.main.apply(1, r);
-        self.main.advance();
-        if let Some(m) = &self.meters {
-            let (ol, or) = (abs_max(l), abs_max(r));
-            m.peak(strip_cell(MAIN1_STRIP, word::OUT_L), ol);
-            m.peak(strip_cell(MAIN1_STRIP, word::OUT_R), or);
-            m.peak(self.main_src[0], ol);
-            m.peak(self.main_src[1], or);
-        }
-    }
-
-    fn set_param(&mut self, msg: &ParamMsg) {
-        if let ParamMsg::Set {
-            block,
-            param,
-            value,
-        } = *msg
-        {
-            if block == MAIN_BLOCK {
-                self.main.set(param, value);
-            } else if let Some(g) = self.strips.get_mut(block as usize) {
-                g.set(param, value);
-            }
-        }
+        strip.index()?;
+        self.mix.post(strip, side)
     }
 }
 
 // ---- graph ------------------------------------------------------------------------------------
 
-/// Build the console graph. Deterministic: the same `routing` gives the same node ids, so a
-/// [`ParamMap`] / [`ParamPipeline`] built for one instance is valid for a rebuild (sample-rate
-/// change). Allocates (control thread).
+/// Build the console graph and its parameter map. Deterministic node ids: a [`ParamMap`] /
+/// [`ParamPipeline`] built for one instance stays valid for a rebuild (sample-rate change).
+/// Allocates (control thread).
 pub fn build_engine(
     cfg: &ConsoleConfig,
+    store: &ParamStore,
     routing: &mut RoutingControl,
-) -> Result<(Engine, ConsoleNodes), String> {
-    let fs = cfg.sample_rate as f64;
-    let mut g = GraphBuilder::new(cfg.block, cfg.sample_rate as f32, USB_CHANNELS as u32);
-    let e = |e: wing_engine::GraphError| format!("console graph: {e:?}");
-    let io = add_input_stage(&mut g, routing).map_err(e)?;
-    let mut strips = [NodeId(0); STRIPS];
-    for (i, s) in strips.iter_mut().enumerate() {
-        let (name, mut proc_) = if i < CHANNELS {
-            (format!("ch{}", i + 1), ChannelStrip::channel(fs, cfg.block))
-        } else {
-            (
-                format!("aux{}", i - CHANNELS + 1),
-                ChannelStrip::aux(fs, cfg.block),
-            )
-        };
-        // strip i = ch 1..40 then aux 1..8 = the meters' flat strip index
-        proc_.set_meter(cfg.meters.clone().map(|b| StripMeter::at(b, i)));
-        let ins = [
-            InputRouter::port(io.inputs, i, 0),
-            InputRouter::port(io.inputs, i, 1),
-        ];
-        *s = g.add_node(name, 2, &ins, proc_).map_err(e)?;
-    }
-    let mix_in: Vec<Port> = strips
-        .iter()
-        .flat_map(|&n| [Port::node(n, 0), Port::node(n, 1)])
-        .collect();
-    let main = g
-        .add_node(
-            "main1-provisional",
-            2,
-            &mix_in,
-            ProvisionalMain::default().with_meters(cfg.meters.clone()),
-        )
-        .map_err(e)?;
-    let mut taps: TapPorts = NO_TAPS;
-    let mut wire = |t: RTap, p: Port| {
-        if let Some(id) = t.id() {
-            taps[id.0 as usize] = Some(p);
-        }
+) -> Result<(Engine, ConsoleNodes, ParamMap), String> {
+    let mix_cfg = MixConfig {
+        block_size: cfg.block,
+        sample_rate: cfg.sample_rate as f32,
+        meters: cfg.meters.clone(),
+        ..MixConfig::default()
     };
-    for leg in 1..=2u16 {
-        wire(
-            RTap::Mix {
-                grp: MixGroup::Main,
-                leg,
-            },
-            Port::node(main, leg as u32 - 1),
-        );
-    }
-    for (i, &n) in strips.iter().enumerate() {
-        let strip = if i < CHANNELS {
-            Strip::Ch(i as u8 + 1)
-        } else {
-            Strip::Aux((i - CHANNELS) as u8 + 1)
-        };
-        for (k, side) in [Side::L, Side::R].into_iter().enumerate() {
-            wire(
-                RTap::Strip {
-                    strip,
-                    point: StripPoint::PreFader,
-                    side,
-                },
-                Port::node(n, k as u32),
-            );
-        }
-    }
-    let usb_out = add_usb_output(&mut g, routing, io.osc, &taps).map_err(e)?;
-    let graph = g.build().map_err(e)?;
+    let mg = build_mix_graph(store, routing, mix_cfg).map_err(|e| format!("mix graph: {e}"))?;
+    let (graph, map, mix) = mg.finish().map_err(|e| format!("console graph: {e:?}"))?;
     let engine = Engine::new(
         graph,
         EngineConfig {
@@ -419,39 +129,8 @@ pub fn build_engine(
             ..EngineConfig::default()
         },
     );
-    Ok((
-        engine,
-        ConsoleNodes {
-            io,
-            strips,
-            main,
-            usb_out,
-        },
-    ))
-}
-
-/// Bind the console's parameters (strips via T035, provisional mix) for the pipeline.
-pub fn build_param_map(nodes: &ConsoleNodes) -> Result<ParamMap, BindError> {
-    let mut b = ParamMapBuilder::new();
-    for (i, &n) in nodes.strips.iter().enumerate() {
-        let path = if i < CHANNELS {
-            bind_channel_strip(&mut b, i as u32 + 1, n)?;
-            format!("ch/{}", i + 1)
-        } else {
-            let k = (i - CHANNELS) as u32 + 1;
-            bind_aux_strip(&mut b, k, n)?;
-            format!("aux/{k}")
-        };
-        b.bind_block(&path, nodes.main, i as u8, &STRIP_MIX_LAYOUT)?;
-        b.bind_block(
-            &format!("{path}/main/1"),
-            nodes.main,
-            i as u8,
-            &MAIN_SEND_LAYOUT,
-        )?;
-    }
-    b.bind_block("main/1", nodes.main, MAIN_BLOCK, &STRIP_MIX_LAYOUT)?;
-    Ok(b.build())
+    let usb_out = mix.usb_out;
+    Ok((engine, ConsoleNodes { mix, usb_out }, map))
 }
 
 // ---- console ----------------------------------------------------------------------------------
@@ -475,25 +154,6 @@ pub struct Console {
     cfg: ConsoleConfig,
 }
 
-/// Ports metered after each cycle: USB In 1..48 and OSC 1/2 (sources), USB Out 1..48 (outputs).
-pub fn port_meters(bank: Arc<LevelBank>, nodes: &ConsoleNodes) -> PortMeters {
-    let mut e = Vec::with_capacity(2 * USB_CHANNELS + 2);
-    for k in 0..USB_CHANNELS {
-        if let Some(a) = SourceAddr::new(SrcGroup::Usb, k as u16 + 1) {
-            e.push((Port::External(k as u32), source_cell(a)));
-        }
-        if let Some(a) = OutAddr::new(OutGroup::Usb, k as u16 + 1) {
-            e.push((Port::node(nodes.usb_out, k as u32), output_cell(a)));
-        }
-    }
-    for k in 0..2u16 {
-        if let Some(a) = SourceAddr::new(SrcGroup::Osc, k + 1) {
-            e.push((Port::node(nodes.io.osc, k as u32), source_cell(a)));
-        }
-    }
-    PortMeters::new(bank, e)
-}
-
 impl Console {
     /// Build the console for `cfg`. `pipeline`: reuse one from a previous instance (rebuild), or
     /// `None` to take `store`'s RT consumer (only possible once per store). Pushes the store's
@@ -506,17 +166,13 @@ impl Console {
         bridges: Vec<super::hostio::Feed>,
         stats: Arc<AudioStats>,
     ) -> Result<Self, String> {
-        let (mut engine, nodes) = build_engine(&cfg, routing)?;
+        let (mut engine, nodes, map) = build_engine(&cfg, store, routing)?;
         let mut pipeline = match pipeline {
             Some(p) => p,
-            None => {
-                let map = build_param_map(&nodes).map_err(|e| format!("param map: {e:?}"))?;
-                ParamPipeline::new(store, map, PipelineConfig::default())
-                    .map_err(|e| e.to_string())?
-            }
+            None => ParamPipeline::new(store, map, PipelineConfig::default())
+                .map_err(|e| e.to_string())?,
         };
         pipeline.sync_all(store, &mut engine);
-        // Mix gains start at 0 and ramp to the store state over the first block (fade-in).
         let feeds = bridges
             .into_iter()
             .map(|(producer, taps)| BridgeFeed {
@@ -525,7 +181,10 @@ impl Console {
             })
             .collect();
         stats.set_period_ns((cfg.block as f64 * 1e9 / cfg.sample_rate as f64) as u64);
-        let port_meters = cfg.meters.clone().map(|b| port_meters(b, &nodes));
+        let port_meters = cfg
+            .meters
+            .clone()
+            .map(|b| PortMeters::for_mix(b, &nodes.mix));
         Ok(Self {
             engine,
             pipeline,
@@ -579,8 +238,8 @@ impl Console {
     }
 
     /// One engine cycle: apply queued parameter changes, fill USB In 1..48 with `input(ch, buf)`,
-    /// process, meter the ports, hand USB Out 1..48 to `output(ch, buf)`, feed the host bridges,
-    /// publish telemetry and record the cycle time. RT-safe (no allocation, locks or syscalls).
+    /// process, meter the ports, hand USB Out 1..48 to `output(ch, buf)`, feed the host bridges, publish
+    /// telemetry and record the cycle time. RT-safe (no allocation, locks or syscalls).
     #[inline]
     pub fn cycle(
         &mut self,

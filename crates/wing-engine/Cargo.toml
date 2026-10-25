@@ -34,3 +34,7 @@ harness = false
 [[bench]]
 name = "meters"
 harness = false
+
+[[bench]]
+name = "mix"
+harness = false

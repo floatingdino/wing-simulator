@@ -43,3 +43,18 @@ Feed real meters (inputs, strip taps, GR, busses, mains) to WING-Edit at protoco
   - Proposed follow-ups: confirm GR word scale/sign, LED semantics and real-console ballistics against a
     WING capture; T036 to call `StripMeter` for bus/main/mtx and add mix-output ports to `PortMeters`
     (and replace ProvisionalMain's metering); meter non-USB output groups if they become rendered.
+- 2026-10-25 agent-T039: merged main (T036 mix graph, T03C, T04x) into task/T039; status review.
+  - Conflicts: crates/wing-engine/{Cargo.toml, src/lib.rs} (kept both meters + mix), apps/wing-sim/src/audio/console.rs
+    (took main's T036 version; ProvisionalMain metering dropped, re-applied metering on the mix graph).
+  - Mix-graph meters: `MixConfig::meters` attaches each input ChannelStrip's `StripMeter` in `build_mix_graph`;
+    `PortMeters::for_mix` (wing_engine::meters) meters after each cycle: ch/aux OUT = AFL (post mute/fader, pre
+    pan, so a centred mono channel reads its fader level, not the -3 dB pan law) [choice]; bus 1-16 / main 1-4
+    / mtx 1-8 IN (= PRE word) = PFL port (the sum; post T037 hook once it exists), OUT = POST; source legs
+    `$BUS` 1-32, `$MAIN` 1-8, `$MTX` 1-16 (POST ports), USB In 1-48, OSC 1/2; outputs USB Out 1-48. A port
+    feeding two cells is measured once.
+  - T037 hook: its `StripHook` should hold `StripMeter::new(bank, strip)` and write GATE_*/DYN_* (bus/main/mtx
+    gate/dyn words read 0 until then). Still not metered: USR sources, non-USB output groups (not rendered),
+    DCA/FX/RTA; monitor = main 1 out until T038.
+  - Tests: wing-sim `--test meters` now also checks bus 1 V2 in/out (-23.01 / -33.01 dB with -10 dB fader) and
+    `$BUS` 1/2; main/USB-out expectations follow T036's constant-power channel pan (-3.01 dB). `make check` passes.
+  - Overhead (release, 1 thread, ~360 metered ports + 48 strips): 2.4-3.1 us per 64-frame cycle (0.18-0.24%).

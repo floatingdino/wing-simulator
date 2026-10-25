@@ -25,10 +25,9 @@
 //!
 //! | WING meter | source |
 //! |---|---|
-//! | ch 1..40, aux 1..8 (V1/V2) | strip taps: in = tap IN, out = post fader/mute/pan, gate/dyn key + GR |
-//! | main 1 (V1/V2) | provisional main: in = sum, out = post main fader |
-//! | bus 1..16, main 2..4, mtx 1..8 | cells exist ([`wing_engine::meters`] hooks); silent until T036/T037 write them |
-//! | source groups (A7) | USB 1..48, OSC 1/2, $MAIN 1/2 live; LCL/AUX/AES50/SC/CRD/MOD/PLAY/AES carry silence in the simulator; USR, $BUS, $MTX silent until T036 |
+//! | ch 1..40, aux 1..8 (V1/V2) | strip taps: in = tap IN, out = AFL (post mute/fader, pre pan), gate/dyn key + GR |
+//! | bus 1..16, main 1..4, mtx 1..8 (V1/V2) | T036 mix graph ports: in = PFL (the sum; after the T037 hook once it exists), out = POST; gate/dyn words 0 until T037's hook writes its `StripMeter` |
+//! | source groups (A7) | USB 1..48, OSC 1/2, $BUS 1..32, $MAIN 1..8, $MTX 1..16 live; LCL/AUX/AES50/SC/CRD/MOD/PLAY/AES carry silence in the simulator; USR (user-signal taps) not metered yet |
 //! | output groups (A8) | USB 1..48 live; other groups are resolved by routing but not rendered: silent |
 //! | monitor (A9) | mon 1/2 = main 1 out (as the monitor taps until T038); solo silent |
 //! | dca, fx, rta | silent (not modelled: T038, T050, RTA) |

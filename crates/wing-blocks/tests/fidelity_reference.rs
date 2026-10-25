@@ -1,6 +1,7 @@
 //! T045 fidelity harness against the T00A reference curves (`data/reference-curves`). Each test skips (with a
-//! message) when its reference file is absent. Tolerances assert what the current standard models already
-//! meet; T03C calibrates the models and tightens them (see `KNOWN_GAPS` notes printed by each test).
+//! message) when its reference file is absent. T03C calibrated the standard models (exact WING-Edit designs and
+//! laws); these impulse-response/DC measurements now assert tight tolerances. The exact coefficient-level
+//! checks are in `t03c_fidelity.rs`.
 
 use wing_blocks::eq::{BandType, EqVariant};
 use wing_blocks::fidelity::{
@@ -79,22 +80,24 @@ fn channel_lc_hc_vs_wing_edit() {
         n += 1;
     }
     eprintln!("filter LC: worst {:.3} dB ({})", worst[0].0, worst[0].1);
-    eprintln!(
-        "filter HC (KNOWN GAP for T03C: WING HC is not a bilinear Butterworth near Nyquist): worst {:.3} dB ({})",
-        worst[1].0, worst[1].1
-    );
+    eprintln!("filter HC: worst {:.3} dB ({})", worst[1].0, worst[1].1);
     assert!(n > 30);
     assert!(
-        worst[0].0 < 0.1,
+        worst[0].0 < 0.02,
         "LC deviation {:.3} dB: {}",
         worst[0].0,
         worst[0].1
     );
-    assert!(worst[1].0.is_finite());
+    assert!(
+        worst[1].0 < 0.02,
+        "HC deviation {:.3} dB: {}",
+        worst[1].0,
+        worst[1].1
+    );
 }
 
-/// STD EQ: set the slots from the reference params and compare. Reported only (T03C calibrates the band
-/// prototypes); asserts that the harness runs and that the flat/near-flat cases match.
+/// STD EQ: set the slots from the reference params and compare (impulse response; the reference's near-identity
+/// 0 dB sections and the finite IR leave a few hundredths of a dB at 20 Hz).
 fn std_eq_report(file: &str, variant: EqVariant) {
     let Some(f) = load(file) else { return };
     let n_bands = variant.peak_bands();
@@ -147,7 +150,12 @@ fn std_eq_report(file: &str, variant: EqVariant) {
         devs[0].1
     );
     assert!(!devs.is_empty());
-    assert!(devs.iter().all(|d| d.0.is_finite()));
+    assert!(
+        devs[0].0 < 0.05,
+        "{file}: worst {:.3} dB ({})",
+        devs[0].0,
+        devs[0].1
+    );
 }
 
 #[test]
@@ -243,11 +251,21 @@ fn dyn_static_vs_wing_edit() {
         );
         summary.push((model, worst.0));
     }
-    // GATE matches WING-Edit's law exactly; COMP/EXP knee width and the EXP floor are T03C calibration items.
+    // GATE/COMP match WING-Edit's law to measurement precision; EXP's steep slopes (up to 1:100 below the
+    // threshold) amplify the detector's settling residue.
     assert!(
-        summary[0].1 < 0.1,
+        summary[0].1 < 0.02,
         "GATE static deviation {:.3} dB",
         summary[0].1
     );
-    assert!(summary.iter().all(|s| s.1.is_finite()));
+    assert!(
+        summary[1].1 < 0.02,
+        "COMP static deviation {:.3} dB",
+        summary[1].1
+    );
+    assert!(
+        summary[2].1 < 0.2,
+        "EXP static deviation {:.3} dB",
+        summary[2].1
+    );
 }

@@ -19,7 +19,7 @@
 //!
 //! Audio (T026, see `wing_sim::audio`): attaches to the Wing Simulator HAL driver's shared memory
 //! and runs the console on a real-time thread (USB In 1..48 -> routing -> 40 ch + 8 aux strips ->
-//! provisional main 1 -> output patch -> USB Out 1..48, plus host-device bridges). Without a
+//! busses, mains, matrices (T036) -> output patch -> USB Out 1..48, plus host-device bridges). Without a
 //! (compatible) driver it runs control-only and keeps retrying. `--hostio PATH` takes a
 //! wing-hostio TOML (see `crates/wing-hostio/hostio.example.toml`); by default main 1 plays on
 //! "Scarlett 2i4 USB" 1/2 when that device exists.

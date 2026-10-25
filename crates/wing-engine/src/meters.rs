@@ -4,10 +4,10 @@
 //! ```text
 //! RT (driver thread + engine workers)                      meter sender (20 Hz)
 //!   ChannelStrip: IN / PFL L+R, gate/dyn key + GR ─┐
-//!   mix node (main 1 today, T036 busses/mains/mtx):├─ fetch_max ─▶ LevelBank ─ take (swap 0) ─▶ dB,
-//!     strip post-fader out, mix in/out            │   (f32 bits)               ballistics, WING words
-//!   PortMeters (after the cycle): source legs,    ─┘
-//!     output legs (USB In/Out, oscillators, ...)
+//!   PortMeters (after the cycle, T036 mix graph): ├─ fetch_max ─▶ LevelBank ─ take (swap 0) ─▶ dB,
+//!     ch/aux post-fader (AFL) out, mix in/out,    │   (f32 bits)               ballistics, WING words
+//!     source legs (USB, OSC, $BUS/$MAIN/$MTX),    │
+//!     output legs (USB Out)                       ─┘
 //! ```
 //!
 //! * **What is measured**: the absolute peak of each block ([`abs_max`], vectorised integer max),
@@ -23,10 +23,11 @@
 //!   1..16, main 1..4, mtx 1..8, the [`Strip::index`] order), then [`SOURCE_COUNT`] source legs
 //!   ([`SourceAddr::index`]) and [`OUTPUT_COUNT`] output legs ([`OutAddr::index`]).
 //!
-//! Hooks for the mixing nodes (T036/T037): a bus/main/matrix processor holds a [`StripMeter`] for
-//! its strip (`StripMeter::new(bank, Strip::Bus(n))`) and calls `level(word::IN_L, ..)` etc. per
-//! block; its output legs as sources (`$BUS`, `$MAIN`, `$MTX`) are metered by adding their ports
-//! to [`PortMeters`]. Cells nobody writes read as silence.
+//! Mix graph (T036): [`PortMeters::for_mix`] meters every strip output, bus/main/matrix in/out
+//! and the mix-output source legs from the graph's ports. Hook for T037 (bus/main/matrix
+//! processing): the [`crate::mix::StripHook`] holds a [`StripMeter`] for its strip
+//! (`StripMeter::new(bank, Strip::Bus(n))`) and writes `GATE_*`/`DYN_*` (and, if it wants the
+//! pre-processing sum, `IN_*`) per block. Cells nobody writes read as silence.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::Relaxed};
 use std::sync::Arc;
@@ -231,26 +232,100 @@ impl StripMeter {
     }
 }
 
-/// Engine ports metered after each cycle (sources and outputs the graph exposes as ports).
+/// Engine ports metered after each cycle: each port's block peak goes to one or two cells (e.g. a
+/// main's POST port feeds both its strip OUT word and its `$MAIN` source leg).
 /// Built off the RT thread; [`PortMeters::capture`] is RT-safe.
 pub struct PortMeters {
     bank: Arc<LevelBank>,
-    entries: Box<[(Port, u32)]>,
+    /// (port, cells; `u32::MAX` = unused).
+    entries: Box<[(Port, [u32; 2])]>,
 }
 
+const NO_CELL: u32 = u32::MAX;
+
 impl PortMeters {
-    /// `entries`: (port, cell). Allocates.
+    /// `entries`: (port, cell). A port listed twice (up to two cells) is measured once.
+    /// Allocates.
     pub fn new(bank: Arc<LevelBank>, entries: Vec<(Port, usize)>) -> Self {
+        let mut out: Vec<(Port, [u32; 2])> = Vec::with_capacity(entries.len());
+        for (p, c) in entries {
+            if c >= CELLS {
+                continue;
+            }
+            match out.iter_mut().find(|(q, cs)| *q == p && cs[1] == NO_CELL) {
+                Some((_, cs)) => cs[1] = c as u32,
+                None => out.push((p, [c as u32, NO_CELL])),
+            }
+        }
         Self {
             bank,
-            entries: entries
-                .into_iter()
-                .filter(|&(_, c)| c < CELLS)
-                .map(|(p, c)| (p, c as u32))
-                .collect(),
+            entries: out.into_boxed_slice(),
         }
     }
 
+    /// Every meter the T036 mix graph exposes as ports:
+    /// * sources: USB In 1..48 (externals), OSC 1/2, `$BUS` 1..32, `$MAIN` 1..8, `$MTX` 1..16
+    ///   (the mix strips' POST legs);
+    /// * outputs: USB Out 1..48 (the only rendered output group);
+    /// * ch/aux OUT = AFL (post mute and fader, before width/pan: a centred mono channel reads
+    ///   its fader level, not the pan law's -3 dB) [choice];
+    /// * bus/main/matrix IN = PRE-word = PFL (the sum after the T037 strip hook; until T037 the
+    ///   plain sum), OUT = POST.
+    ///
+    /// The input strips' own words (IN, PFL, keys, GR) come from their [`StripMeter`]
+    /// ([`crate::mix::MixConfig::meters`]). Allocates.
+    pub fn for_mix(bank: Arc<LevelBank>, nodes: &crate::mix::MixNodes) -> Self {
+        use crate::mix::{InputSignal, MixSignal};
+        use crate::routing::{OutGroup, Side, SrcGroup, USB_CHANNELS};
+        let mut e = Vec::new();
+        for k in 0..USB_CHANNELS as u16 {
+            if let Some(a) = SourceAddr::new(SrcGroup::Usb, k + 1) {
+                e.push((Port::External(k as u32), source_cell(a)));
+            }
+            if let Some(a) = OutAddr::new(OutGroup::Usb, k + 1) {
+                e.push((Port::node(nodes.usb_out, k as u32), output_cell(a)));
+            }
+        }
+        for k in 0..2u16 {
+            if let Some(a) = SourceAddr::new(SrcGroup::Osc, k + 1) {
+                e.push((Port::node(nodes.io.osc, k as u32), source_cell(a)));
+            }
+        }
+        let sides = [(Side::L, 0usize), (Side::R, 1)];
+        for i in 0..nodes.inputs.len() {
+            for (side, k) in sides {
+                let p = nodes.input_port(i, InputSignal::Afl, side);
+                e.push((p, strip_cell(i, word::OUT_L + k)));
+            }
+        }
+        for si in 48..STRIP_COUNT {
+            let Some(strip) = Strip::from_index(si) else {
+                continue;
+            };
+            let (grp, n) = match strip {
+                Strip::Bus(n) => (SrcGroup::Bus, n),
+                Strip::Main(n) => (SrcGroup::Main, n),
+                Strip::Mtx(n) => (SrcGroup::Mtx, n),
+                _ => continue,
+            };
+            for (side, k) in sides {
+                if let Some(p) = nodes.mix_port(strip, MixSignal::Pfl, side) {
+                    e.push((p, strip_cell(si, word::IN_L + k)));
+                    e.push((p, strip_cell(si, word::PRE_L + k)));
+                }
+                if let Some(p) = nodes.mix_port(strip, MixSignal::Post, side) {
+                    e.push((p, strip_cell(si, word::OUT_L + k)));
+                    // mix-output legs 2n-1 / 2n = L / R of strip n
+                    if let Some(a) = SourceAddr::new(grp, 2 * n as u16 - 1 + k as u16) {
+                        e.push((p, source_cell(a)));
+                    }
+                }
+            }
+        }
+        Self::new(bank, e)
+    }
+
+    /// Ports measured per cycle.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -266,8 +341,12 @@ impl PortMeters {
     /// Measure every entry from the last cycle's buffers and count the cycle. RT-safe.
     #[inline]
     pub fn capture(&self, engine: &Engine) {
-        for &(p, c) in self.entries.iter() {
-            self.bank.peak(c as usize, abs_max(engine.port(p)));
+        for &(p, [c0, c1]) in self.entries.iter() {
+            let v = abs_max(engine.port(p));
+            self.bank.peak(c0 as usize, v);
+            if c1 != NO_CELL {
+                self.bank.peak(c1 as usize, v);
+            }
         }
         self.bank.tick();
     }

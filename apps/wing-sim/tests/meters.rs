@@ -1,9 +1,9 @@
-//! T039 real metering, end to end: console (strips, provisional main, port meters) -> level bank ->
+//! T039 real metering, end to end: console (strips, T036 mix-graph port meters) -> level bank ->
 //! `RealMeters` (ballistics, WING scaling) -> `MeterBank` -> UDP meter packets.
 //!
 //! * `sine_levels_reach_the_packets`: a known-level sine on USB In 1/3 reads within 0.5 dB in the
 //!   packets the meter streamer sends (loopback, ephemeral ports) at the taps WING-Edit requests:
-//!   ch 1 in/out (V1/V2), main 1 in/out, USB source group, USB output group.
+//!   ch 1 in/out (V1/V2), main 1 and bus 1 in/out, USB and $BUS source groups, USB output group.
 //! * `gain_reduction_meter_matches_strip_telemetry`: the dyn GR word equals the strip's telemetry GR.
 //! * `metering_overhead_per_cycle`: console cycle time with vs without metering (printed).
 //!
@@ -41,6 +41,8 @@ fn scene(store: &ParamStore) {
     for (p, v) in [
         ("ch/1/in/conn/grp", "USB"),
         ("ch/1/in/conn/in", "1"),
+        ("io/in/USB/1/mode", "M"),
+        ("io/in/USB/3/mode", "M"),
         ("io/in/USB/1/mute", "0"),
         ("io/in/USB/3/mute", "0"),
         ("ch/1/in/set/trim", "6"),
@@ -55,6 +57,11 @@ fn scene(store: &ParamStore) {
         ("io/out/USB/2/in", "2"),
         ("io/out/USB/3/grp", "USB"),
         ("io/out/USB/3/in", "3"),
+        ("ch/1/send/1/on", "1"),
+        ("ch/1/send/1/lvl", "0"),
+        ("ch/1/send/1/mode", "POST"),
+        ("bus/1/fdr", "-10"),
+        ("bus/1/mute", "0"),
     ] {
         set(store, p, v);
     }
@@ -135,6 +142,8 @@ fn sine_levels_reach_the_packets() {
         sel(MeterKind::Source, &[6]), // USB
         sel(MeterKind::Output, &[6]), // USB
         sel(MeterKind::Channel, &[0, 1]),
+        sel(MeterKind::BusV2, &[0]),
+        sel(MeterKind::Source, &[13]), // $BUS
     ];
     subs.apply(
         1,
@@ -201,23 +210,33 @@ fn sine_levels_reach_the_packets() {
     near(3, -20.0, "ch1 out R");
     assert_eq!(last[5], 0, "no gate GR");
     assert_eq!(last[8], 0, "no dyn GR");
-    // main 1 V2 (11 words at 11): in = out = -20 (send and main fader at 0 dB)
-    near(11, -20.0, "main in L");
-    near(13, -20.0, "main out L");
-    near(14, -20.0, "main out R");
+    // main 1 V2 (11 words at 11): ch 1 POST (constant-power pan, centre -3.01 dB) summed at
+    // 0 dB, main fader 0 dB, balance pan
+    near(11, -23.01, "main in L");
+    near(13, -23.01, "main out L");
+    near(14, -23.01, "main out R");
     // USB source group (48 legs at 22): USB 1 -20, USB 2 silent, USB 3 -14
     near(22, -20.0, "source USB.1");
     assert_eq!(last[23], i16::MIN, "source USB.2 silent");
     near(24, -13.98, "source USB.3");
     // USB output group (48 legs at 70): Out 1/2 = main, Out 3 = USB In 3
-    near(70, -20.0, "USB out 1");
-    near(71, -20.0, "USB out 2");
+    near(70, -23.01, "USB out 1");
+    near(71, -23.01, "USB out 2");
     near(72, -13.98, "USB out 3");
     assert_eq!(last[73], i16::MIN, "USB out 4 silent");
     // V1 ch 1 (8 words at 118), then ch 2 (silent)
     near(118, -14.0, "ch1 V1 in L");
     near(120, -20.0, "ch1 V1 out L");
     assert_eq!(last[126], i16::MIN, "ch2 in L silent");
+    // bus 1 V2 (at 134): POST send (-23.01) in, -10 dB fader out
+    near(134, -23.01, "bus1 in L");
+    near(135, -23.01, "bus1 in R");
+    near(136, -33.01, "bus1 out L");
+    near(137, -33.01, "bus1 out R");
+    // $BUS source group (32 legs at 145): legs 1/2 = bus 1 L/R, bus 2 silent
+    near(145, -33.01, "source $BUS.1");
+    near(146, -33.01, "source $BUS.2");
+    assert_eq!(last[147], i16::MIN, "source $BUS.3 silent");
 }
 
 #[test]
@@ -231,7 +250,7 @@ fn gain_reduction_meter_matches_strip_telemetry() {
     set(&store, "ch/1/dyn/ratio", "4");
     set(&store, "ch/1/dyn/on", "1");
     let mut rx = console.pipeline().telemetry_rx().unwrap();
-    let node = console.nodes().strips[0].0;
+    let node = console.nodes().mix.inputs[0].0;
     let mut rm = RealMeters::new(levels.clone());
     rm.set_release(f32::INFINITY);
     let bank = MeterBank::for_schema();

@@ -2,7 +2,7 @@
 id: T021
 title: HAL driver production build
 stage: S2
-status: blocked
+status: done
 owner: eng-agent
 depends: [T006, T020]
 branch: task/T021
@@ -91,3 +91,4 @@ Driver uses wing-shm, reports correct latency/safety offsets, sample rates 44.1/
     - Restrict the shm (it is still 0666, with no daemon uid handshake).
     - `gain_client`/`DaemonLink` should re-attach automatically when the driver recreates the segment
       (version or delay change). Today they must be restarted.
+- 2026-10-25 coordinator: v2 driver installed by user; driver/verify.sh ALL PASSED (scratch/verify-v2.log).
