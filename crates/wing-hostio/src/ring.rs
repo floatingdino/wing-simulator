@@ -130,14 +130,28 @@ impl RingProducer {
         let end = w + frames as u64;
         s.write.0.store(end, Ordering::Release);
         if now_ns != 0 {
-            let seq = s.stamp_seq.0.load(Ordering::Relaxed);
-            s.stamp_seq.0.store(seq + 1, Ordering::Relaxed);
-            fence(Ordering::Release);
-            s.stamp_ns.store(now_ns, Ordering::Relaxed);
-            s.stamp_end.store(end, Ordering::Relaxed);
-            s.stamp_seq.0.store(seq + 2, Ordering::Release);
+            self.publish_stamp(now_ns, end);
         }
         true
+    }
+
+    /// Publish `(now_ns, current write index)` as the producer timestamp without pushing
+    /// audio, e.g. once at the end of a burst of blocks pushed with `now_ns = 0`.
+    pub fn stamp(&mut self, now_ns: u64) {
+        if now_ns != 0 {
+            let end = self.shared.write.0.load(Ordering::Relaxed);
+            self.publish_stamp(now_ns, end);
+        }
+    }
+
+    fn publish_stamp(&self, now_ns: u64, end: u64) {
+        let s = &*self.shared;
+        let seq = s.stamp_seq.0.load(Ordering::Relaxed);
+        s.stamp_seq.0.store(seq + 1, Ordering::Relaxed);
+        fence(Ordering::Release);
+        s.stamp_ns.store(now_ns, Ordering::Relaxed);
+        s.stamp_end.store(end, Ordering::Relaxed);
+        s.stamp_seq.0.store(seq + 2, Ordering::Release);
     }
 
     /// Push a planar block given as one slice per channel.

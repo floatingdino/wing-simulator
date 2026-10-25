@@ -324,6 +324,11 @@ impl Supervisor {
 
         let mut consumer = self.consumer.take().expect("consumer present while closed");
         consumer.configure(info.sample_rate, info.buffer_frames.max(1) as usize);
+        // Output side of the end-to-end latency: device latency + safety offset + one buffer.
+        let out_frames = device::output_latency_frames(info.id) + info.buffer_frames;
+        consumer.stats().set_output_latency(Duration::from_secs_f64(
+            out_frames as f64 / info.sample_rate.max(1.0),
+        ));
         consumer.start();
         let ctx = Box::into_raw(Box::new(IoCtx {
             consumer,

@@ -213,13 +213,25 @@ fn offline_sine_through_channel_main_usb_out_and_bridge() {
     }
 
     // Host bridge got monitor A = main 1: render from the device side and check the level.
+    // Simulated clock: one block = 1.333 ms; the console stamps each block as a burst (T027).
     let mut t = 200 * BLOCK as u64;
     let bstats_ok = consumer.stats().clone();
+    let period = BLOCK as u64 * 1_000_000_000 / FS as u64;
+    let mut now = 1_000_000_000u64;
+    consumer.render(64, now, |_, _| {}); // flushes what the settle cycles pushed
+    let mut primed = false;
     let mut bridge_db = |console: &mut Console, t: &mut u64| {
         let mut dev: Vec<f32> = Vec::new();
-        for _ in 0..40 {
-            consumer.render(64, wing_hostio::host_time_ns(), |_frame, x| dev.push(x[0]));
+        // First call: a few bursts of headroom before the device starts pulling.
+        let skip = if primed { 0 } else { 6 };
+        primed = true;
+        for i in 0..40 + skip {
+            if i >= skip {
+                consumer.render(64, now, |_frame, x| dev.push(x[0]));
+            }
             run_sine(console, *t, 1);
+            now += period;
+            console.end_burst(now, BLOCK);
             *t += BLOCK as u64;
         }
         rms_db(&dev[dev.len() - 1024..]) - input_db
@@ -665,4 +677,42 @@ fn service_reports_incompatible_driver_then_reattaches_after_reinstall() {
     assert!(!drv2.daemon_alive());
     let log = lines.lock().unwrap().join("\n");
     assert!(log.contains("removed or recreated"), "{log}");
+}
+
+/// T027 startup priming: when the driver starts a new IO epoch (the DAW starts its device) the
+/// RT loop warms the console up on silence before the first buffer arrives, and does not touch
+/// the driver's rings doing so (no underruns, nothing written).
+#[test]
+fn rt_loop_warms_up_on_driver_start() {
+    use wing_sim::audio::driver::{rt_loop, RtShared, EPOCH_WARM_UP_CYCLES};
+    let Rig { store, mut routing } = rig();
+    let console = Console::build(
+        console_cfg(),
+        &store,
+        &mut routing,
+        None,
+        Vec::new(),
+        Arc::new(AudioStats::default()),
+    )
+    .unwrap();
+    let shm = TmpShm::new("warm");
+    let create = OpenOptions {
+        create: true,
+        ..Default::default()
+    };
+    let drv = DriverSim::new(Segment::open(&shm.0, &create).unwrap(), FS);
+    let link = DaemonLink::attach(&shm.0, &OpenOptions::default(), WakeMode::Auto).unwrap();
+    let shared = Arc::new(RtShared::default());
+    let s2 = shared.clone();
+    let h = std::thread::spawn(move || rt_loop(link, console, s2, false, None));
+    std::thread::sleep(Duration::from_millis(50));
+    drv.begin_epoch(FS); // DAW starts IO; no buffer written yet
+    std::thread::sleep(Duration::from_millis(100));
+    shared.stop.store(true, Relaxed);
+    let (_link, console, _) = h.join().unwrap();
+    assert_eq!(console.engine().cycle(), EPOCH_WARM_UP_CYCLES as u64);
+    assert_eq!(shared.frames.load(Relaxed), 0);
+    let hd = drv.segment().header();
+    assert_eq!(hd.from_daemon.underruns.load(Relaxed), 0);
+    assert_eq!(hd.from_daemon.write_time.load(Relaxed), 0);
 }
