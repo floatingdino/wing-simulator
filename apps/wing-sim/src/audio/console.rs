@@ -8,8 +8,9 @@
 //! oscillators ──────────────┴─ input router (T024, re-inputs one block late)
 //!   ── 40 ch + 8 aux strips (T035 + fader/pan/sends) ── 16 busses (tiers) ── 4 mains ── 8 mtx
 //!   ── USB-out router (output patch, every BUS/MAIN/MTX leg and user-signal tap) → driver
-//! host bridges read any of: main/1..4, bus/1..16, matrix/1..8, mon/1..2 (= main/1 until
-//! T038), usb_out/n.
+//!   ── monitor section (T038: solo busses with priority over cfg/mon/1|2 src)
+//! host bridges read any of: mon/1..2 (monitor A/B incl. solo), main/1..4, bus/1..16,
+//! matrix/1..8, usb_out/n.
 //! ```
 //!
 //! Bus/main/matrix strip processing (EQ, dynamics, inserts, delay) is T037; the strips sum, fade
@@ -26,12 +27,13 @@ use std::time::Instant;
 use wing_engine::meters::{LevelBank, PortMeters};
 use wing_engine::mix::{build_mix_graph, MixConfig, MixNodes};
 use wing_engine::params::{ParamMap, ParamPipeline, PipelineConfig};
-use wing_engine::routing::{RoutingControl, Side, Strip, USB_CHANNELS};
+use wing_engine::routing::{Side, Strip, USB_CHANNELS};
 use wing_engine::{Engine, EngineConfig, Port, RawWorkgroup};
 use wing_hostio::{BridgeProducer, Tap, TapChannel};
 use wing_model::ParamStore;
 
 use super::stats::AudioStats;
+use super::ConsoleControl;
 
 /// Input channels and aux channels.
 pub const CHANNELS: usize = 40;
@@ -86,8 +88,15 @@ impl ConsoleNodes {
                 return Some(Port::node(self.usb_out, t.lane as u32 - 1));
             }
             Tap::UsbOut | Tap::LocalOut => return None,
-            // TODO(T038): monitor section; until then both monitors follow main 1.
-            Tap::Monitor(_) => Strip::Main(1),
+            Tap::Monitor(m @ 1..=2) => {
+                let side = match t.lane {
+                    1 => Side::L,
+                    2 => Side::R,
+                    _ => return None,
+                };
+                return Some(self.mix.monitor_port(m as usize, side));
+            }
+            Tap::Monitor(_) => return None,
             Tap::Main(n) => Strip::Main(n),
             Tap::Bus(n) => Strip::Bus(n),
             Tap::Matrix(n) => Strip::Mtx(n),
@@ -110,15 +119,18 @@ impl ConsoleNodes {
 pub fn build_engine(
     cfg: &ConsoleConfig,
     store: &ParamStore,
-    routing: &mut RoutingControl,
+    ctl: &mut ConsoleControl,
 ) -> Result<(Engine, ConsoleNodes, ParamMap), String> {
     let mix_cfg = MixConfig {
         block_size: cfg.block,
         sample_rate: cfg.sample_rate as f32,
+        logic: Some(ctl.logic.shared()),
         meters: cfg.meters.clone(),
         ..MixConfig::default()
     };
-    let mg = build_mix_graph(store, routing, mix_cfg).map_err(|e| format!("mix graph: {e}"))?;
+    ctl.logic.refresh(store);
+    let mg =
+        build_mix_graph(store, &mut ctl.routing, mix_cfg).map_err(|e| format!("mix graph: {e}"))?;
     let (graph, map, mix) = mg.finish().map_err(|e| format!("console graph: {e:?}"))?;
     let engine = Engine::new(
         graph,
@@ -161,7 +173,7 @@ impl Console {
     pub fn build(
         cfg: ConsoleConfig,
         store: &ParamStore,
-        routing: &mut RoutingControl,
+        routing: &mut ConsoleControl,
         pipeline: Option<ParamPipeline>,
         bridges: Vec<super::hostio::Feed>,
         stats: Arc<AudioStats>,

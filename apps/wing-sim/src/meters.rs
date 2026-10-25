@@ -29,13 +29,15 @@
 //! | bus 1..16, main 1..4, mtx 1..8 (V1/V2) | T036 mix graph ports: in = PFL (the sum; after the T037 hook once it exists), out = POST; gate/dyn words 0 until T037's hook writes its `StripMeter` |
 //! | source groups (A7) | USB 1..48, OSC 1/2, $BUS 1..32, $MAIN 1..8, $MTX 1..16 live; LCL/AUX/AES50/SC/CRD/MOD/PLAY/AES carry silence in the simulator; USR (user-signal taps) not metered yet |
 //! | output groups (A8) | USB 1..48 live; other groups are resolved by routing but not rendered: silent |
-//! | monitor (A9) | mon 1/2 = main 1 out (as the monitor taps until T038); solo silent |
-//! | dca, fx, rta | silent (not modelled: T038, T050, RTA) |
+//! | monitor (A9) | T038 monitor section: solo bus L/R (louder of the two monitors' solo busses), mon 1/2 L/R outputs |
+//! | dca, fx, rta | silent (DCA meters not derived yet; FX: T050; RTA) |
 
 use std::sync::Arc;
 use std::time::Instant;
 
-use wing_engine::meters::{output_cell, source_cell, strip_cell, word, LevelBank, CELLS};
+use wing_engine::meters::{
+    output_cell, solo_cell, source_cell, strip_cell, word, LevelBank, CELLS,
+};
 use wing_engine::meters::{SOURCE_BASE, STRIP_WORDS};
 use wing_engine::routing::{OutAddr, OutGroup, SourceAddr, SrcGroup};
 use wing_model::ParamStore;
@@ -183,12 +185,22 @@ impl RealMeters {
                 bank.set(MeterKind::Output, g, k, v);
             }
         }
-        // monitor: solo L/R, mon1 L/R, mon2 L/R (monitors follow main 1 until T038)
-        let (ml, mr) = (
-            self.lvl(strip_cell(64, word::OUT_L)),
-            self.lvl(strip_cell(64, word::OUT_R)),
+        // monitor: solo L/R, mon1 L/R, mon2 L/R (T038 monitor node: solo busses, MON legs 1..4)
+        let mon = |leg: u16| {
+            SourceAddr::new(SrcGroup::Mon, leg).map_or(floor, |a| self.lvl(source_cell(a)))
+        };
+        bank.set_block(
+            MeterKind::Monitor,
+            0,
+            &[
+                self.lvl(solo_cell(0)),
+                self.lvl(solo_cell(1)),
+                mon(1),
+                mon(2),
+                mon(3),
+                mon(4),
+            ],
         );
-        bank.set_block(MeterKind::Monitor, 0, &[floor, floor, ml, mr, ml, mr]);
         for i in 0..lay.count(MeterKind::Dca) {
             bank.set_block(MeterKind::Dca, i, &[floor; 4]);
         }

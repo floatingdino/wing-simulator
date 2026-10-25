@@ -17,7 +17,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use wing_engine::meters::LevelBank;
-use wing_engine::routing::RoutingControl;
 use wing_hostio::{BridgeState, HostIoConfig, Route};
 use wing_model::ParamStore;
 use wing_shm::sim::DriverSim;
@@ -25,6 +24,7 @@ use wing_shm::{DaemonLink, Header, OpenOptions, Segment, WakeMode, CHANNELS};
 use wing_sim::audio::console::{Console, ConsoleConfig};
 use wing_sim::audio::driver::{service, AudioOptions, AudioService};
 use wing_sim::audio::stats::AudioStats;
+use wing_sim::audio::ConsoleControl;
 use wing_sim::audio::{hostio, prepare, LogFn};
 
 // ---- counting allocator -------------------------------------------------------------------------
@@ -128,7 +128,7 @@ const MAIN_DB: f64 = 6.0 - 3.0103;
 
 struct Rig {
     store: ParamStore,
-    routing: RoutingControl,
+    routing: ConsoleControl,
 }
 
 fn rig() -> Rig {
@@ -172,9 +172,10 @@ fn run_sine(console: &mut Console, t0: u64, cycles: usize) -> [Vec<f32>; 3] {
 #[test]
 fn offline_sine_through_channel_main_usb_out_and_bridge() {
     let Rig { store, mut routing } = rig();
-    // Host bridge "mock device": main/1 -> 2 channels, consumer rendered here.
+    // Host bridge "mock device": mon/1 (the default route: monitor A = MAIN.1 with solo
+    // priority) -> 2 channels, consumer rendered here.
     let hcfg = HostIoConfig {
-        routes: vec![Route::parse("main/1 -> \"Mock\" 1/2").unwrap()],
+        routes: vec![Route::parse("mon/1 -> \"Mock\" 1/2").unwrap()],
         ..HostIoConfig::default()
     };
     let mut planned = hostio::plan(&hcfg, FS, BLOCK).unwrap();
@@ -211,21 +212,41 @@ fn offline_sine_through_channel_main_usb_out_and_bridge() {
         assert_eq!(v, sine(t + i as u64, 300.0, 0.2));
     }
 
-    // Host bridge got main 1: render from the device side and check the level.
-    let mut dev: [Vec<f32>; 2] = [Vec::new(), Vec::new()];
+    // Host bridge got monitor A = main 1: render from the device side and check the level.
     let mut t = 200 * BLOCK as u64;
-    for _ in 0..40 {
-        consumer.render(64, wing_hostio::host_time_ns(), |_frame, x| {
-            dev[0].push(x[0]);
-            dev[1].push(x[1]);
-        });
-        run_sine(&mut console, t, 1);
-        t += BLOCK as u64;
-    }
-    assert_eq!(consumer.stats().snapshot().state, BridgeState::Running);
-    let tail = &dev[0][dev[0].len() - 1024..];
-    let bdb = rms_db(tail) - input_db;
+    let bstats_ok = consumer.stats().clone();
+    let mut bridge_db = |console: &mut Console, t: &mut u64| {
+        let mut dev: Vec<f32> = Vec::new();
+        for _ in 0..40 {
+            consumer.render(64, wing_hostio::host_time_ns(), |_frame, x| dev.push(x[0]));
+            run_sine(console, *t, 1);
+            *t += BLOCK as u64;
+        }
+        rms_db(&dev[dev.len() - 1024..]) - input_db
+    };
+    let bdb = bridge_db(&mut console, &mut t);
     assert!((bdb - MAIN_DB).abs() < 0.5, "bridge level {bdb:.2} dB");
+    assert_eq!(bstats_ok.snapshot().state, BridgeState::Running);
+
+    // Solo priority: soloing ch 1 (PFL, PFL dim 0) puts its pre-fader signal (+6 dB trim, no
+    // pan) on monitor A instead of main 1; clearing the solo returns to main 1.
+    set(&store, "cfg/mon/1/pfldim", "0");
+    set(&store, "ch/1/$solo", "1");
+    routing.refresh(&store);
+    let bdb = bridge_db(&mut console, &mut t);
+    assert!((bdb - 6.0).abs() < 0.5, "solo level {bdb:.2} dB");
+    assert_eq!(
+        store.get_f64(store.lookup("$stat/solo").unwrap()),
+        Some(1.0)
+    );
+    set(&store, "$stat/solo", "0");
+    routing.refresh(&store);
+    let bdb = bridge_db(&mut console, &mut t);
+    assert!((bdb - MAIN_DB).abs() < 0.5, "after clear {bdb:.2} dB");
+    assert_eq!(
+        store.get_f64(store.lookup("ch/1/$solo").unwrap()),
+        Some(0.0)
+    );
 
     // EQ: STD band 2 +6 dB at 1 kHz on top of the trim (live edit through the pipeline).
     set(&store, "ch/1/eq/on", "1");
@@ -330,7 +351,7 @@ fn rt_path_does_not_allocate() {
         }
         COUNTING.store(false, Relaxed);
         consumer.render(256, wing_hostio::host_time_ns(), |_, _| {});
-        routing.collect();
+        routing.routing.collect();
     }
     COUNT_THIS_THREAD.with(|c| c.set(false));
     assert_eq!(ALLOCS.load(Relaxed), 0, "RT path allocated/freed");
@@ -462,7 +483,7 @@ fn wait_for(what: &str, timeout: Duration, mut f: impl FnMut() -> bool) {
 fn spawn_service(
     name: &str,
     store: ParamStore,
-    routing: RoutingControl,
+    routing: ConsoleControl,
 ) -> (AudioService, Arc<std::sync::Mutex<Vec<String>>>) {
     let (log, lines) = capture_log();
     let svc = AudioService::spawn(

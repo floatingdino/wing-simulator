@@ -41,6 +41,11 @@
 //!   at build time, so independent busses run in parallel. A bus reads every lower-numbered bus of
 //!   a lower tier; a send that does not fit the built order is ignored until the graph is rebuilt
 //!   ([`MixGraph::bus_tiers`]).
+//! * **DCAs, mute groups, solo and monitors** (T038): [`logic`] resolves `dca`, `mgrp`, strip
+//!   `tags` and `cfg/solo` on the control thread into per-strip external gain / mute / solo flags
+//!   ([`MixShared`], polled by every strip node once per block); [`monitor`] is the monitor
+//!   section node (solo busses with priority over the monitor source, `cfg/mon/1|2`), whose
+//!   outputs are the `MON` legs 1..4.
 //! * **Matrices** take ch/aux `MXn` sends, bus and main sends. Matrix direct inputs (`mtx/*/dir`:
 //!   AES / monitor) have no source in the simulator yet.
 //! * Mix outputs (BUS/MAIN/MTX legs), strip taps (user signals PRE FADER / POST PROCESSING) feed
@@ -48,6 +53,8 @@
 //!   ([`crate::routing::feedback`]).
 
 pub mod law;
+pub mod logic;
+pub mod monitor;
 mod nodes;
 
 mod build;
@@ -55,11 +62,15 @@ pub mod strip;
 
 pub use build::{bind_mix_params, build_mix_graph, bus_tiers, MixError, MixGraph, MixNodes};
 pub use law::PanLaw;
+pub use logic::{LogicState, MixLogic, MixShared, SoloMode};
+pub use monitor::MonitorNode;
 pub use nodes::{
     InputSignal, InputStripNode, MixSignal, MixStripNode, NoProcessing, SendMode, SendParams,
     SlotKind, SlotSpec, StripHook, INPUT_OUTPUTS, MIX_OUTPUTS,
 };
 pub use strip::{bind_mix_strip, MixStrip, MixStripTelemetry, MixTap};
+
+use std::sync::Arc;
 
 use crate::routing::Strip;
 
@@ -146,6 +157,9 @@ pub struct MixConfig {
     /// Strip processing for busses/mains/matrices (`None` = the standard [`MixStrip`]; see
     /// [`no_processing`] for the bare T036 mix).
     pub hooks: Option<HookFactory>,
+    /// DCA / mute-group / solo state published by a [`MixLogic`] (default: a private, never
+    /// updated state = no DCAs, mute groups or solos).
+    pub logic: Option<Arc<MixShared>>,
     /// Level bank the input strips meter into (T039; IN/PFL/keys/GR). The mix-level meters
     /// (strip outs, bus/main/matrix in/out, mix-output sources) are port meters:
     /// [`crate::meters::PortMeters::for_mix`].
@@ -163,6 +177,7 @@ impl Default for MixConfig {
             grp_uses_level: false,
             bus_order: BusOrder::FromScene,
             hooks: None,
+            logic: None,
             meters: None,
         }
     }
@@ -179,6 +194,7 @@ impl std::fmt::Debug for MixConfig {
             .field("grp_uses_level", &self.grp_uses_level)
             .field("bus_order", &self.bus_order)
             .field("hooks", &self.hooks.is_some())
+            .field("logic", &self.logic.is_some())
             .field("meters", &self.meters.is_some())
             .finish()
     }

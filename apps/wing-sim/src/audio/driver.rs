@@ -31,7 +31,6 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use wing_engine::params::ParamPipeline;
-use wing_engine::routing::RoutingControl;
 use wing_engine::rt::{set_current_thread_time_constraint, TimeConstraint};
 use wing_engine::WorkgroupMembership;
 use wing_hostio::HostIoConfig;
@@ -42,6 +41,7 @@ use super::console::{Console, ConsoleConfig};
 use super::hostio::{self, HostOutputs};
 use super::stats::{AudioStats, Snapshot};
 use super::workgroup::WorkInterval;
+use super::ConsoleControl;
 use super::LogFn;
 
 /// How long the RT thread blocks waiting for a driver cycle before re-checking its flags.
@@ -210,7 +210,7 @@ impl AudioService {
     /// [`super::prepare`]).
     pub fn spawn(
         store: Arc<ParamStore>,
-        routing: RoutingControl,
+        routing: ConsoleControl,
         opts: AudioOptions,
         log: LogFn,
     ) -> std::io::Result<Self> {
@@ -298,7 +298,7 @@ pub fn describe_open_error(name: &str, e: &ShmError) -> String {
 
 struct Control {
     store: Arc<ParamStore>,
-    routing: RoutingControl,
+    routing: ConsoleControl,
     opts: AudioOptions,
     log: LogFn,
     stop: Arc<AtomicBool>,

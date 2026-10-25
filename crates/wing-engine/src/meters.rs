@@ -62,8 +62,10 @@ pub mod word {
 pub const SOURCE_BASE: usize = STRIP_COUNT * STRIP_WORDS;
 /// First output cell.
 pub const OUTPUT_BASE: usize = SOURCE_BASE + SOURCE_COUNT;
+/// First solo-bus cell (L, R; T038).
+pub const SOLO_BASE: usize = OUTPUT_BASE + OUTPUT_COUNT;
 /// Total cells.
-pub const CELLS: usize = OUTPUT_BASE + OUTPUT_COUNT;
+pub const CELLS: usize = SOLO_BASE + 2;
 
 /// Cell of a strip word (`strip` = [`Strip::index`]).
 #[inline]
@@ -81,6 +83,12 @@ pub fn source_cell(s: SourceAddr) -> usize {
 #[inline]
 pub fn output_cell(o: OutAddr) -> usize {
     OUTPUT_BASE + o.index()
+}
+
+/// Cell of the solo bus level (side 0 = L, 1 = R): the louder of the two monitors' solo busses.
+#[inline]
+pub const fn solo_cell(side: usize) -> usize {
+    SOLO_BASE + side
 }
 
 /// Absolute peak of a block. Works on the IEEE bit patterns (`|x|` = sign bit cleared; for
@@ -272,6 +280,8 @@ impl PortMeters {
     /// * bus/main/matrix PRE = PFL (after the T037 strip processing), OUT = POST. Their IN word
     ///   (sum after trim) and dynamics key/GR are written by the [`crate::mix::MixStrip`] hook's
     ///   [`StripMeter`] (`MixConfig::meters`).
+    /// * monitor (T038): `MON` source legs 1..4 = monitor A/B outputs L/R, solo cells = the solo
+    ///   busses ([`solo_cell`]).
     ///
     /// The input strips' own words (IN, PFL, keys, GR) come from their [`StripMeter`]
     /// ([`crate::mix::MixConfig::meters`]). Allocates.
@@ -321,6 +331,18 @@ impl PortMeters {
                     }
                 }
             }
+        }
+        for (m, side, k) in [
+            (1, Side::L, 0usize),
+            (1, Side::R, 1),
+            (2, Side::L, 0),
+            (2, Side::R, 1),
+        ] {
+            let leg = 2 * (m as u16 - 1) + 1 + k as u16;
+            if let Some(a) = SourceAddr::new(SrcGroup::Mon, leg) {
+                e.push((nodes.monitor_port(m, side), source_cell(a)));
+            }
+            e.push((nodes.solo_port(m, side), solo_cell(k)));
         }
         Self::new(bank, e)
     }
@@ -394,7 +416,8 @@ mod tests {
         let last_src = SourceAddr::new(SrcGroup::Mon, SrcGroup::Mon.count()).unwrap();
         assert_eq!(source_cell(last_src) + 1, OUTPUT_BASE);
         let last_out = OutAddr::new(OutGroup::Aes, 2).unwrap();
-        assert_eq!(output_cell(last_out) + 1, CELLS);
+        assert_eq!(output_cell(last_out) + 1, SOLO_BASE);
+        assert_eq!(solo_cell(1) + 1, CELLS);
         let m = StripMeter::new(LevelBank::shared(), Strip::Main(1)).unwrap();
         m.stereo(word::OUT_L, &[0.5, -0.75], &[0.25]);
         assert_eq!(m.bank().get(strip_cell(64, word::OUT_L)), 0.75);
