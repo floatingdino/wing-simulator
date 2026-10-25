@@ -40,6 +40,7 @@ fn lv_neg(tab: &[f32], base: usize, stride: usize, i: usize, t: f32, v: usize) -
 }
 
 /// The shelf of a band: `ls12q2`/`hs12q2` with cut-signed table gain.
+#[allow(clippy::too_many_arguments)]
 fn shelf(
     ctx: &Ctx,
     hi: bool,

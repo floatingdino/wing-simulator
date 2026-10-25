@@ -1,7 +1,7 @@
 use super::prims::{Bq, Ctx};
 use super::*;
 use crate::fidelity::{self, json, FreqCurves, RefParam, RefParams};
-use crate::model::{create_model, BlockKind, Model};
+use crate::model::{create_model, BlockKind, Model, ParamValue};
 
 const FS: f64 = 48_000.0;
 
@@ -178,7 +178,8 @@ fn oracle_random_settings() {
             })
             .collect();
         let mut q = [prims::UNITY; MAX_SECS];
-        let layout = kind.design(&ctx, &p[..kind.slots().len()], 1.0, &mut q);
+        let m = rp.num("mix").map_or(1.0, |x| (x / 100.0) as f32);
+        let layout = kind.design(&ctx, &p[..kind.slots().len()], m, &mut q);
         let mut err = 0.0f64;
         let mut wf = 0.0;
         for &f in &freqs {
@@ -290,15 +291,6 @@ fn oracle_primitives() {
     }
 }
 
-#[test]
-fn hq_debug_tmp() {
-    if std::env::var_os("HQDBG").is_none() {
-        return;
-    }
-    let c = Ctx::new(48_000.0);
-    eprintln!("{:?}", prims::hqpeq(&c, 1366.206, -6.1344995, 0.27658));
-}
-
 fn params_json(v: &json::Value) -> RefParams {
     let mut out = Vec::new();
     if let json::Value::Obj(kv) = v {
@@ -325,5 +317,119 @@ fn model_ids_and_slots() {
         assert_eq!(m.id(), k.id());
         assert!(!m.is_stub());
     }
-    let _ = create_model(BlockKind::Eq(crate::eq::EqVariant::Bus), "PIA");
+    let pia = create_model(BlockKind::Eq(crate::eq::EqVariant::Bus), "PIA");
+    assert_eq!(pia.id(), "PIA");
+}
+
+/// A non-trivial setting per model (slot values).
+fn busy(kind: AltKind) -> Vec<f32> {
+    match kind {
+        AltKind::Soul => vec![3.0, 4.0, 6.0, 1.0, 7.0, -3.5, 4.0, 1.0, 2.0, 3.0, 6.0, -2.0],
+        AltKind::E88 => vec![
+            4.0, 3.0, 1.0, 0.0, 3.0, -4.0, 8.0, 5.0, 2.5, 2.0, 7.0, 4.0, 1.0, 1.0,
+        ],
+        AltKind::E84 => vec![-3.0, 2.0, 4.0, 3.0, -2.5, 1.0, 1.0, 3.5],
+        AltKind::F110 => vec![
+            1.0, 6.0, 4.0, 3.0, 0.0, 4.0, -3.0, 7.0, 1.0, 1.0, 2.0, 3.0, 3.0, -4.0, 2.0,
+        ],
+        AltKind::Pulsar => vec![
+            1.0, 6.0, 4.0, 1.0, 3.0, 7.0, 4.0, 5.0, 1.0, 1.0, 5.0, 2.0, 4.0, 6.0, 3.0, 2.0,
+        ],
+        AltKind::Mach4 => vec![2.0, -3.0, 4.0, -1.0, 3.0, 6.0, 3.0, 1.0],
+        AltKind::Pia => vec![-2.0, 6.0, -4.0, 2.0, 8.0, -12.0, 3.0, 5.0, -6.0, 9.0, 4.0],
+    }
+}
+
+fn design_db(kind: AltKind, fs: f64, p: &[f32], f: f64) -> f64 {
+    let mut q = [prims::UNITY; MAX_SECS];
+    let ctx = Ctx::new(fs);
+    let layout = kind.design(&ctx, p, 1.0, &mut q);
+    let w = 2.0 * core::f64::consts::PI * f / fs;
+    let z1 = wing_dsp::Complex::new(w.cos(), -w.sin());
+    let z2 = z1 * z1;
+    let one = wing_dsp::Complex::new(1.0, 0.0);
+    let mut h = if layout.parallel {
+        wing_dsp::Complex::new(0.0, 0.0)
+    } else {
+        one
+    };
+    for s in &q[..layout.n] {
+        let c = s.map(f64::from);
+        let hs = (wing_dsp::Complex::new(c[0], 0.0) + z1 * c[1] + z2 * c[2])
+            / (one + z1 * c[3] + z2 * c[4]);
+        h = if layout.parallel { h + hs } else { h * hs };
+    }
+    h.db()
+}
+
+/// The audio path (f64 TDF-II, parallel bank for MACH4) realises the designed response, at 48 and 44.1 kHz.
+#[test]
+fn processed_response_matches_design() {
+    let freqs = [100.0, 1000.0, 5000.0, 12000.0];
+    for fs in [48_000.0, 44_100.0] {
+        for kind in AltKind::ALL {
+            let p = busy(kind);
+            let mut m = AltEq::new(kind);
+            m.prepare(fs, 64);
+            for (i, &v) in p.iter().enumerate() {
+                m.set_param(i as u16 + 1, ParamValue::Float(v));
+            }
+            m.reset();
+            let got = fidelity::magnitude_response(&mut m, fs, &freqs, 1 << 15);
+            for (&f, g) in freqs.iter().zip(&got) {
+                let want = design_db(kind, fs, &p, f);
+                assert!(
+                    want.is_finite() && want.abs() < 40.0,
+                    "{} {f}: {want}",
+                    kind.id()
+                );
+                assert!(
+                    (g - want).abs() < 0.01,
+                    "{} fs={fs} f={f}: {g} vs {want}",
+                    kind.id()
+                );
+            }
+        }
+    }
+}
+
+/// Knob glides and enum switches stay finite and bounded, then settle exactly on the target design.
+#[test]
+fn glides_and_switches_settle() {
+    for kind in AltKind::ALL {
+        let mut m = AltEq::new(kind);
+        m.prepare(48_000.0, 64);
+        let p = busy(kind);
+        let (mut l, mut r) = (vec![0.0f32; 64], vec![0.0f32; 64]);
+        let mut n = 0usize;
+        for blk in 0..400 {
+            if blk == 10 {
+                for (i, &v) in p.iter().enumerate() {
+                    m.set_param(i as u16 + 1, ParamValue::Float(v));
+                }
+            }
+            for (k, (x, y)) in l.iter_mut().zip(r.iter_mut()).enumerate() {
+                let s = (((n + k) as f32) * 0.05).sin() * 0.25;
+                *x = s;
+                *y = -s;
+            }
+            n += 64;
+            m.process(&mut l, &mut r, None);
+            assert!(
+                l.iter().chain(&r).all(|v| v.is_finite() && v.abs() < 20.0),
+                "{} block {blk}",
+                kind.id()
+            );
+        }
+        for (i, &v) in p.iter().enumerate() {
+            assert_eq!(m.param(i as u16 + 1), Some(v));
+        }
+        for f in [200.0, 3000.0] {
+            let want = design_db(kind, 48_000.0, &p, f);
+            assert!((m.magnitude_db(f) - want).abs() < 1e-6, "{} {f}", kind.id());
+        }
+        m.load_defaults();
+        m.reset();
+        assert!(m.magnitude_db(1000.0).abs() < 0.5, "{} defaults", kind.id());
+    }
 }

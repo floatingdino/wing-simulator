@@ -22,6 +22,7 @@
 
 use crate::eq::EqVariant;
 use crate::models::comp_vca::{VcaComp, VcaKind};
+use crate::models::eq_alt::{AltEq, AltKind};
 use crate::models::filter_tool::FilterToolModel;
 use crate::models::gate_vintage::{VintageGate, VintageGateKind};
 use crate::std_models::{DynModel, GateModel, StdEqModel};
@@ -309,6 +310,13 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "9000C") => Box::new(VcaComp::new(VcaKind::Ssl9000)),
         (BlockKind::Dynamics, "SBUS") => Box::new(VcaComp::new(VcaKind::SBus)),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
+        (BlockKind::Eq(_), "SOUL") => Box::new(AltEq::new(AltKind::Soul)),
+        (BlockKind::Eq(_), "E88") => Box::new(AltEq::new(AltKind::E88)),
+        (BlockKind::Eq(_), "E84") => Box::new(AltEq::new(AltKind::E84)),
+        (BlockKind::Eq(_), "F110") => Box::new(AltEq::new(AltKind::F110)),
+        (BlockKind::Eq(_), "PULSAR") => Box::new(AltEq::new(AltKind::Pulsar)),
+        (BlockKind::Eq(_), "MACH4") => Box::new(AltEq::new(AltKind::Mach4)),
+        (BlockKind::Eq(_), "PIA") => Box::new(AltEq::new(AltKind::Pia)),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -448,7 +456,7 @@ mod tests {
         }
         for id in EQ_IDS {
             let m = create_model(BlockKind::Eq(EqVariant::Channel), id);
-            assert_eq!(m.is_stub(), id != "STD");
+            assert!(!m.is_stub(), "{id}");
         }
         for id in FILTER_TOOL_IDS {
             assert!(!create_model(BlockKind::FilterTool, id).is_stub());

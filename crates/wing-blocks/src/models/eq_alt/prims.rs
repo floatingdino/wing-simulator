@@ -237,9 +237,6 @@ pub fn hqpeq(ctx: &Ctx, f: f32, g: f32, q: f32) -> Bq {
     let d = (g01 - (g00 * g11).sqrt()) * w22;
     let aa = ((d + c) / fden).sqrt();
     let bb = (fma(g2, c, gb2_b * d) / fden).sqrt();
-    if std::env::var_os("HQDBG").is_some() {
-        eprintln!("HQ w2={w2:?} f11={f11:?} g11={g11:?} g1={g1:?} g00={g00:?} f00={f00:?} F={fden:?} d={d:?} c={c:?} aa={aa:?} bb={bb:?} dwt={dwt:?} dw={dw:?} tn={tn:?} gb2={gb2:?} gb2b={gb2_b:?} g2={g2:?}");
-    }
     let opw = w2 + 1.0;
     let norm = 1.0 / (opw + aa);
     let b0 = (g1 + w2 + bb) * norm;

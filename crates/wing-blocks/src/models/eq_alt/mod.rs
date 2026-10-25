@@ -27,6 +27,9 @@
 //! parameters (enum selectors, switches) crossfade from the old filter to the new one over 10 ms. Filters run in
 //! float64 transposed direct form II (the reference coefficients are float32; 20 Hz sections need the headroom).
 
+// The ports keep WING-Edit's `fmax`/`fmin` sequences (NaN behaviour, operation order) instead of `clamp`.
+#![allow(clippy::manual_clamp)]
+
 mod e84;
 mod e88;
 mod f110;
