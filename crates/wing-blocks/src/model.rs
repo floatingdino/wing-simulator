@@ -480,7 +480,7 @@ mod tests {
         assert!(!reg.select(99));
         assert!(!reg.select_id("NOPE"));
         assert_eq!(reg.active_id(), "F670");
-        // 76LA / NSTR run 2x oversampled (linear-phase half-band round trip).
-        assert_eq!(reg.max_latency(), 39);
+        // 76LA / NSTR: 2x oversampling (39) + control-path alignment (18).
+        assert_eq!(reg.max_latency(), 57);
     }
 }

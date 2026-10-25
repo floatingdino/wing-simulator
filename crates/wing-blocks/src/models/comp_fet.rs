@@ -45,18 +45,36 @@
 
 use crate::model::{Model, ModelTelemetry, ParamValue};
 use wing_dsp::gain::{db_to_lin, db_to_lin_fast, lin_to_db_fast};
-use wing_dsp::oversample::Oversampler2x;
+use wing_dsp::oversample::{Oversampler2x, Oversampler4x};
 use wing_dsp::smooth::{one_pole_coeff, OnePoleSmoother};
 
 /// Oversampling factor of the gain cell and colouration stages.
 pub const OS: usize = 2;
 /// Control-path sub-steps per oversampled sample: the detector / static curve / ballistics run at
-/// `fs * OS * CTRL_SUB` (384 kHz at 48 kHz) on a linearly interpolated key and the resulting GR (dB) is
-/// averaged back to the audio rate. A fast (20 µs) attack catching every half-cycle peak makes the GR a
-/// ripple waveform with steep edges; at 96 kHz its harmonics fold back and modulate the signal (measured
-/// -68 dBc at 10 kHz, fastest settings); at 384 kHz the attack one-pole resolves the edges and the folded
-/// components drop below -90 dBc.
-pub const CTRL_SUB: usize = 4;
+/// `fs * OS * CTRL_SUB` (768 kHz at 48 kHz) on a key interpolated by half-band stages, and the resulting GR
+/// (dB) is low-pass decimated back to the audio rate. A fast (20 µs) attack catches every half-cycle peak
+/// within a few samples, so how much it catches depends on where the samples fall on the peak; that
+/// sample-phase dependence repeats with the beat of ripple and sample rate and modulates the signal. Measured
+/// worst-case aliasing for a 10 kHz input (76LA attack 7, release 7): -68 dBc with the detector at 96 kHz,
+/// -72 dBc at 384 kHz on a linearly interpolated key, -86 dBc at 384 kHz with a half-band key, -100 dBc at
+/// 768 kHz (this setting).
+pub const CTRL_SUB: usize = 8;
+/// GR decimation filter (control rate -> oversampled audio rate): Kaiser-windowed sinc low-pass,
+/// [`GR_FIR_LEN`] taps, cut-off [`GR_FIR_CUTOFF_HZ`] at 48 kHz base rate (scaled with fs), beta
+/// [`GR_FIR_BETA`]. Its group delay ((LEN-1)/2 = 41 control samples) plus the key up-sampler delay
+/// ([`KEY_UP_DELAY_CTL`], 247) is matched by an equal delay of the oversampled audio path (36 samples = 18
+/// base samples), so the gain stays time-aligned with the signal. Total model latency: 39 + 18 = 57.
+pub const GR_FIR_LEN: usize = 83;
+pub const GR_FIR_CUTOFF_HZ: f64 = 30_000.0;
+pub const GR_FIR_BETA: f64 = 9.0;
+/// Group delay (control samples) of the 2x -> 16x key interpolator (`Oversampler2x` then
+/// `Oversampler4x`: three half-band stages of 79 / 79 / 27 taps, i.e. 39 / 39 / 13 samples at their output
+/// rates 4x / 8x / 16x).
+pub const KEY_UP_DELAY_CTL: usize = 4 * 39 + 2 * 39 + 13;
+/// Audio-path delay (oversampled samples) matching key interpolator + GR FIR.
+const AUDIO_DELAY_OS: usize = (KEY_UP_DELAY_CTL + (GR_FIR_LEN - 1) / 2) / CTRL_SUB;
+const _: () = assert!(AUDIO_DELAY_OS * CTRL_SUB == KEY_UP_DELAY_CTL + (GR_FIR_LEN - 1) / 2);
+const _: () = assert!(AUDIO_DELAY_OS % OS == 0);
 
 // ---- 76LA (1176LN) ---------------------------------------------------------------------------------------
 
@@ -338,8 +356,6 @@ pub struct FetComp {
     ov_slow: f32,
     gr_now: f32,
     lp: [f32; 2],
-    /// Previous oversampled key inputs (driven L, R, external key) for the control-path interpolation.
-    kprev: [f32; 3],
     dc_x: [f32; 2],
     dc_y: [f32; 2],
     drive: OnePoleSmoother,
@@ -348,7 +364,20 @@ pub struct FetComp {
     os: [Oversampler2x; 2],
     pre: [Vec<f32>; 2],
     hi: [Vec<f32>; 2],
-    key: Vec<f32>,
+    kos2: [Oversampler2x; 2],
+    kmid: [Vec<f32>; 2],
+    kos: [Oversampler4x; 2],
+    khi: [Vec<f32>; 2],
+    sc_os: [Oversampler2x; 2],
+    sc_pre: [Vec<f32>; 2],
+    sc_hi: [Vec<f32>; 2],
+    gr_taps: Vec<f32>,
+    /// Mirrored control-rate GR history (newest first window at `gr_pos`).
+    gr_hist: Vec<f32>,
+    gr_pos: usize,
+    /// Audio delay lines (oversampled rate) per channel.
+    adly: [[f32; AUDIO_DELAY_OS]; 2],
+    adly_pos: usize,
 }
 
 impl FetComp {
@@ -393,7 +422,6 @@ impl FetComp {
             ov_slow: 0.0,
             gr_now: 0.0,
             lp: [0.0; 2],
-            kprev: [0.0; 3],
             dc_x: [0.0; 2],
             dc_y: [0.0; 2],
             drive: OnePoleSmoother::new(1.0, 0.0, 48_000.0),
@@ -401,7 +429,18 @@ impl FetComp {
             os: [Oversampler2x::new(1), Oversampler2x::new(1)],
             pre: [Vec::new(), Vec::new()],
             hi: [Vec::new(), Vec::new()],
-            key: Vec::new(),
+            kos2: [Oversampler2x::new(1), Oversampler2x::new(1)],
+            kmid: [Vec::new(), Vec::new()],
+            kos: [Oversampler4x::new(1), Oversampler4x::new(1)],
+            khi: [Vec::new(), Vec::new()],
+            sc_os: [Oversampler2x::new(1), Oversampler2x::new(1)],
+            sc_pre: [Vec::new(), Vec::new()],
+            sc_hi: [Vec::new(), Vec::new()],
+            gr_taps: Vec::new(),
+            gr_hist: Vec::new(),
+            gr_pos: 0,
+            adly: [[0.0; AUDIO_DELAY_OS]; 2],
+            adly_pos: 0,
         };
         m.load_defaults();
         m.prepare(48_000.0, 64);
@@ -548,28 +587,25 @@ impl FetComp {
     fn gr_step(&mut self, key: f32) -> f32 {
         let target = self.curve.gr(lin_to_db_fast(key.max(KEY_FLOOR)));
         let g = self.gr;
-        let g = if target > g {
-            target + self.att_c * (g - target)
-        } else {
-            let c = match self.rel_mode {
-                ReleaseMode::Plain => self.rel_c,
-                ReleaseMode::ProgramDependent => {
-                    let h = if g > 1e-3 {
-                        (self.hist / g).min(1.0)
-                    } else {
-                        1.0
-                    };
-                    let m = PD_MIN + (1.0 - PD_MIN) * h;
-                    rate_coeff(self.rel_rate / m)
-                }
-                ReleaseMode::Opto => {
-                    let e = db_to_lin_fast(-g * (20.0 / core::f32::consts::LN_10) / NSTR_OPTO_GR_DB);
-                    let m = NSTR_OPTO_MIN + (NSTR_OPTO_MAX - NSTR_OPTO_MIN) * e;
-                    rate_coeff(self.rel_rate / m)
-                }
-            };
-            target + c * (g - target)
+        let rel_c = match self.rel_mode {
+            ReleaseMode::Plain => self.rel_c,
+            ReleaseMode::ProgramDependent => {
+                let h = if g > 1e-3 {
+                    (self.hist / g).min(1.0)
+                } else {
+                    1.0
+                };
+                let m = PD_MIN + (1.0 - PD_MIN) * h;
+                rate_coeff(self.rel_rate / m)
+            }
+            ReleaseMode::Opto => {
+                let e = db_to_lin_fast(-g * (20.0 / core::f32::consts::LN_10) / NSTR_OPTO_GR_DB);
+                let m = NSTR_OPTO_MIN + (NSTR_OPTO_MAX - NSTR_OPTO_MIN) * e;
+                rate_coeff(self.rel_rate / m)
+            }
         };
+        let c = if target > g { self.att_c } else { rel_c };
+        let g = target + c * (g - target);
         self.gr = g;
         self.hist = g + self.hist_c * (self.hist - g);
         if self.overshoot > 0.0 {
@@ -578,6 +614,18 @@ impl FetComp {
         } else {
             g
         }
+    }
+
+    /// Push one control-rate GR value into the mirrored FIR history.
+    #[inline(always)]
+    fn push_gr(&mut self, g: f32) {
+        self.gr_pos = if self.gr_pos == 0 {
+            GR_FIR_LEN - 1
+        } else {
+            self.gr_pos - 1
+        };
+        self.gr_hist[self.gr_pos] = g;
+        self.gr_hist[self.gr_pos + GR_FIR_LEN] = g;
     }
 
     /// Colouration of one channel sample after the gain cell (oversampled rate), then make-up and output
@@ -602,39 +650,47 @@ impl FetComp {
     fn process_chunk(&mut self, l: &mut [f32], r: &mut [f32], sc: Option<(&[f32], &[f32])>) {
         let n = l.len();
         let n2 = OS * n;
-        // Input drive (de-zippered at base rate).
+        // Input drive (de-zippered at base rate); an external key gets the same drive.
         for i in 0..n {
             let d = self.drive.tick();
             self.pre[0][i] = l[i] * d;
             self.pre[1][i] = r[i] * d;
             if let Some((a, b)) = sc {
-                let k = a.get(i).copied().unwrap_or(0.0).abs().max(b.get(i).copied().unwrap_or(0.0).abs()) * d;
-                self.key[OS * i] = k;
-                self.key[OS * i + 1] = k;
+                self.sc_pre[0][i] = a.get(i).copied().unwrap_or(0.0) * d;
+                self.sc_pre[1][i] = b.get(i).copied().unwrap_or(0.0) * d;
             }
         }
+        let n_ctl = CTRL_SUB * n2;
         for ch in 0..2 {
-            let (os, pre, hi) = (&mut self.os[ch], &self.pre[ch], &mut self.hi[ch]);
-            os.upsample(&pre[..n], &mut hi[..n2]);
+            self.os[ch].upsample(&self.pre[ch][..n], &mut self.hi[ch][..n2]);
+            // Key: the audio (or the external key, 2x upsampled) interpolated 4x further by half-band
+            // stages, so the rectifier sees no interpolation images.
+            // (two disjoint field borrows: kin may alias hi / sc_hi, the up-samplers write kmid / khi)
+            let kin: &[f32] = if sc.is_some() {
+                self.sc_os[ch].upsample(&self.sc_pre[ch][..n], &mut self.sc_hi[ch][..n2]);
+                &self.sc_hi[ch][..n2]
+            } else {
+                &self.hi[ch][..n2]
+            };
+            self.kos2[ch].upsample(kin, &mut self.kmid[ch][..2 * n2]);
+            self.kos[ch].upsample(&self.kmid[ch][..2 * n2], &mut self.khi[ch][..n_ctl]);
         }
-        let ext = sc.is_some();
         let colour = self.colour;
         for j in 0..n2 {
-            let (xl, xr) = (self.hi[0][j], self.hi[1][j]);
-            // Control path at CTRL_SUB x the audio rate on the linearly interpolated key; GR averaged back.
-            let [pl, pr, pk] = self.kprev;
-            let mut acc = 0.0;
-            for s in 1..=CTRL_SUB {
-                let t = s as f32 * (1.0 / CTRL_SUB as f32);
-                let key = if ext {
-                    pk + t * (self.key[j] - pk)
-                } else {
-                    (pl + t * (xl - pl)).abs().max((pr + t * (xr - pr)).abs())
-                };
-                acc += self.gr_step(key);
+            // Control path at CTRL_SUB x the audio rate; GR decimated back through the low-pass FIR; audio
+            // delayed so it meets the GR it produced (key up-sampler + FIR group delay).
+            for s in 0..CTRL_SUB {
+                let c = CTRL_SUB * j + s;
+                let key = self.khi[0][c].abs().max(self.khi[1][c].abs());
+                let g = self.gr_step(key);
+                self.push_gr(g);
             }
-            self.kprev = [xl, xr, if ext { self.key[j] } else { 0.0 }];
-            let gr = acc * (1.0 / CTRL_SUB as f32);
+            let gr = dot(&self.gr_taps, &self.gr_hist[self.gr_pos..self.gr_pos + GR_FIR_LEN]).max(0.0);
+            let p = self.adly_pos;
+            let (xl, xr) = (self.adly[0][p], self.adly[1][p]);
+            self.adly[0][p] = self.hi[0][j];
+            self.adly[1][p] = self.hi[1][j];
+            self.adly_pos = if p + 1 == AUDIO_DELAY_OS { 0 } else { p + 1 };
             let g = db_to_lin_fast(-gr);
             let og = self.out_g.tick();
             let (yl, yr) = if colour {
@@ -669,6 +725,52 @@ impl FetComp {
     }
 }
 
+/// Kaiser-windowed sinc low-pass for the GR decimation (unity DC gain), designed at control rate `fc`.
+fn gr_fir_taps(fc: f64) -> Vec<f32> {
+    fn i0(x: f64) -> f64 {
+        let (mut sum, mut term, q) = (1.0, 1.0, x * x / 4.0);
+        for k in 1..64 {
+            term *= q / (k * k) as f64;
+            sum += term;
+        }
+        sum
+    }
+    let n = GR_FIR_LEN;
+    let c = (n - 1) as f64 / 2.0;
+    let wc = 2.0 * core::f64::consts::PI * GR_FIR_CUTOFF_HZ / fc;
+    let h: Vec<f64> = (0..n)
+        .map(|i| {
+            let m = i as f64 - c;
+            let sinc = if m == 0.0 {
+                wc / core::f64::consts::PI
+            } else {
+                (wc * m).sin() / (core::f64::consts::PI * m)
+            };
+            let r = m / c;
+            sinc * i0(GR_FIR_BETA * (1.0 - r * r).max(0.0).sqrt()) / i0(GR_FIR_BETA)
+        })
+        .collect();
+    let sum: f64 = h.iter().sum();
+    h.iter().map(|v| (v / sum) as f32).collect()
+}
+
+#[inline(always)]
+fn dot(a: &[f32], b: &[f32]) -> f32 {
+    let mut acc = [0.0f32; 4];
+    let (ac, ar) = a.as_chunks::<4>();
+    let (bc, br) = b[..a.len()].as_chunks::<4>();
+    for (x, y) in ac.iter().zip(bc) {
+        for l in 0..4 {
+            acc[l] += x[l] * y[l];
+        }
+    }
+    let mut s = (acc[0] + acc[2]) + (acc[1] + acc[3]);
+    for (x, y) in ar.iter().zip(br) {
+        s += x * y;
+    }
+    s
+}
+
 /// `exp(-rate)` for small per-sample rates (release coefficients), via the fast exp2.
 #[inline(always)]
 fn rate_coeff(rate: f32) -> f32 {
@@ -687,7 +789,16 @@ impl Model for FetComp {
         self.os = [Oversampler2x::new(mb), Oversampler2x::new(mb)];
         self.pre = [vec![0.0; mb], vec![0.0; mb]];
         self.hi = [vec![0.0; OS * mb], vec![0.0; OS * mb]];
-        self.key = vec![0.0; OS * mb];
+        self.kos2 = [Oversampler2x::new(OS * mb), Oversampler2x::new(OS * mb)];
+        self.kmid = [vec![0.0; 2 * OS * mb], vec![0.0; 2 * OS * mb]];
+        self.kos = [Oversampler4x::new(2 * OS * mb), Oversampler4x::new(2 * OS * mb)];
+        self.khi = [vec![0.0; OS * CTRL_SUB * mb], vec![0.0; OS * CTRL_SUB * mb]];
+        self.sc_os = [Oversampler2x::new(mb), Oversampler2x::new(mb)];
+        self.sc_pre = [vec![0.0; mb], vec![0.0; mb]];
+        self.sc_hi = [vec![0.0; OS * mb], vec![0.0; OS * mb]];
+        self.gr_taps = gr_fir_taps(sample_rate * (OS * CTRL_SUB) as f64);
+        self.gr_hist = vec![0.0; 2 * GR_FIR_LEN];
+        self.gr_pos = 0;
         self.drive.set_time(GAIN_SMOOTH_S, sample_rate);
         self.out_g.set_time(GAIN_SMOOTH_S, sample_rate * OS as f64);
         self.dirty = true;
@@ -719,7 +830,7 @@ impl Model for FetComp {
     }
 
     fn latency(&self) -> usize {
-        self.os[0].latency() as usize
+        self.os[0].latency() as usize + AUDIO_DELAY_OS / OS
     }
 
     fn reset(&mut self) {
@@ -732,7 +843,18 @@ impl Model for FetComp {
         self.ov_slow = 0.0;
         self.gr_now = 0.0;
         self.lp = [0.0; 2];
-        self.kprev = [0.0; 3];
+        for o in &mut self.kos {
+            o.reset();
+        }
+        for o in &mut self.kos2 {
+            o.reset();
+        }
+        for o in &mut self.sc_os {
+            o.reset();
+        }
+        self.gr_hist.iter_mut().for_each(|v| *v = 0.0);
+        self.adly = [[0.0; AUDIO_DELAY_OS]; 2];
+        self.adly_pos = 0;
         self.dc_x = [0.0; 2];
         self.dc_y = [0.0; 2];
         self.drive.reset(self.drive.target());
@@ -829,16 +951,22 @@ mod tests {
             .collect()
     }
 
-    /// Single-bin DFT amplitude of `x` at `f` (exact for whole-cycle windows).
+    /// Single-bin amplitude of `x` at `f`, 4-term Blackman-Harris window (-92 dB sidelobes) so slow
+    /// settling of the release history cannot leak into neighbouring 2 kHz lines.
     fn amp_at(x: &[f32], f: f64) -> f64 {
-        let w = 2.0 * core::f64::consts::PI * f / FS;
-        let (mut re, mut im) = (0.0f64, 0.0f64);
+        use core::f64::consts::PI;
+        let n = x.len() as f64;
+        let w = 2.0 * PI * f / FS;
+        let (mut re, mut im, mut wsum) = (0.0f64, 0.0f64, 0.0f64);
         for (i, &v) in x.iter().enumerate() {
+            let t = 2.0 * PI * i as f64 / n;
+            let win = 0.35875 - 0.48829 * t.cos() + 0.14128 * (2.0 * t).cos() - 0.01168 * (3.0 * t).cos();
             let p = w * i as f64;
-            re += v as f64 * p.cos();
-            im -= v as f64 * p.sin();
+            re += win * v as f64 * p.cos();
+            im -= win * v as f64 * p.sin();
+            wsum += win;
         }
-        2.0 * (re * re + im * im).sqrt() / x.len() as f64
+        2.0 * (re * re + im * im).sqrt() / wsum
     }
 
     fn db(x: f64) -> f64 {
@@ -861,6 +989,9 @@ mod tests {
                 continue;
             }
             worst = worst.max(db(amp_at(tail, f) / fund));
+            if std::env::var("FET_DBG").is_ok() {
+                eprint!(" {}k:{:.0}", 2 * k, db(amp_at(tail, f) / fund));
+            }
         }
         (worst, m.telemetry().gain_reduction_db as f64)
     }
@@ -868,8 +999,8 @@ mod tests {
     #[test]
     fn explore_alias() {
         for kind in FetKind::ALL {
-            for ri in [0u32] {
-                for (att, rel) in [(7.0, 1.0), (1.0, 7.0), (4.0, 7.0), (7.0, 4.0)] {
+            for ri in [0u32, 3] {
+                for (att, rel) in [(7.0, 7.0), (7.0, 6.0), (7.0, 5.0), (6.0, 7.0), (6.5, 7.0), (0.0, 0.0), (0.0, 1.0)] {
                     let mut m = model(
                         kind,
                         &[
@@ -879,7 +1010,10 @@ mod tests {
                         ],
                     );
                     let (a, gr) = alias_dbc(&mut m, 0.5);
-                    eprintln!("{kind:?} r{ri} att{att} rel{rel}: alias {a:.1} dBc, gr {gr:.1}");
+                    m.set_coloration(false);
+                    m.reset();
+                    let (a2, _) = alias_dbc(&mut m, 0.5);
+                    eprintln!("{kind:?} r{ri} att{att} rel{rel}: alias {a:.1} dBc (nocol {a2:.1}), gr {gr:.1}");
                 }
             }
         }
