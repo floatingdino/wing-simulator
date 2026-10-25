@@ -29,11 +29,11 @@ pub const DEFAULT_NAME: &str = "WINGSIM";
 pub const DEFAULT_MODEL: &str = "ngc-full";
 /// Default serial number.
 pub const DEFAULT_SERIAL: &str = "WSIM00000001";
-/// Default firmware string. Discovery does not check it; WING-Edit checks it at connect time and
-/// the minimum for 3.3.4 is unknown (T003). 3.1.2 is the newest released full-size firmware
-/// (`wing-fullsize-release-3.1.2-20260729`), so advertise that in the console's
-/// `<maj>.<min>.<patch>-<n>-g<hash>:<branch>` format. Override with `ResponderConfig`.
-pub const DEFAULT_FIRMWARE: &str = "3.1.2-0-g00000000:release";
+/// Default firmware string. WING-Edit 3.3.4 gates CONNECT on this field only (disassembly, see
+/// docs/research/protocol.md "Firmware compatibility check"): char[0] >= '3' and char[2] >= '1',
+/// i.e. major.minor >= 3.1; the suffix/hash is not checked. Format follows the console's
+/// `<maj>.<min>.<patch>-<n>-g<hash>:<branch>`. Override via `Identity::firmware`.
+pub const DEFAULT_FIRMWARE: &str = "3.3.4-0-g0c2b9d4a:release";
 
 /// What the simulator advertises.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -321,7 +321,7 @@ mod tests {
         let r = format_reply(Ipv4Addr::new(192, 168, 1, 19), &Identity::default());
         assert_eq!(
             r,
-            "WING,192.168.1.19,WINGSIM,ngc-full,WSIM00000001,3.1.2-0-g00000000:release"
+            "WING,192.168.1.19,WINGSIM,ngc-full,WSIM00000001,3.3.4-0-g0c2b9d4a:release"
         );
         let p = parse_reply(r.as_bytes()).unwrap();
         assert_eq!(p.ip, "192.168.1.19");
