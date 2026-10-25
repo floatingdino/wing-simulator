@@ -16,11 +16,16 @@
 //!   -> MON leg 2m-1 / 2m (output channels 2(m-1), 2(m-1)+1)
 //! ```
 //!
+//! Level: `cfg/mon/<m>/lvl` is the console's PHONES / SPEAKERS knob. With
+//! [`MixConfig::monitor_levels`] set, the level comes from that [`MonitorLevels`] (the simulated
+//! knob, owned by the daemon) and `lvl` sets are ignored here (T03F).
+//!
 //! Solo priority: every solo path and the source gain are 5 ms ramps ([`law::Ramp`]), so entering
 //! and leaving solo (and switching PFL/AFL) crossfade without clicks; EQ coefficients ramp per
 //! sample ([`SmoothedBiquad`]). Delay changes jump (not smoothed). `eqbdtrim` (band solo),
 //! `dirin` (direct input) and `$flip` are not modelled [I]; the shelf Q is 0.707 [I].
 
+use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 use std::sync::Arc;
 
 use wing_dsp::biquad::{Coeffs, SmoothedBiquad};
@@ -224,6 +229,53 @@ enum Sig {
     Post,
 }
 
+/// The two monitor level knobs (PHONES = monitor A / 1, SPEAKERS = monitor B / 2) in dB, shared
+/// lock-free between the control side and the [`MonitorNode`] (T03F). Values are clamped to
+/// -144 (-oo) ..= +10 dB.
+#[derive(Debug)]
+pub struct MonitorLevels {
+    db: [AtomicU32; 2],
+}
+
+impl MonitorLevels {
+    /// Both knobs at `db`.
+    pub fn new(db: f32) -> Self {
+        let b = Self::clamp(db).to_bits();
+        Self {
+            db: [AtomicU32::new(b), AtomicU32::new(b)],
+        }
+    }
+
+    /// `-144 ..= 10` dB (NaN -> -144).
+    pub fn clamp(db: f32) -> f32 {
+        if db.is_nan() {
+            law::FADER_OFF_DB
+        } else {
+            db.clamp(law::FADER_OFF_DB, 10.0)
+        }
+    }
+
+    /// Level of monitor `m` (1 or 2) in dB.
+    #[inline]
+    pub fn get(&self, m: usize) -> f32 {
+        f32::from_bits(self.db[m - 1].load(Relaxed))
+    }
+
+    /// Set monitor `m` (1 or 2); returns the stored (clamped) value.
+    pub fn set(&self, m: usize, db: f32) -> f32 {
+        let v = Self::clamp(db);
+        self.db[m - 1].store(v.to_bits(), Relaxed);
+        v
+    }
+}
+
+impl Default for MonitorLevels {
+    /// 0 dB (unity) on both.
+    fn default() -> Self {
+        Self::new(0.0)
+    }
+}
+
 /// Strip index of a `cfg/mon/*/src` enum value.
 pub fn source_strip(src: u32) -> Option<usize> {
     let s = match src {
@@ -307,6 +359,8 @@ fn prime(solo: &mut [[Ramp<1>; 2]]) {
 /// The monitor section node. Inputs: [`monitor_inputs`]. Outputs: [`MONITOR_CHANNELS`].
 pub struct MonitorNode {
     shared: Arc<MixShared>,
+    /// Knob levels overriding `lvl` (see the module docs).
+    knobs: Option<Arc<MonitorLevels>>,
     seen: u32,
     flags: [u32; STRIP_COUNT],
     mons: [Monitor; 2],
@@ -339,6 +393,7 @@ impl MonitorNode {
         };
         let mut n = Self {
             shared,
+            knobs: cfg.monitor_levels.clone(),
             seen: u32::MAX,
             flags: [0; STRIP_COUNT],
             mons: [mk(), mk()],
@@ -350,6 +405,7 @@ impl MonitorNode {
             sr: vec![0.0; cfg.block_size].into(),
         };
         n.read_shared();
+        n.read_knobs();
         n.update(true);
         for m in &mut n.mons {
             prime(&mut m.solo);
@@ -365,12 +421,31 @@ impl MonitorNode {
     /// Jump every ramp to its target on the next block.
     pub fn settle(&mut self) {
         self.read_shared();
+        self.read_knobs();
         self.update(true);
         for m in &mut self.mons {
             m.src.settle();
             m.out.settle();
             prime(&mut m.solo);
         }
+    }
+
+    /// Take the knob levels (if any) into the monitors' `lvl`; marks changed ones dirty and
+    /// returns whether any changed. RT-safe.
+    fn read_knobs(&mut self) -> bool {
+        let Some(k) = &self.knobs else {
+            return false;
+        };
+        let mut changed = false;
+        for (i, m) in self.mons.iter_mut().enumerate() {
+            let v = k.get(i + 1);
+            if v.to_bits() != m.p.lvl.to_bits() {
+                m.p.lvl = v;
+                m.dirty = true;
+                changed = true;
+            }
+        }
+        changed
     }
 
     fn read_shared(&mut self) -> bool {
@@ -493,6 +568,7 @@ impl MonitorNode {
         match b % 4 {
             block::OWN => {
                 match p {
+                    param::LVL if self.knobs.is_some() => return,
                     param::LVL => mp.lvl = v,
                     param::INV => mp.inv = v != 0.0,
                     param::PAN => mp.pan = v,
@@ -533,8 +609,11 @@ impl MonitorNode {
 
 impl Processor for MonitorNode {
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
+        let knobs = self.read_knobs();
         if self.read_shared() {
             self.update(true);
+        } else if knobs {
+            self.update(false);
         }
         let ins = io.inputs();
         let b = io.block_size();

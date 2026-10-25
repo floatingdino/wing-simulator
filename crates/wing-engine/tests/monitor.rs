@@ -4,7 +4,11 @@
 mod common;
 
 use common::rig::*;
-use wing_engine::mix::{no_processing, InputSignal as I, MixConfig, MixLogic, MixSignal as M};
+use std::sync::Arc;
+
+use wing_engine::mix::{
+    no_processing, InputSignal as I, MixConfig, MixLogic, MixSignal as M, MonitorLevels,
+};
 use wing_engine::routing::{Side, Strip};
 use wing_model::ParamStore;
 
@@ -53,6 +57,10 @@ struct T {
 
 impl T {
     fn new() -> Self {
+        Self::with_knobs(None)
+    }
+
+    fn with_knobs(knobs: Option<Arc<MonitorLevels>>) -> Self {
         let (store, mut logic) = setup();
         logic.refresh(&store);
         // bare mix (no bus/main strip processing): gains are fitted sample by sample against the
@@ -60,6 +68,7 @@ impl T {
         let cfg = MixConfig {
             logic: Some(logic.shared()),
             hooks: Some(no_processing()),
+            monitor_levels: knobs,
             ..MixConfig::default()
         };
         let r = rig(&store, cfg, 2);
@@ -223,12 +232,20 @@ fn dca_mute_mutes_main_sends_and_dcamgrp_makes_it_a_full_mute() {
     assert_gain(&t.pfl(0), &t.main(Side::L), pan_c(), "unmuted: main");
     let (g_pre, _) = fit(&pre1(&t), &bus(&t, 1));
     let (g_post, _) = fit(&afl1(&t), &bus(&t, 2));
-    assert!(g_pre > 0.1 && g_post > 0.1, "unmuted sends {g_pre} {g_post}");
+    assert!(
+        g_pre > 0.1 && g_post > 0.1,
+        "unmuted sends {g_pre} {g_post}"
+    );
 
     // dcamgrp off: main send muted, the strip itself and its bus sends are not
     t.set("dca/5/mute", "1");
     t.run(SETTLE);
-    assert_gain(&t.pfl(0), &t.main(Side::L), 0.0, "dcamgrp off: main send muted");
+    assert_gain(
+        &t.pfl(0),
+        &t.main(Side::L),
+        0.0,
+        "dcamgrp off: main send muted",
+    );
     assert_gain(&t.pfl(0), &afl1(&t), 1.0, "dcamgrp off: fader not muted");
     assert_gain(&pre1(&t), &bus(&t, 1), g_pre, "dcamgrp off: PRE bus send");
     assert_gain(&afl1(&t), &bus(&t, 2), g_post, "dcamgrp off: POST bus send");
@@ -493,6 +510,32 @@ fn solo_in_place_mutes_others() {
 }
 
 // ---- monitor processing -------------------------------------------------------------------------
+
+/// T03F: with knobs, the monitor level is the knob's; `cfg/mon/*/lvl` sets (e.g. WING-Edit's
+/// scene push of -oo) do not touch it; knob moves are smoothed.
+#[test]
+fn monitor_level_knobs_override_lvl() {
+    let knobs = Arc::new(MonitorLevels::default());
+    let mut t = T::with_knobs(Some(knobs.clone()));
+    t.set("cfg/mon/1/lvl", "-144");
+    t.set("cfg/mon/2/lvl", "-144");
+    t.run(SETTLE);
+    let ml = t.main(Side::L);
+    assert_gain(&ml, &t.mon(1, Side::L), 1.0, "knob A 0 dB, lvl -oo ignored");
+    assert_gain(&ml, &t.mon(2, Side::L), 1.0, "knob B 0 dB");
+    assert_eq!(knobs.set(1, -6.0), -6.0);
+    assert_eq!(knobs.set(2, 99.0), 10.0, "clamped");
+    t.r.cycle(&[1, 2]);
+    let (g, _) = fit(&t.main(Side::L), &t.mon(1, Side::L));
+    assert!(g > lin(-6.0) + 0.01, "ramped, not jumped: {g}");
+    t.run(SETTLE);
+    let ml = t.main(Side::L);
+    assert_gain(&ml, &t.mon(1, Side::L), lin(-6.0), "knob A -6");
+    assert_gain(&ml, &t.mon(2, Side::L), lin(10.0), "knob B +10");
+    knobs.set(1, f32::NEG_INFINITY);
+    t.run(SETTLE);
+    assert_gain(&ml, &t.mon(1, Side::L), 0.0, "knob A -oo");
+}
 
 #[test]
 fn monitor_level_dim_mono_pan_inv() {

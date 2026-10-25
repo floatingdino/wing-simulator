@@ -127,6 +127,7 @@ pub fn build_engine(
         sample_rate: cfg.sample_rate as f32,
         logic: Some(ctl.logic.shared()),
         meters: cfg.meters.clone(),
+        monitor_levels: Some(ctl.monitor.levels()),
         ..MixConfig::default()
     };
     ctl.logic.refresh(store);

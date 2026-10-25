@@ -31,6 +31,7 @@ func tempDir(_ tag: String) throws -> URL {
         #expect(a.loadPct == 23.5 && a.cycleP99Us == 520)
         #expect(a.bridges.first?.e2eMs == 23.25)
         #expect(a.bridges.first?.device == "Scarlett 2i4 USB")
+        #expect(s.monitorLevelsDb == [0.0, -12.5])
     }
 
     @Test func `liveness needs running, a fresh document and the process`() throws {

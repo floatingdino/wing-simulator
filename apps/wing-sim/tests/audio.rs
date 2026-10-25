@@ -291,6 +291,101 @@ fn offline_sine_through_channel_main_usb_out_and_bridge() {
     assert!(s.cycles > 400 && s.load_pct() > 0.0);
 }
 
+/// T03F regression: a WING-Edit PC->MIXER push sends `cfg/mon/1|2/lvl` = -oo (the PHONES /
+/// SPEAKERS knob positions are not part of WING-Edit's scene; captured in
+/// fixtures/protocol/pc-to-mixer-scene.json). It used to override wing-sim's startup 0 dB and
+/// silence the default host route (`mon/1`) for good.
+#[test]
+fn monitor_level_survives_wing_edit_push() {
+    let Rig { store, mut routing } = rig();
+    let mut console = Console::build(
+        console_cfg(),
+        &store,
+        &mut routing,
+        None,
+        vec![],
+        Arc::new(AudioStats::default()),
+    )
+    .unwrap();
+    let mon = console
+        .nodes()
+        .mix
+        .monitor_port(1, wing_engine::routing::Side::L);
+    let input_db = rms_db(&(0..1024).map(|n| sine(n, 1000.0, 0.1)).collect::<Vec<_>>());
+    let mon_db = |console: &mut Console, routing: &mut ConsoleControl, t: u64| {
+        routing.refresh(&store);
+        let mut x = Vec::new();
+        for c in 0..120u64 {
+            run_sine(console, t + c * BLOCK as u64, 1);
+            if c >= 100 {
+                x.extend_from_slice(console.port(mon));
+            }
+        }
+        rms_db(&x) - input_db
+    };
+    let db0 = mon_db(&mut console, &mut routing, 0);
+    assert!(
+        (db0 - MAIN_DB).abs() < 0.2,
+        "monitor A before the push {db0:.2} dB"
+    );
+
+    // the push, as WING-Edit sends it (client origin)
+    let json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/protocol/pc-to-mixer-scene.json"
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    let mut pushed = 0;
+    for (path, v) in json["params"].as_object().unwrap() {
+        if !path.starts_with("cfg/mon/") || path.contains("/eq/") || path.contains("/dly/") {
+            continue;
+        }
+        let id = store.lookup(path).unwrap();
+        let text = match v {
+            serde_json::Value::String(s) => s.clone(),
+            v => v.to_string(),
+        };
+        if path.ends_with("/lim") || path.ends_with("dim") {
+            continue; // keep the level measurement clean (the user's limiter is -6 dB)
+        }
+        store.set_text(id, &text, 0x5747_4544).unwrap();
+        pushed += 1;
+    }
+    assert!(pushed >= 10);
+    assert_eq!(
+        store.get_f64(store.lookup("cfg/mon/1/lvl").unwrap()),
+        Some(-144.0),
+        "the fixture pushes lvl -oo"
+    );
+    let db1 = mon_db(&mut console, &mut routing, 120 * BLOCK as u64);
+    assert!(
+        (db1 - MAIN_DB).abs() < 0.2,
+        "monitor A after the push {db1:.2} dB"
+    );
+    // the knob position is written back over the client's set (what WING-Edit then reads)
+    let lvl = |m: u8| store.get_f64(store.lookup(&format!("cfg/mon/{m}/lvl")).unwrap());
+    assert_eq!((lvl(1), lvl(2)), (Some(0.0), Some(0.0)));
+
+    // turning the knob (control socket / OSC path) changes the level and the mirrored lvl
+    let knobs = routing.monitor.clone();
+    assert_eq!(knobs.set(1, -12.0), Ok(-12.0));
+    assert!(knobs.set(3, 0.0).is_err());
+    let db2 = mon_db(&mut console, &mut routing, 240 * BLOCK as u64);
+    assert!(
+        (db2 - (MAIN_DB - 12.0)).abs() < 0.2,
+        "knob -12: {db2:.2} dB"
+    );
+    assert!(
+        (lvl(1).unwrap() + 12.0).abs() < 0.1,
+        "mirrored {:?}",
+        lvl(1)
+    );
+    assert_eq!(knobs.describe(), "mon/1 -12.0 dB, mon/2 0.0 dB");
+}
+
 // ---- allocations --------------------------------------------------------------------------------
 
 #[test]

@@ -20,6 +20,9 @@ public struct DaemonStatus: Codable, Equatable, Sendable {
     /// Recorder (T061); optional so documents from older daemons still decode.
     public var recording: Bool?
     public var recorder: String?
+    /// Monitor level knobs [A (PHONES), B (SPEAKERS)] in dB, -144 = -oo (T03F; `nil` with
+    /// `--no-audio` or from older daemons). Set with the control command `monitor-level`.
+    public var monitorLevelsDb: [Double]?
 
     /// Decode the JSON document the daemon writes.
     public static func decode(_ data: Data) throws -> DaemonStatus {
