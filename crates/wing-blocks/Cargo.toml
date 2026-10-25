@@ -39,3 +39,7 @@ harness = false
 [[bench]]
 name = "comp_console"
 harness = false
+
+[[bench]]
+name = "comp_opto"
+harness = false

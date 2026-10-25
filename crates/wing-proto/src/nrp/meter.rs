@@ -358,6 +358,28 @@ pub fn meter_to_db(v: i16) -> f32 {
     v as f32 / 256.0
 }
 
+/// Gain-reduction full scale (dB at word 256) of most dynamics models (protocol.md §4.2).
+pub const GR_FULL_SCALE_DB: f32 = 20.0;
+/// Gain-reduction full scale of the gate slot (the standard gate's 60 dB range, protocol.md §4.2).
+pub const GATE_GR_FULL_SCALE_DB: f32 = 60.0;
+
+/// Gain reduction (dB, >= 0) to a gate/dyn "gain" meter word: `256 * gr / full_scale`, so 256 is
+/// `full_scale` dB of reduction. [H] The sign convention (positive = more reduction) is not
+/// confirmed on the wire.
+pub fn gr_to_meter(gr_db: f32, full_scale_db: f32) -> i16 {
+    if gr_db.is_nan() || full_scale_db <= 0.0 {
+        return 0;
+    }
+    (gr_db.max(0.0) * 256.0 / full_scale_db)
+        .round()
+        .min(i16::MAX as f32) as i16
+}
+
+/// Inverse of [`gr_to_meter`].
+pub fn meter_to_gr(v: i16, full_scale_db: f32) -> f32 {
+    v as f32 * full_scale_db / 256.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

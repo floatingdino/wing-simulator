@@ -380,11 +380,17 @@ pub fn build_mix_graph(
 
     let mut inputs = [NodeId(0); INPUT_STRIPS];
     for (i, id) in inputs.iter_mut().enumerate() {
-        let (name, strip) = if i < 40 {
+        let (name, mut strip) = if i < 40 {
             (format!("ch{}", i + 1), ChannelStrip::channel(fs, bs))
         } else {
             (format!("aux{}", i - 39), ChannelStrip::aux(fs, bs))
         };
+        // input strip i (ch 1..40, aux 1..8) = the meters' flat strip index
+        strip.set_meter(
+            cfg.meters
+                .clone()
+                .map(|b| crate::meters::StripMeter::at(b, i)),
+        );
         let src = [
             InputRouter::port(io.inputs, i, 0),
             InputRouter::port(io.inputs, i, 1),

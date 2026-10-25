@@ -6,9 +6,10 @@
 //! 4.04 s). Each live report is sent as `id.l + int16[]` (big-endian, 1/256 dB levels) to
 //! `client_ip:port` every 50 ms until 5 s after its last renew.
 //!
-//! Producers: [`SyntheticMeters`] today; T039 will write real levels into the same
-//! [`MeterBank`] from the engine's metering thread (`MeterBank::set` is a relaxed atomic store:
-//! no locks, no allocation).
+//! Producers: [`SyntheticMeters`] (no audio), or real levels (T039: the daemon converts the
+//! engine's lock-free level bank into this [`MeterBank`] from the streamer's per-tick source hook,
+//! [`MeterStreamer::spawn_with_source`], right before each send). `MeterBank::set` is a relaxed
+//! atomic store: no locks, no allocation.
 //!
 //! Unverified [H]: the per-group word counts of source/output groups (`A7`/`A8`) are taken from
 //! the schema's `io/in` / `io/out` group sizes (local 24, AES50 48, card 64, ...), matching
@@ -320,6 +321,19 @@ impl MeterStreamer {
         sock: UdpSocket,
         interval: Duration,
     ) -> io::Result<MeterStreamer> {
+        Self::spawn_with_source(subs, bank, sock, interval, |_| {})
+    }
+
+    /// Like [`MeterStreamer::spawn`], calling `source(&bank)` on the streamer thread at the start
+    /// of every tick (before the live reports are read), so a producer can refresh the bank in
+    /// step with the packets.
+    pub fn spawn_with_source(
+        subs: Arc<MeterSubscriptions>,
+        bank: Arc<MeterBank>,
+        sock: UdpSocket,
+        interval: Duration,
+        mut source: impl FnMut(&MeterBank) + Send + 'static,
+    ) -> io::Result<MeterStreamer> {
         let stop = Arc::new(AtomicBool::new(false));
         let packets = Arc::new(AtomicU64::new(0));
         let (stop2, packets2) = (stop.clone(), packets.clone());
@@ -330,6 +344,7 @@ impl MeterStreamer {
                 let mut buf = Vec::new();
                 let mut next = Instant::now();
                 while !stop2.load(Relaxed) {
+                    source(&bank);
                     let now = Instant::now();
                     subs.for_each_live(now, |dest, id, sels| {
                         words.clear();

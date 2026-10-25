@@ -339,7 +339,8 @@ impl Control {
             if telem.is_none() {
                 telem = self.pipeline.as_ref().and_then(|p| p.telemetry_rx());
             }
-            // TODO(meters): telemetry is drained and dropped until metering consumes it.
+            // Meters do not use the telemetry ring (they go through `ConsoleConfig::meters`);
+            // it is drained so it never fills.
             if let Some(rx) = telem.as_mut() {
                 while rx.pop().is_some() {}
             }
@@ -357,10 +358,17 @@ impl Control {
                     s
                 }
             };
+            if let Some(m) = &self.opts.console.meters {
+                // the meter sender uses real meters while a session runs, synthetic otherwise
+                m.set_attached(session.is_some());
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
         if let Some(s) = session {
             self.end_session(s, "shutdown");
+        }
+        if let Some(m) = &self.opts.console.meters {
+            m.set_attached(false);
         }
         self.pipeline = None;
         self.wi = None;
