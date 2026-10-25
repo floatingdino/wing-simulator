@@ -2,7 +2,7 @@
 id: T016
 title: Milestone v0.1: WING-Edit control loop test
 stage: S1
-status: todo
+status: done
 owner: -
 depends: [T011, T013]
 branch: -
@@ -16,3 +16,4 @@ Scripted end-to-end: start wing-sim with PUBLIC.snap, connect a protocol test cl
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 coordinator: live-verified with the user; see docs/milestones/v0.1.md.
