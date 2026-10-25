@@ -67,7 +67,12 @@ fn fx_model_swaps_and_inserts_are_allocation_free_on_rt_side() {
     }
     seti(&store, "ch/1/postins/on", 1);
     sett(&store, "fx/1/mdl", "ST-DL");
-    let mut r = rig(&store, MixConfig::default(), 0);
+    // T082: with meters attached (strip band cells, FX slot meters)
+    let cfg = MixConfig {
+        meters: Some(wing_engine::meters::LevelBank::shared()),
+        ..MixConfig::default()
+    };
+    let mut r = rig(&store, cfg, 0);
     let all: Vec<u32> = (1..=8).collect();
     r.cycles(3, &all); // warm-up
 

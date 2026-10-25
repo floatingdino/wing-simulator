@@ -344,6 +344,12 @@ Value scale:
 - Levels are in **1/256 dB** (signed): `0xF100` = −15.0 dB.
 - Gate and dyn gain are scaled so that 256 ≈ 20 dB GR for most models (the standard gate is 60 dB).
 - FX band GR: dB = v × 6/2048.
+- T082 (WING-Edit 3.3.4 `nrp::MeterHandler::rxMeters`, static analysis): the gate/dyn gain word is a GR-meter
+  **position × 256** computed with the slot's selected model's law (WING-Edit `ae::*_gain_<model>`; 60 dB full
+  scale for GATE/DUCK, 20 dB for most compressors, negative for 76LA/L100/RIDE, VU-style for B160/SBUS, ...).
+  DEQ2 is special: the gain word and the following LED/state word are its two band gains `256 (g_k − 1)`.
+  FX blocks: words 0–3 levels, words 4–9 model-specific state read by a few FX pages (channel-strip FX LEDs,
+  DEQ3 bands, C5-CMB band GR, limiter/de-esser GR). The full table is in `crates/wing-blocks/src/meter.rs`.
 
 Timing: sent about every **50 ms** for 5 s after the last `D4` renew. WING-Edit has a "REDUCED METER UPDATE RATE
 (50%)" option. The UDP source port the console sends from is undocumented; use 2222. libwing parses the first 2

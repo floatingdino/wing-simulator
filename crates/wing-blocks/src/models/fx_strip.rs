@@ -648,6 +648,21 @@ impl Model for ChannelStrip {
         }
         t
     }
+
+    /// One value per dynamics stage in processing order: its gain change (`-GR`, 0 while bypassed).
+    fn meter_bands(&self, out: &mut [f32]) -> usize {
+        let mut n = 0;
+        for s in self.stages.iter().filter(|s| s.dynamic) {
+            let Some(o) = out.get_mut(n) else { break };
+            *o = if s.wet > 0.0 {
+                -s.model.telemetry().gain_reduction_db
+            } else {
+                0.0
+            };
+            n += 1;
+        }
+        n
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------
