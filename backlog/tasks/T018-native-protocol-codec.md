@@ -2,13 +2,8 @@
 id: T018
 title: Native protocol codec (framing, escaping, channels, tokens)
 stage: S1
-<<<<<<< HEAD
-status: done
-owner: -
-=======
 status: done
 owner: agent-T012-T018
->>>>>>> task/T012-T018
 depends: [T001, T002]
 branch: task/T012-T018
 ---

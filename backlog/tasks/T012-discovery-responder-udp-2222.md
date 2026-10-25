@@ -2,13 +2,8 @@
 id: T012
 title: Discovery responder (UDP 2222)
 stage: S1
-<<<<<<< HEAD
-status: done
-owner: -
-=======
 status: done
 owner: agent-T012-T018
->>>>>>> task/T012-T018
 depends: [T001, T002]
 branch: task/T012-T018
 ---
