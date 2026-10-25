@@ -2,7 +2,7 @@
 id: T065
 title: DAW sync: scene recall via OSC/MIDI from REAPER
 stage: S6
-status: review
+status: done
 owner: agent-T065
 depends: [T014, T017]
 branch: task/T065
