@@ -265,7 +265,9 @@ fn bus_insert_send_fx_returns_to_main_and_aux() {
         BLOCK + input_latency(),
     );
     let (mut hl, mut hr, mut hp) = (Hist::default(), Hist::default(), Hist::default());
-    for k in 0..40 {
+    // past the NONE -> ST-DL crossfade and the strips' latencies (slot latency from FxRack)
+    let settle = (db + dm + da) / BLOCK + 8;
+    for k in 0..settle + 32 {
         r.cycle(&[1]);
         let (sl, sr) = (send_leg(&r, 3), send_leg(&r, 4));
         let (mut wl, mut wr) = (sl.clone(), sr.clone());
@@ -274,7 +276,7 @@ fn bus_insert_send_fx_returns_to_main_and_aux() {
         hr.push(&wr);
         let post = r.mix(Strip::Bus(1), M::Post, Side::L);
         hp.push(&post);
-        if k >= 8 {
+        if k >= settle {
             assert!(peak(&sl) > 0.01);
             assert_close(
                 &r.mix(Strip::Bus(1), M::Pfl, Side::L),
