@@ -126,5 +126,5 @@ Quick test without REAPER (any OSC sender, e.g. Python `python-osc`):
   Lua 5.3+ features (`string.pack`, `math.type`, `&`), as in REAPER 6/7.
 
 Unverified against a real REAPER in T065: the pattern-config names `LAST_MARKER_NAME`,
-`LAST_REGION_NAME`, `TRACK_VOLUME_DB` and `TRACK_MUTE` are taken from REAPER's
+`LAST_REGION_NAME`, `TRACK_VOLUME (f, dB)` and `TRACK_MUTE` are taken from REAPER's
 `Default.ReaperOSC`; if your REAPER version lacks one, compare with that file in the same folder.

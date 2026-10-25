@@ -23,5 +23,5 @@ DEVICE_REGION_COUNT 0
 LAST_MARKER_NAME s/wingsim/marker
 LAST_REGION_NAME s/wingsim/region
 
-TRACK_VOLUME_DB f/ch/@/fdr
+TRACK_VOLUME f/ch/@/fdr
 TRACK_MUTE b/ch/@/mute
