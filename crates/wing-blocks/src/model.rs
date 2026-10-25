@@ -22,6 +22,7 @@
 
 use crate::eq::EqVariant;
 use crate::models::comp_console::{ConsoleComp, ConsoleKind};
+use crate::models::comp_fet::{FetComp, FetKind};
 use crate::models::comp_opto::{OptoComp, OptoKind};
 use crate::models::comp_vca::{VcaComp, VcaKind};
 use crate::models::dyn_eq::{DeEsser902, DynEq};
@@ -324,6 +325,8 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "RED3") => Box::new(ConsoleComp::new(ConsoleKind::Red3)),
         (BlockKind::Dynamics, "2250") => Box::new(ConsoleComp::new(ConsoleKind::Api2250)),
         (BlockKind::Dynamics, "LMT") => Box::new(ConsoleComp::new(ConsoleKind::Lmt)),
+        (BlockKind::Dynamics, "76LA") => Box::new(FetComp::new(FetKind::La76)),
+        (BlockKind::Dynamics, "NSTR") => Box::new(FetComp::new(FetKind::Nstr)),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
         (BlockKind::Eq(_), "SOUL") => Box::new(AltEq::new(AltKind::Soul)),
         (BlockKind::Eq(_), "E88") => Box::new(AltEq::new(AltKind::E88)),
@@ -466,6 +469,7 @@ mod tests {
             "ECL33", "E88C", "RED3", "2250", "LMT",
             "LA", "L100", "F670", "BLISS",
             "DS902", "DEQ", "DEQ2",
+            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS", "76LA", "NSTR",
         ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);
@@ -516,6 +520,7 @@ mod tests {
         assert!(!reg.select(99));
         assert!(!reg.select_id("NOPE"));
         assert_eq!(reg.active_id(), "3CMP");
-        assert_eq!(reg.max_latency(), 0);
+        // 76LA / NSTR: 2x oversampling (39) + control-path alignment (18).
+        assert_eq!(reg.max_latency(), 57);
     }
 }

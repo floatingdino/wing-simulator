@@ -36,3 +36,11 @@ Each item: what was assumed, where, and how to check on a console (or via a meas
 | Gate vintage | E88 hysteresis end stop (25 dB, label "EXP") = 2:1 expander without hysteresis; E88 attack 2 ms / 50 us; no hold | T047 |
 | Gate vintage | 9000G fixed 2 dB hysteresis; attack 1.5 ms / 100 us; EXP mode 2:1 slope, hold retained in EXP | T047 |
 | Gate vintage | D241G fixed 2 dB hysteresis, attack 20 us, depth 80 dB, hold 10/100 ms, programme-dependent release 150..600 ms (SLOW 500..2000 ms), open-time charge tau 0.3 s | T047 |
+| Comp FET | 76LA in/out knobs: 0 dB drive / make-up at the schema defaults -30 / -27 dB (unity below threshold); fixed cell threshold -18 dBFS | T04D |
+| Comp FET | 76LA attack/release knob taper geometric between 800..20 µs / 1100..50 ms; release programme-dependent (0.5x after transients, 0.3 s history) | T04D |
+| Comp FET | 76LA ratio buttons: threshold offsets 0/+2/+3/+4 dB, knee widths 10/6/4/2 dB; ALL = 20:1 + 1.3 dB output dip, 50 % transient GR overshoot, 3x FET distortion | T04D |
+| Comp FET | 76LA colouration: ~0.4 % THD at ~9 dB GR (FET H2), 0.013 % without GR (class-A stage, +12 dBFS soft-clip headroom) | T04D |
+| Comp FET | NSTR in/out knobs 4 dB per step, unity at defaults 4 / 3; fixed threshold -18 dBFS; attack 50 µs..30 ms, release 50 ms..3.5 s geometric | T04D |
+| Comp FET | NSTR knee widths per ratio (12/12/10/6/4/2/1/0 dB); 1.5/2/3:1 opto-like release (0.5x..2x with GR), 10:1 programme-dependent; WING "1.5:1" replaces the EL8's 1:1 | T04D |
+| Comp FET | NSTR normal-mode harmonics: LF-weighted (300 Hz) 2nd + 3rd, 0.3-0.5 % at 100 Hz, < 0.04 % at 1 kHz, scaled up with ratio | T04D |
+| Comp FET | WING runs these models with 57 samples latency (2x audio / 16x control oversampling) - real console latency unknown | T04D |
