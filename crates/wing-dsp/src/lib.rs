@@ -29,6 +29,7 @@ pub mod denormal;
 pub mod detector;
 pub mod gain;
 pub mod oversample;
+pub mod simd;
 pub mod smooth;
 pub mod svf;
 

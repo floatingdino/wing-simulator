@@ -55,10 +55,10 @@
 //!
 //! Real-time: `prepare` allocates the oversamplers and scratch; `process`, `set_param`, `commit`, `reset` are
 //! allocation-free. Bench (`benches/comp_fet.rs`, M1, stereo 64-sample block): ~15-18 µs (~1.3 % of a core
-//! per instance at 48 kHz); the 16x control path dominates (one fast log per control sample).
+//! per instance at 48 kHz) before T070, ~10-12 µs on M4 after it (docs/perf.md); the sequential 16x ballistics dominate.
 
 use crate::model::{Model, ModelTelemetry, ParamValue};
-use wing_dsp::gain::{db_to_lin, db_to_lin_fast, lin_to_db_fast};
+use wing_dsp::gain::{db_to_lin, db_to_lin_fast, lin_to_db_fast, lin_to_db_fast4};
 use wing_dsp::oversample::{Oversampler2x, Oversampler4x};
 use wing_dsp::smooth::{one_pole_coeff, OnePoleSmoother};
 
@@ -388,9 +388,11 @@ pub struct FetComp {
     sc_pre: [Vec<f32>; 2],
     sc_hi: [Vec<f32>; 2],
     gr_taps: Vec<f32>,
-    /// Mirrored control-rate GR history (newest first window at `gr_pos`).
-    gr_hist: Vec<f32>,
-    gr_pos: usize,
+    /// Static-curve GR target per control sample of the current chunk.
+    ctl: Vec<f32>,
+    /// Control-rate GR, newest first: `[.. chunk reversed | GR_FIR_LEN - 1 history]`, history at
+    /// offset `ctl.len()` (every FIR window is a slice; the whole chunk is written before the FIR reads).
+    gr_win: Vec<f32>,
     /// Audio delay lines (oversampled rate) per channel.
     adly: [[f32; AUDIO_DELAY_OS]; 2],
     adly_pos: usize,
@@ -454,8 +456,8 @@ impl FetComp {
             sc_pre: [Vec::new(), Vec::new()],
             sc_hi: [Vec::new(), Vec::new()],
             gr_taps: Vec::new(),
-            gr_hist: Vec::new(),
-            gr_pos: 0,
+            ctl: Vec::new(),
+            gr_win: Vec::new(),
             adly: [[0.0; AUDIO_DELAY_OS]; 2],
             adly_pos: 0,
         };
@@ -606,7 +608,20 @@ impl FetComp {
     /// Static curve + ballistics for one control-rate sample of the (driven) key magnitude.
     #[inline(always)]
     fn gr_step(&mut self, key: f32) -> f32 {
-        let target = self.curve.gr(lin_to_db_fast(key.max(KEY_FLOOR))) as f64;
+        let target = self.gr_target(key);
+        self.gr_ballistics(target)
+    }
+
+    /// Static-curve GR (dB) for one control-rate key magnitude (pure).
+    #[inline(always)]
+    fn gr_target(&self, key: f32) -> f32 {
+        self.curve.gr(lin_to_db_fast(key.max(KEY_FLOOR)))
+    }
+
+    /// Ballistics for one control-rate sample towards `target` (from [`FetComp::gr_target`]).
+    #[inline(always)]
+    fn gr_ballistics(&mut self, target: f32) -> f32 {
+        let target = target as f64;
         let g = self.gr;
         let c = if target > g {
             self.att_c
@@ -629,37 +644,8 @@ impl FetComp {
     /// oversampled sample (the GR moves by far less than its own scale in 8 control samples).
     #[inline(always)]
     fn update_release(&mut self) {
-        let g = self.gr;
-        self.rel_c_dyn = match self.rel_mode {
-            ReleaseMode::Plain => self.rel_c,
-            ReleaseMode::ProgramDependent => {
-                let h = if g > 1e-3 {
-                    (self.hist / g).min(1.0)
-                } else {
-                    1.0
-                };
-                rate_coeff(self.rel_rate / (PD_MIN as f64 + (1.0 - PD_MIN as f64) * h))
-            }
-            ReleaseMode::Opto => {
-                let e = db_to_lin_fast(
-                    -(g as f32) * (20.0 / core::f32::consts::LN_10) / NSTR_OPTO_GR_DB,
-                ) as f64;
-                let m = NSTR_OPTO_MIN as f64 + (NSTR_OPTO_MAX - NSTR_OPTO_MIN) as f64 * e;
-                rate_coeff(self.rel_rate / m)
-            }
-        };
-    }
-
-    /// Push one control-rate GR value into the mirrored FIR history.
-    #[inline(always)]
-    fn push_gr(&mut self, g: f32) {
-        self.gr_pos = if self.gr_pos == 0 {
-            GR_FIR_LEN - 1
-        } else {
-            self.gr_pos - 1
-        };
-        self.gr_hist[self.gr_pos] = g;
-        self.gr_hist[self.gr_pos + GR_FIR_LEN] = g;
+        self.rel_c_dyn =
+            release_coeff(self.rel_mode, self.rel_rate, self.rel_c, self.gr, self.hist);
     }
 
     /// Colouration of one channel sample after the gain cell (oversampled rate), then make-up and output
@@ -679,6 +665,86 @@ impl FetComp {
             }
         };
         saturate(y * out_g, self.out_h, self.out_inv3h2, self.out_k2)
+    }
+
+    /// `ctl[c] = gr_target(max(|khi_L[c]|, |khi_R[c]|))` for the chunk's `n_ctl` control samples:
+    /// four lanes at a time, branch-free, bit-identical to the scalar [`FetComp::gr_target`] (the
+    /// ALL dip falls back to it).
+    fn targets(&mut self, n_ctl: usize) {
+        let (kl, kr) = (&self.khi[0][..n_ctl], &self.khi[1][..n_ctl]);
+        let cv = self.curve;
+        let ctl = &mut self.ctl[..n_ctl];
+        let mut done = 0;
+        #[cfg(target_arch = "aarch64")]
+        if cv.dip_slope <= 0.0 {
+            // SAFETY: NEON is mandatory on aarch64; all accesses are within `n_ctl` (4 per step).
+            unsafe {
+                use core::arch::aarch64::*;
+                let w = cv.knee_db;
+                let (half, neg_half, two_w) = (0.5 * w, -0.5 * w, 2.0 * w);
+                let slope = vdupq_n_f32(cv.slope);
+                let zero = vdupq_n_f32(0.0);
+                while done + 4 <= n_ctl {
+                    let i = done;
+                    let key = vmaxnmq_f32(
+                        vabsq_f32(vld1q_f32(kl.as_ptr().add(i))),
+                        vabsq_f32(vld1q_f32(kr.as_ptr().add(i))),
+                    );
+                    let key = vmaxnmq_f32(key, vdupq_n_f32(KEY_FLOOR));
+                    let mut k4 = [0.0f32; 4];
+                    vst1q_f32(k4.as_mut_ptr(), key);
+                    let lvl = lin_to_db_fast4(k4);
+                    let d = vsubq_f32(vld1q_f32(lvl.as_ptr()), vdupq_n_f32(cv.thr_db));
+                    let base = if w <= 0.0 {
+                        vmulq_f32(slope, vmaxnmq_f32(d, zero))
+                    } else {
+                        let e = vaddq_f32(d, vdupq_n_f32(half));
+                        let knee = vdivq_f32(vmulq_f32(vmulq_f32(slope, e), e), vdupq_n_f32(two_w));
+                        let lin = vmulq_f32(slope, d);
+                        let upper = vbslq_f32(vcltq_f32(d, vdupq_n_f32(half)), knee, lin);
+                        vbslq_f32(vcleq_f32(d, vdupq_n_f32(neg_half)), zero, upper)
+                    };
+                    let gr = vminnmq_f32(vaddq_f32(base, zero), vdupq_n_f32(GR_MAX_DB));
+                    vst1q_f32(ctl.as_mut_ptr().add(i), gr);
+                    done += 4;
+                }
+            }
+        }
+        for c in done..n_ctl {
+            ctl[c] = cv.gr(lin_to_db_fast(kl[c].abs().max(kr[c].abs()).max(KEY_FLOOR)));
+        }
+    }
+
+    /// Ballistics over the chunk's `ctl` targets (sequential; state in registers), writing the
+    /// control-rate GR newest first into `gr_win`. Same arithmetic as [`FetComp::update_release`] +
+    /// [`FetComp::gr_ballistics`] per sample.
+    fn ballistics(&mut self, n2: usize) {
+        let cap = self.ctl.len();
+        let (att_c, hist_c, ov_c) = (self.att_c, self.hist_c, self.ov_c);
+        let overshoot = self.overshoot;
+        let (mode, rel_rate, rel_c) = (self.rel_mode, self.rel_rate, self.rel_c);
+        let (mut g, mut hist, mut ov_slow, mut rel_c_dyn) =
+            (self.gr, self.hist, self.ov_slow, self.rel_c_dyn);
+        let ctl = &self.ctl;
+        let win = &mut self.gr_win;
+        for j in 0..n2 {
+            rel_c_dyn = release_coeff(mode, rel_rate, rel_c, g, hist);
+            for s in 0..CTRL_SUB {
+                let c = CTRL_SUB * j + s;
+                let target = ctl[c] as f64;
+                let k = if target > g { att_c } else { rel_c_dyn };
+                g = target + k * (g - target);
+                hist = g + hist_c * (hist - g);
+                let out = if overshoot > 0.0 {
+                    ov_slow = g + ov_c * (ov_slow - g);
+                    g + overshoot as f64 * (g - ov_slow).max(0.0)
+                } else {
+                    g
+                };
+                win[cap - 1 - c] = out as f32;
+            }
+        }
+        (self.gr, self.hist, self.ov_slow, self.rel_c_dyn) = (g, hist, ov_slow, rel_c_dyn);
     }
 
     fn process_chunk(&mut self, l: &mut [f32], r: &mut [f32], sc: Option<(&[f32], &[f32])>) {
@@ -710,21 +776,16 @@ impl FetComp {
             self.kos[ch].upsample(&self.kmid[ch][..2 * n2], &mut self.khi[ch][..n_ctl]);
         }
         let colour = self.colour;
+        // Control path at CTRL_SUB x the audio rate; GR decimated back through the low-pass FIR; audio
+        // delayed so it meets the GR it produced (key up-sampler + FIR group delay). Three passes over the
+        // chunk (T070; same arithmetic as one fused per-sample loop): the static curve (independent per
+        // control sample), the sequential ballistics, then the FIR decimation.
+        self.targets(n_ctl);
+        let cap = self.ctl.len();
+        self.ballistics(n2);
         for j in 0..n2 {
-            // Control path at CTRL_SUB x the audio rate; GR decimated back through the low-pass FIR; audio
-            // delayed so it meets the GR it produced (key up-sampler + FIR group delay).
-            self.update_release();
-            for s in 0..CTRL_SUB {
-                let c = CTRL_SUB * j + s;
-                let key = self.khi[0][c].abs().max(self.khi[1][c].abs());
-                let g = self.gr_step(key);
-                self.push_gr(g);
-            }
-            let gr = dot(
-                &self.gr_taps,
-                &self.gr_hist[self.gr_pos..self.gr_pos + GR_FIR_LEN],
-            )
-            .max(0.0);
+            let c = CTRL_SUB * j + CTRL_SUB - 1;
+            let gr = dot(&self.gr_taps, &self.gr_win[cap - 1 - c..]).max(0.0);
             let p = self.adly_pos;
             let (xl, xr) = (self.adly[0][p], self.adly[1][p]);
             self.adly[0][p] = self.hi[0][j];
@@ -744,6 +805,9 @@ impl FetComp {
             self.hi[1][j] = yr;
             self.gr_now = gr;
         }
+        // keep the newest GR_FIR_LEN - 1 control samples as the FIR history
+        self.gr_win
+            .copy_within(cap - n_ctl..cap - n_ctl + GR_FIR_LEN - 1, cap);
         let (a, b) = self.hi.split_at_mut(1);
         self.os[0].downsample(&a[0][..n2], l);
         self.os[1].downsample(&b[0][..n2], r);
@@ -793,21 +857,29 @@ fn gr_fir_taps(fc: f64) -> Vec<f32> {
     h.iter().map(|v| (v / sum) as f32).collect()
 }
 
+/// GR FIR dot product: 4 lane accumulators, fixed reduction order (NEON on aarch64).
 #[inline(always)]
 fn dot(a: &[f32], b: &[f32]) -> f32 {
-    let mut acc = [0.0f32; 4];
-    let (ac, ar) = a.as_chunks::<4>();
-    let (bc, br) = b[..a.len()].as_chunks::<4>();
-    for (x, y) in ac.iter().zip(bc) {
-        for l in 0..4 {
-            acc[l] += x[l] * y[l];
+    wing_dsp::simd::dot_acc4(a, b)
+}
+
+/// Release coefficient for GR state `g` / programme history `hist` (see [`FetComp::update_release`]).
+#[inline(always)]
+fn release_coeff(mode: ReleaseMode, rel_rate: f64, rel_c: f64, g: f64, hist: f64) -> f64 {
+    match mode {
+        ReleaseMode::Plain => rel_c,
+        ReleaseMode::ProgramDependent => {
+            let h = if g > 1e-3 { (hist / g).min(1.0) } else { 1.0 };
+            rate_coeff(rel_rate / (PD_MIN as f64 + (1.0 - PD_MIN as f64) * h))
+        }
+        ReleaseMode::Opto => {
+            let e =
+                db_to_lin_fast(-(g as f32) * (20.0 / core::f32::consts::LN_10) / NSTR_OPTO_GR_DB)
+                    as f64;
+            let m = NSTR_OPTO_MIN as f64 + (NSTR_OPTO_MAX - NSTR_OPTO_MIN) as f64 * e;
+            rate_coeff(rel_rate / m)
         }
     }
-    let mut s = (acc[0] + acc[2]) + (acc[1] + acc[3]);
-    for (x, y) in ar.iter().zip(br) {
-        s += x * y;
-    }
-    s
 }
 
 /// `exp(-rate)` for small per-sample rates (release coefficients), by series.
@@ -840,8 +912,8 @@ impl Model for FetComp {
         self.sc_pre = [vec![0.0; mb], vec![0.0; mb]];
         self.sc_hi = [vec![0.0; OS * mb], vec![0.0; OS * mb]];
         self.gr_taps = gr_fir_taps(sample_rate * (OS * CTRL_SUB) as f64);
-        self.gr_hist = vec![0.0; 2 * GR_FIR_LEN];
-        self.gr_pos = 0;
+        self.ctl = vec![0.0; OS * CTRL_SUB * mb];
+        self.gr_win = vec![0.0; OS * CTRL_SUB * mb + GR_FIR_LEN - 1];
         self.drive.set_time(GAIN_SMOOTH_S, sample_rate);
         self.out_g.set_time(GAIN_SMOOTH_S, sample_rate * OS as f64);
         self.dirty = true;
@@ -895,7 +967,7 @@ impl Model for FetComp {
         for o in &mut self.sc_os {
             o.reset();
         }
-        self.gr_hist.iter_mut().for_each(|v| *v = 0.0);
+        self.gr_win.fill(0.0);
         self.adly = [[0.0; AUDIO_DELAY_OS]; 2];
         self.adly_pos = 0;
         self.dc_x = [0.0; 2];
@@ -1026,6 +1098,45 @@ mod tests {
             .map(|k| amp_at(&tail, freq * k as f64).powi(2))
             .sum();
         100.0 * hs.sqrt() / h1
+    }
+
+    /// The vectorised static-curve pass equals the scalar `gr_target` bit for bit for every ratio
+    /// (knees incl. NSTR NUKE's zero knee; 76LA ALL takes the scalar fallback), T070.
+    #[test]
+    fn vector_targets_are_bit_exact() {
+        let mut seed = 0x0bad_5eedu32;
+        let mut rnd = || {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let u = (seed >> 8) as f32 / (1u32 << 24) as f32;
+            // magnitudes from silence (below the key floor) to +12 dBFS, either sign
+            let s = if seed & 1 == 0 { 1.0 } else { -1.0 };
+            if seed & 0x3f == 0 {
+                0.0
+            } else {
+                s * 10f32.powf(u * 14.0 - 13.0)
+            }
+        };
+        for kind in [FetKind::La76, FetKind::Nstr] {
+            for ri in 0..kind.num_ratios() {
+                let mut m = model(kind, &[(5, ParamValue::Enum(ri as u32))]);
+                let n_ctl = m.ctl.len();
+                for _ in 0..8 {
+                    for c in 0..n_ctl {
+                        m.khi[0][c] = rnd();
+                        m.khi[1][c] = rnd();
+                    }
+                    m.targets(n_ctl - 3); // odd length: scalar tail too
+                    for c in 0..n_ctl - 3 {
+                        let key = m.khi[0][c].abs().max(m.khi[1][c].abs());
+                        assert_eq!(
+                            m.ctl[c].to_bits(),
+                            m.gr_target(key).to_bits(),
+                            "{kind:?} ratio {ri} key {key}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]

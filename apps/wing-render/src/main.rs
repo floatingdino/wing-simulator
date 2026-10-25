@@ -5,6 +5,7 @@
 //!             --out <dir> [--taps main/1,bus/3,mon/1,usb_out/1-48] [--rate 48000] [--threads N]
 //!             [--start SECS] [--end SECS] [--tail SECS] [--block 64] [--set path=value]...
 //!             [--dry-run] [--quiet]
+//! wing-render --bench [...]     performance suite (T070; see wing_render::perf, docs/perf.md)
 //! ```
 //!
 //! Inputs: `--inputs` (repeatable, comma-separated) files or directories of WAVs; USB inputs by
@@ -232,7 +233,20 @@ fn run(a: Args) -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
-    match parse_args(std::env::args().skip(1)).and_then(run) {
+    let mut argv = std::env::args().skip(1).peekable();
+    if argv.peek().is_some_and(|a| a == "--bench") {
+        argv.next();
+        let r = wing_render::perf::parse_bench_args(argv)
+            .and_then(|a| wing_render::perf::bench_main(&a));
+        return match r {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("wing-render --bench: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    match parse_args(argv).and_then(run) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("wing-render: {e}");

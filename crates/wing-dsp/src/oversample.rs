@@ -75,58 +75,60 @@ pub fn halfband_taps(k: usize, beta: f64) -> Vec<f64> {
     h
 }
 
-/// Newest-first history with a mirrored buffer so the window is always a contiguous slice.
-struct History {
+/// Input samples per batch of a stage's up / down path (size of the batch windows).
+const BATCH: usize = 64;
+
+/// Newest-first sample window over a batch plus its history, as one contiguous buffer:
+/// `[.. reversed batch | history (newest first)]`, history at the fixed offset [`BATCH`]. Every
+/// output's FIR window is then a plain slice, and a whole batch is written before any window is read
+/// (no per-sample ring push followed by an overlapping vector load: that store-to-load forwarding
+/// stall dominated the per-sample version, T070).
+struct BatchWindow {
     buf: Vec<f32>,
-    len: usize,
-    pos: usize,
+    hist: usize,
 }
 
-impl History {
-    fn new(len: usize) -> Self {
+impl BatchWindow {
+    /// Window over the last `hist` input samples.
+    fn new(hist: usize) -> Self {
         Self {
-            buf: vec![0.0; 2 * len],
-            len,
-            pos: 0,
+            buf: vec![0.0; BATCH + hist],
+            hist,
         }
     }
+
+    /// Load a batch (`x.len() <= BATCH`) by calling `f(i)` for each of its samples `i`.
     #[inline(always)]
-    fn push(&mut self, x: f32) {
-        self.pos = if self.pos == 0 {
-            self.len - 1
-        } else {
-            self.pos - 1
-        };
-        self.buf[self.pos] = x;
-        self.buf[self.pos + self.len] = x;
+    fn load(&mut self, n: usize, mut f: impl FnMut(usize) -> f32) {
+        debug_assert!(n <= BATCH);
+        for (i, d) in self.buf[BATCH - n..BATCH].iter_mut().rev().enumerate() {
+            *d = f(i);
+        }
     }
-    /// `[x[m], x[m-1], ..., x[m-len+1]]`.
+
+    /// `[x[m], x[m-1], ...]` (to the end of the history) for batch sample `m`.
     #[inline(always)]
-    fn window(&self) -> &[f32] {
-        &self.buf[self.pos..self.pos + self.len]
+    fn window(&self, m: usize) -> &[f32] {
+        &self.buf[BATCH - 1 - m..]
     }
+
+    /// After a batch of `n`: keep its newest `hist` samples as the history.
+    #[inline(always)]
+    fn commit(&mut self, n: usize) {
+        self.buf
+            .copy_within(BATCH - n..BATCH - n + self.hist, BATCH);
+    }
+
     fn reset(&mut self) {
-        self.buf.iter_mut().for_each(|x| *x = 0.0);
+        self.buf.fill(0.0);
     }
 }
 
+/// FIR dot product: 8 lane accumulators, fixed reduction order (NEON on aarch64, see
+/// [`crate::simd::dot_acc8`]).
 #[inline(always)]
 fn dot(a: &[f32], b: &[f32]) -> f32 {
-    // 8 independent accumulators over fixed-size chunks: bounds-check free and vectorises to NEON FMAs
-    // without needing fast-math reassociation.
-    let (ac, ar) = a.as_chunks::<8>();
-    let (bc, br) = b[..a.len()].as_chunks::<8>();
-    let mut acc = [0.0f32; 8];
-    for (x, y) in ac.iter().zip(bc) {
-        for l in 0..8 {
-            acc[l] += x[l] * y[l];
-        }
-    }
-    let mut s = ((acc[0] + acc[4]) + (acc[1] + acc[5])) + ((acc[2] + acc[6]) + (acc[3] + acc[7]));
-    for (x, y) in ar.iter().zip(br) {
-        s += x * y;
-    }
-    s
+    crate::simd::dot_acc8(a, b)
 }
 
 /// One polyphase half-band 2x stage (independent up and down state).
@@ -135,9 +137,11 @@ struct HalfbandStage {
     /// Even-phase taps h[2j], j = 0..2K (the non-zero side taps).
     he: Vec<f32>,
     he_up: Vec<f32>, // 2 * he (upsampler gain compensation)
-    up: History,
-    down_even: History,
-    down_odd: History,
+    /// Upsampler input window (2K taps).
+    up: BatchWindow,
+    /// Downsampler even-phase window (2K taps) and odd phase (centre tap at delay K).
+    down_even: BatchWindow,
+    down_odd: BatchWindow,
 }
 
 impl HalfbandStage {
@@ -149,9 +153,9 @@ impl HalfbandStage {
             k,
             he,
             he_up,
-            up: History::new(2 * k),
-            down_even: History::new(2 * k),
-            down_odd: History::new(k + 1),
+            up: BatchWindow::new(2 * k - 1),
+            down_even: BatchWindow::new(2 * k - 1),
+            down_odd: BatchWindow::new(k),
         }
     }
 
@@ -161,28 +165,96 @@ impl HalfbandStage {
         self.down_odd.reset();
     }
 
-    /// `out.len() == 2 * input.len()`.
+    /// `out.len() == 2 * input.len()`. Output `2m` is the even-phase FIR over `x[m], x[m-1], ...`,
+    /// output `2m + 1` the centre tap `x[m - K + 1]`.
     #[inline]
     fn upsample(&mut self, input: &[f32], out: &mut [f32]) {
+        // the two stage designs get their tap count at compile time (taps held in registers)
+        match self.k {
+            K_A => self.upsample_n::<{ 2 * K_A / 8 }, { 2 * K_A % 8 }>(input, out),
+            K_B => self.upsample_n::<{ 2 * K_B / 8 }, { 2 * K_B % 8 }>(input, out),
+            _ => self.upsample_generic(input, out),
+        }
+    }
+
+    #[inline(always)]
+    fn upsample_n<const C: usize, const R: usize>(&mut self, input: &[f32], out: &mut [f32]) {
         debug_assert_eq!(out.len(), 2 * input.len());
         let k = self.k;
-        for (&x, o) in input.iter().zip(out.as_chunks_mut::<2>().0) {
-            self.up.push(x);
-            let w = self.up.window();
-            o[0] = dot(&self.he_up, w);
-            o[1] = w[k - 1];
+        for (x, o) in input.chunks(BATCH).zip(out.chunks_mut(2 * BATCH)) {
+            let n = x.len();
+            self.up.load(n, |i| x[i]);
+            let up = &self.up;
+            crate::simd::dot_acc8_each::<C, R>(
+                &self.he_up,
+                n,
+                |m| up.window(m),
+                |m, v| {
+                    o[2 * m] = v;
+                    o[2 * m + 1] = up.window(m)[k - 1];
+                },
+            );
+            self.up.commit(n);
+        }
+    }
+
+    fn upsample_generic(&mut self, input: &[f32], out: &mut [f32]) {
+        debug_assert_eq!(out.len(), 2 * input.len());
+        let k = self.k;
+        for (x, o) in input.chunks(BATCH).zip(out.chunks_mut(2 * BATCH)) {
+            let n = x.len();
+            self.up.load(n, |i| x[i]);
+            for (m, o) in o.as_chunks_mut::<2>().0.iter_mut().enumerate() {
+                let w = self.up.window(m);
+                o[0] = dot(&self.he_up, w);
+                o[1] = w[k - 1];
+            }
+            self.up.commit(n);
         }
     }
 
     /// `input.len() == 2 * out.len()`.
     #[inline]
     fn downsample(&mut self, input: &[f32], out: &mut [f32]) {
+        match self.k {
+            K_A => self.downsample_n::<{ 2 * K_A / 8 }, { 2 * K_A % 8 }>(input, out),
+            K_B => self.downsample_n::<{ 2 * K_B / 8 }, { 2 * K_B % 8 }>(input, out),
+            _ => self.downsample_generic(input, out),
+        }
+    }
+
+    #[inline(always)]
+    fn downsample_n<const C: usize, const R: usize>(&mut self, input: &[f32], out: &mut [f32]) {
         debug_assert_eq!(input.len(), 2 * out.len());
         let k = self.k;
-        for (pair, o) in input.as_chunks::<2>().0.iter().zip(out.iter_mut()) {
-            self.down_even.push(pair[0]);
-            self.down_odd.push(pair[1]);
-            *o = dot(&self.he, self.down_even.window()) + 0.5 * self.down_odd.window()[k];
+        for (x, o) in input.chunks(2 * BATCH).zip(out.chunks_mut(BATCH)) {
+            let n = o.len();
+            self.down_even.load(n, |i| x[2 * i]);
+            self.down_odd.load(n, |i| x[2 * i + 1]);
+            let (ev, od) = (&self.down_even, &self.down_odd);
+            crate::simd::dot_acc8_each::<C, R>(
+                &self.he,
+                n,
+                |m| ev.window(m),
+                |m, v| o[m] = v + 0.5 * od.window(m)[k],
+            );
+            self.down_even.commit(n);
+            self.down_odd.commit(n);
+        }
+    }
+
+    fn downsample_generic(&mut self, input: &[f32], out: &mut [f32]) {
+        debug_assert_eq!(input.len(), 2 * out.len());
+        let k = self.k;
+        for (x, o) in input.chunks(2 * BATCH).zip(out.chunks_mut(BATCH)) {
+            let n = o.len();
+            self.down_even.load(n, |i| x[2 * i]);
+            self.down_odd.load(n, |i| x[2 * i + 1]);
+            for (m, o) in o.iter_mut().enumerate() {
+                *o = dot(&self.he, self.down_even.window(m)) + 0.5 * self.down_odd.window(m)[k];
+            }
+            self.down_even.commit(n);
+            self.down_odd.commit(n);
         }
     }
 
@@ -311,6 +383,97 @@ mod tests {
 
     fn mag_db(h: &[f64], f: f64, rate: f64) -> f64 {
         dtft(h, 2.0 * PI * f / rate).db()
+    }
+
+    use crate::simd::dot_acc8_scalar;
+
+    /// The original per-sample implementation (newest-first mirrored ring, one push per sample): the
+    /// batched stage must reproduce it bit for bit (T070).
+    struct RefStage {
+        k: usize,
+        he: Vec<f32>,
+        he_up: Vec<f32>,
+        up: Vec<f32>,
+        ev: Vec<f32>,
+        od: Vec<f32>,
+        pos: [usize; 3],
+    }
+
+    impl RefStage {
+        fn new(k: usize) -> Self {
+            let h = halfband_taps(k, BETA);
+            let he: Vec<f32> = (0..2 * k).map(|j| h[2 * j] as f32).collect();
+            let he_up = he.iter().map(|v| 2.0 * v).collect();
+            Self {
+                k,
+                he,
+                he_up,
+                up: vec![0.0; 4 * k],
+                ev: vec![0.0; 4 * k],
+                od: vec![0.0; 2 * (k + 1)],
+                pos: [0; 3],
+            }
+        }
+
+        fn push(buf: &mut [f32], pos: &mut usize, x: f32) -> usize {
+            let len = buf.len() / 2;
+            *pos = if *pos == 0 { len - 1 } else { *pos - 1 };
+            buf[*pos] = x;
+            buf[*pos + len] = x;
+            *pos
+        }
+
+        fn upsample(&mut self, input: &[f32], out: &mut [f32]) {
+            for (i, &x) in input.iter().enumerate() {
+                let p = Self::push(&mut self.up, &mut self.pos[0], x);
+                let w = &self.up[p..p + 2 * self.k];
+                out[2 * i] = dot_acc8_scalar(&self.he_up, w);
+                out[2 * i + 1] = w[self.k - 1];
+            }
+        }
+
+        fn downsample(&mut self, input: &[f32], out: &mut [f32]) {
+            for (i, o) in out.iter_mut().enumerate() {
+                let pe = Self::push(&mut self.ev, &mut self.pos[1], input[2 * i]);
+                let po = Self::push(&mut self.od, &mut self.pos[2], input[2 * i + 1]);
+                *o = dot_acc8_scalar(&self.he, &self.ev[pe..pe + 2 * self.k])
+                    + 0.5 * self.od[po + self.k];
+            }
+        }
+    }
+
+    #[test]
+    fn batched_stage_is_bit_exact_with_per_sample_reference() {
+        let mut seed = 0x9e37_79b9u32;
+        let mut rnd = || {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (seed >> 8) as f32 / (1u32 << 24) as f32 - 0.5
+        };
+        for k in [K_A, K_B, 5] {
+            let (mut a, mut r) = (HalfbandStage::new(k), RefStage::new(k));
+            // chunk sizes below, at and above the batch, incl. 1 (history-only windows)
+            for &n in [1usize, 3, 64, 17, 200, 64, 5, 130, 1, 64]
+                .iter()
+                .cycle()
+                .take(40)
+            {
+                let x: Vec<f32> = (0..n).map(|_| rnd()).collect();
+                let (mut ya, mut yr) = (vec![0.0; 2 * n], vec![0.0; 2 * n]);
+                a.upsample(&x, &mut ya);
+                r.upsample(&x, &mut yr);
+                assert!(
+                    ya.iter().zip(&yr).all(|(p, q)| p.to_bits() == q.to_bits()),
+                    "up k={k} n={n}"
+                );
+                let (mut da, mut dr) = (vec![0.0; n], vec![0.0; n]);
+                a.downsample(&ya, &mut da);
+                r.downsample(&yr, &mut dr);
+                assert!(
+                    da.iter().zip(&dr).all(|(p, q)| p.to_bits() == q.to_bits()),
+                    "down k={k} n={n}"
+                );
+            }
+        }
     }
 
     #[test]

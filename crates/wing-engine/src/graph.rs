@@ -14,6 +14,8 @@
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
+use std::time::Instant;
 
 /// Buffer alignment in samples (128 bytes: Apple Silicon cache line).
 const ALIGN_F32: usize = 32;
@@ -356,6 +358,8 @@ impl GraphBuilder {
             _arena: arena,
             base,
             slots,
+            claim_order: (0..position.len() as u32).map(AtomicU32::new).collect(),
+            cost_ns: (0..position.len()).map(|_| AtomicU32::new(0)).collect(),
             position: position.into_boxed_slice(),
             levels: levels.into_boxed_slice(),
         })
@@ -386,6 +390,12 @@ pub struct Graph {
     position: Box<[usize]>,
     /// Per level: half-open range of schedule positions.
     levels: Box<[(usize, usize)]>,
+    /// Claim index -> schedule position, a permutation within each level: the parallel scheduler
+    /// hands out a level's nodes in this order, longest measured first (LPT, [`Graph::rebalance`]).
+    /// Written only between cycles by the driver (published by the epoch store).
+    claim_order: Box<[AtomicU32]>,
+    /// Per schedule position: smoothed wall time of the node's last runs (ns, EMA 1/8).
+    cost_ns: Box<[AtomicU32]>,
 }
 
 // SAFETY: the graph is shared between the driver and worker threads. Mutable state (processors
@@ -436,6 +446,11 @@ impl Graph {
     /// Name of a node.
     pub fn name_of(&self, id: NodeId) -> &str {
         &self.slots[self.position[id.index()]].name
+    }
+
+    /// Number of output channels of a node.
+    pub fn num_outputs_of(&self, id: NodeId) -> usize {
+        self.slots[self.position[id.index()]].num_outputs
     }
 
     /// Input ports of a node.
@@ -529,6 +544,63 @@ impl Graph {
         (*s.proc.get()).process(ctx, &mut io);
     }
 
+    /// Schedule position of claim index `i` (see [`Graph::rebalance`]).
+    #[inline]
+    pub(crate) fn claim_pos(&self, i: usize) -> usize {
+        self.claim_order[i].load(Relaxed) as usize
+    }
+
+    /// As [`Graph::run_node`], also updating the node's smoothed cost (two clock reads; the
+    /// monotonic clock is a user-space counter read on macOS, no syscall).
+    ///
+    /// # Safety
+    /// As [`Graph::run_node`].
+    #[inline]
+    pub(crate) unsafe fn run_node_timed(&self, pos: usize, ctx: &ProcessCtx) {
+        let t = Instant::now();
+        self.run_node(pos, ctx);
+        let ns = t.elapsed().as_nanos().min(u32::MAX as u128) as u32;
+        let c = self.cost_ns.get_unchecked(pos);
+        let old = c.load(Relaxed);
+        // EMA with weight 1/8; the first sample initialises it
+        let new = if old == 0 { ns } else { old - old / 8 + ns / 8 };
+        c.store(new.max(1), Relaxed);
+    }
+
+    /// Re-order every level's claim order by descending smoothed node cost (longest processing
+    /// time first: the classic list-scheduling heuristic, it keeps a long node from starting
+    /// last and stretching the level). Insertion sort in place: no allocation. Call only between
+    /// cycles; outputs do not depend on the order (nodes of a level are independent).
+    pub(crate) fn rebalance(&self) {
+        for &(a, b) in self.levels.iter() {
+            let cost =
+                |i: usize| self.cost_ns[self.claim_order[i].load(Relaxed) as usize].load(Relaxed);
+            for i in a + 1..b {
+                let v = self.claim_order[i].load(Relaxed);
+                let cv = self.cost_ns[v as usize].load(Relaxed);
+                let mut j = i;
+                while j > a && cost(j - 1) < cv {
+                    self.claim_order[j].store(self.claim_order[j - 1].load(Relaxed), Relaxed);
+                    j -= 1;
+                }
+                self.claim_order[j].store(v, Relaxed);
+            }
+        }
+    }
+
+    /// Claim order = schedule order (between cycles only).
+    pub(crate) fn reset_claim_order(&self) {
+        for (i, c) in self.claim_order.iter().enumerate() {
+            c.store(i as u32, Relaxed);
+        }
+    }
+
+    /// Smoothed wall time (ns) of a node's recent runs under the parallel scheduler (0 = not run
+    /// yet).
+    pub fn node_cost_ns(&self, id: NodeId) -> u32 {
+        self.cost_ns[self.position[id.index()]].load(Relaxed)
+    }
+
     /// Run every node in schedule order on the calling thread (reference/serial path).
     pub fn run_serial(&mut self, ctx: &ProcessCtx) {
         // SAFETY: `&mut self` makes this thread the only one touching the graph.
@@ -544,6 +616,19 @@ impl Graph {
             self.run_node(pos, ctx);
         }
     }
+
+    /// As [`Graph::run_serial_shared`], adding each node's wall time (ns) to `ns[schedule
+    /// position]` (perf tooling; one clock read per node).
+    ///
+    /// # Safety
+    /// As [`Graph::run_serial_shared`].
+    pub(crate) unsafe fn run_serial_profiled(&self, ctx: &ProcessCtx, ns: &mut [u64]) {
+        for (pos, acc) in ns.iter_mut().enumerate().take(self.slots.len()) {
+            let t = std::time::Instant::now();
+            self.run_node(pos, ctx);
+            *acc += t.elapsed().as_nanos() as u64;
+        }
+    }
 }
 
 impl fmt::Debug for Graph {
@@ -553,5 +638,53 @@ impl fmt::Debug for Graph {
             .field("nodes", &self.slots.len())
             .field("levels", &self.levels)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rebalance_orders_each_level_longest_first() {
+        let mut b = GraphBuilder::new(4, 48_000.0, 1);
+        let nop = |_: &ProcessCtx, _: &mut NodeIo<'_>| {};
+        let l0: Vec<NodeId> = (0..4)
+            .map(|i| {
+                b.add_node(format!("a{i}"), 1, &[Port::External(0)], nop)
+                    .unwrap()
+            })
+            .collect();
+        let ins: Vec<Port> = l0.iter().map(|&n| Port::node(n, 0)).collect();
+        let l1: Vec<NodeId> = (0..3)
+            .map(|i| b.add_node(format!("b{i}"), 1, &ins, nop).unwrap())
+            .collect();
+        let g = b.build().unwrap();
+        let pos = |id: NodeId| g.position[id.index()];
+        // identity until costs are known
+        assert!((0..7).all(|i| g.claim_pos(i) == i));
+        for (id, c) in l0.iter().zip([5u32, 40, 10, 40]) {
+            g.cost_ns[pos(*id)].store(c, Relaxed);
+        }
+        for (id, c) in l1.iter().zip([1u32, 2, 3]) {
+            g.cost_ns[pos(*id)].store(c, Relaxed);
+        }
+        g.rebalance();
+        let order: Vec<usize> = (0..7).map(|i| g.claim_pos(i)).collect();
+        // level 0: 40, 40 (stable: a1 before a3), 10, 5; level 1 stays within its range
+        assert_eq!(
+            order,
+            [
+                pos(l0[1]),
+                pos(l0[3]),
+                pos(l0[2]),
+                pos(l0[0]),
+                pos(l1[2]),
+                pos(l1[1]),
+                pos(l1[0])
+            ]
+        );
+        g.reset_claim_order();
+        assert!((0..7).all(|i| g.claim_pos(i) == i));
     }
 }

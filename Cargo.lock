@@ -531,7 +531,9 @@ dependencies = [
 name = "wing-render"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "serde_json",
+ "wing-blocks",
  "wing-engine",
  "wing-hostio",
  "wing-model",

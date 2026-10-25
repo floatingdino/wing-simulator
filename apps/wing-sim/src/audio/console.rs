@@ -240,6 +240,11 @@ impl Console {
         &self.engine
     }
 
+    /// Mutable engine access between cycles (scheduler settings).
+    pub fn engine_mut(&mut self) -> &mut Engine {
+        &mut self.engine
+    }
+
     pub fn pipeline(&self) -> &ParamPipeline {
         &self.pipeline
     }
@@ -325,6 +330,22 @@ impl Console {
                 f.producer.end_burst(now, burst_frames);
             }
         }
+    }
+
+    /// One cycle run serially on the calling thread with per-node timing added to `ns` (see
+    /// [`Engine::process_cycle_profiled`]); parameters applied, ports metered and telemetry
+    /// published as in [`Console::cycle`]. Perf tooling (T070), not RT.
+    pub fn cycle_profiled(&mut self, mut input: impl FnMut(usize, &mut [f32]), ns: &mut [u64]) {
+        self.pipeline.apply(&mut self.engine);
+        for ch in 0..USB_CHANNELS {
+            input(ch, self.engine.external_mut(ch));
+        }
+        self.engine.process_cycle_profiled(ns);
+        if let Some(m) = &self.port_meters {
+            m.capture(&self.engine);
+        }
+        let c = self.engine.cycle();
+        self.pipeline.publish_telemetry(&mut self.engine, c);
     }
 
     /// Run `cycles` engine cycles on silence without touching the driver or the host bridges
