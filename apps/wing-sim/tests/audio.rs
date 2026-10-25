@@ -762,6 +762,7 @@ fn spawn_service(
             rt: true,
             hostio: None,
             status_every: None,
+            device_factory: None,
         },
         log,
     )

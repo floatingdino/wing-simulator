@@ -160,6 +160,7 @@ fn realtime(plan: &InputPlan, rec_dir: &Path) -> Vec<Vec<f32>> {
             rt: false,
             hostio: None,
             status_every: None,
+            device_factory: None,
         },
         Arc::new(|m: &str| eprintln!("{m}")),
     )
