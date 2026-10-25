@@ -231,7 +231,10 @@ fn offline_sine_through_channel_main_usb_out_and_bridge() {
     run_sine(&mut console, t, 100);
     let [l, ..] = run_sine(&mut console, t + 100 * BLOCK as u64, 150);
     let gain = rms_db(&l) - input_db;
-    assert!((gain - (MAIN_DB + 6.0)).abs() < 0.6, "trim + EQ gain {gain:.2} dB");
+    assert!(
+        (gain - (MAIN_DB + 6.0)).abs() < 0.6,
+        "trim + EQ gain {gain:.2} dB"
+    );
 
     // Mute the channel: main goes silent (after the 5 ms one-pole ramp reaches -100 dB).
     set(&store, "ch/1/mute", "1");
