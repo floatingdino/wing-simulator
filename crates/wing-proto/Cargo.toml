@@ -7,3 +7,7 @@ publish.workspace = true
 
 [dependencies]
 socket2.workspace = true
+wing-model = { path = "../wing-model" }
+
+[dev-dependencies]
+serde_json = "1"
