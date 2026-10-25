@@ -107,3 +107,7 @@ harness = false
 [[bench]]
 name = "fx_plate"
 harness = false
+
+[[bench]]
+name = "fx_amp"
+harness = false

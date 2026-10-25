@@ -416,6 +416,22 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "V-PLATE") => Box::new(crate::models::fx_reverb::vplate()),
         (BlockKind::Fx, "BPLATE") => Box::new(crate::models::fx_reverb::bplate()),
         (BlockKind::Fx, "SPRING") => Box::new(crate::models::fx_reverb::spring()),
+        (BlockKind::Fx, "RACKAMP") => Box::new(crate::models::fx_amp::Amp::new(
+            crate::models::fx_amp::AmpKind::RackAmp,
+        )),
+        (BlockKind::Fx, "UKROCK") => Box::new(crate::models::fx_amp::Amp::new(
+            crate::models::fx_amp::AmpKind::UkRock,
+        )),
+        (BlockKind::Fx, "ANGEL") => Box::new(crate::models::fx_amp::Amp::new(
+            crate::models::fx_amp::AmpKind::Angel,
+        )),
+        (BlockKind::Fx, "JAZZC") => Box::new(crate::models::fx_amp::Amp::new(
+            crate::models::fx_amp::AmpKind::JazzClean,
+        )),
+        (BlockKind::Fx, "DELUXE") => Box::new(crate::models::fx_amp::Amp::new(
+            crate::models::fx_amp::AmpKind::Deluxe,
+        )),
+        (BlockKind::Fx, "BODY") => Box::new(crate::models::fx_amp::BodyRez::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -583,6 +599,7 @@ mod tests {
             "V-ROOM", "V-REV", "VSS3",
             "GATED", "REVERSE", "DEL/REV", "SHIMMER",
             "PLATE", "V-PLATE", "BPLATE", "SPRING",
+            "RACKAMP", "UKROCK", "ANGEL", "JAZZC", "DELUXE", "BODY",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);
