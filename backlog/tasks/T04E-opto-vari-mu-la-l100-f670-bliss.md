@@ -2,10 +2,10 @@
 id: T04E
 title: Opto/vari-mu: LA, L100, F670, BLISS
 stage: S4
-status: todo
-owner: -
+status: in_progress
+owner: agent-T04E
 depends: [T045, T034]
-branch: -
+branch: task/T04E
 ---
 
 ## Goal
