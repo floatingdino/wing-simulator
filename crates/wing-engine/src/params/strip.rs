@@ -219,7 +219,10 @@ pub trait RtModel: Send {
 
 /// Instance index meaning "no implementation: pass-through".
 const BYPASS: u8 = u8::MAX;
-const MAX_MODELS: usize = 64;
+/// Largest WING model enum index + 1 a slot can map (the FX table has 65 entries incl. `NONE`).
+const MAX_MODELS: usize = 128;
+/// Most preallocated instances per slot (the `dirty` bit set is a `u64`).
+const MAX_INSTANCES: usize = 64;
 
 /// A model-dependent slot (gate, dynamics, EQ, filter tool, ...): one preallocated [`RtModel`]
 /// instance per model the slot can host, crossfaded swaps and smoothed wrapper parameters
@@ -311,7 +314,7 @@ impl ModelSlot {
         if let Some(g) = s.groups().iter().find(|g| g.key == group_key) {
             for m in s.models(g) {
                 let e = m.enum_index as usize;
-                if e >= MAX_MODELS || instances.len() >= BYPASS as usize {
+                if e >= MAX_MODELS || instances.len() >= MAX_INSTANCES {
                     continue;
                 }
                 if let Some(inst) = factory(m.enum_index as u16, m.name) {
@@ -320,7 +323,10 @@ impl ModelSlot {
                 }
             }
         }
-        assert!(instances.len() <= 64, "at most 64 model instances per slot");
+        assert!(
+            instances.len() <= MAX_INSTANCES,
+            "at most 64 model instances per slot"
+        );
         let inst_lat: Box<[usize]> = instances.iter().map(|m| m.latency()).collect();
         let lat = inst_lat.iter().copied().max().unwrap_or(0);
         // WING EQ mix law (T03C/T04J): every EQ model scales its band gains by mix/100, 0..125 %.

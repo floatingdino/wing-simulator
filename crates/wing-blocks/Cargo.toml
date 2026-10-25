@@ -67,3 +67,7 @@ harness = false
 [[bench]]
 name = "pse"
 harness = false
+
+[[bench]]
+name = "fx_delay"
+harness = false

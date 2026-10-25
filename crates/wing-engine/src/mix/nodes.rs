@@ -3,7 +3,9 @@
 
 use std::sync::Arc;
 
-use crate::channel::{ChannelStrip, NoInserts, StripKeys, Tap as StripTap};
+use crate::channel::{
+    sync_inserts, ChannelStrip, InsertHost, InsertPoint, NoInserts, StripKeys, Tap as StripTap,
+};
 use crate::graph::{NodeIo, ProcessCtx, Processor};
 use crate::params::{ParamMsg, TelemetryWriter};
 use crate::routing::Strip;
@@ -190,6 +192,10 @@ pub struct InputStripNode {
     /// PRE-linked = matrix * PRE (pan).
     prep: Ramp<4>,
     logic: Option<LogicLink>,
+    /// Insert FX host (the FX rack handle of this strip, [`crate::fx`]).
+    fx: Box<dyn InsertHost + Send>,
+    /// Insert state last forwarded to `fx`.
+    ins_seen: (InsertPoint, InsertPoint),
 }
 
 impl InputStripNode {
@@ -214,9 +220,25 @@ impl InputStripNode {
             pre: Ramp::new(a),
             prep: Ramp::new(a),
             logic: None,
+            fx: Box::new(NoInserts),
+            ins_seen: Default::default(),
         };
         s.update_targets();
         s
+    }
+
+    /// Use `fx` for the strip's inserts (the FX rack handle, [`crate::fx::FxRack::host`]). The current
+    /// insert assignment is forwarded to it. Off the RT thread.
+    pub fn with_inserts(mut self, fx: Box<dyn InsertHost + Send>) -> Self {
+        self.fx = fx;
+        self.ins_seen = Default::default();
+        sync_inserts(&mut *self.fx, &mut self.ins_seen, self.strip.inserts());
+        self
+    }
+
+    /// Strip latency (samples, T03E: model slots + insert FX + alignment pad).
+    pub fn latency(&self) -> usize {
+        self.strip.latency()
     }
 
     /// Follow the DCA / mute-group / SIP state of strip index `idx` ([`Strip::index`]).
@@ -287,6 +309,7 @@ impl InputStripNode {
             }
             ParamMsg::Commit => {
                 self.strip.apply(msg);
+                sync_inserts(&mut *self.fx, &mut self.ins_seen, self.strip.inserts());
                 if self.dirty {
                     self.update_targets();
                 }
@@ -319,7 +342,7 @@ impl Processor for InputStripNode {
             }
         }
         self.strip
-            .process_with(pfl_l, pfl_r, StripKeys::default(), &mut NoInserts);
+            .process_with(pfl_l, pfl_r, StripKeys::default(), &mut *self.fx);
 
         let (g0, g1) = self.fdr.step();
         law::gain_write(afl_l, pfl_l, g0[0], g1[0]);
@@ -379,6 +402,13 @@ pub trait StripHook: Send {
     fn set_param(&mut self, _msg: &ParamMsg) {}
     /// Telemetry (polled if the node is registered as a telemetry source).
     fn telemetry(&mut self, _out: &mut TelemetryWriter<'_>) {}
+    /// Install the insert FX host (the FX rack handle of this strip). Off the RT thread. Default:
+    /// the hook has no inserts and drops it.
+    fn set_insert_host(&mut self, _fx: Box<dyn InsertHost + Send>) {}
+    /// Processing latency in samples (models and engaged insert FX).
+    fn latency(&self) -> usize {
+        0
+    }
 }
 
 /// No strip processing (T036 behaviour; the standard hook is [`super::MixStrip`]).
@@ -591,6 +621,11 @@ impl MixStripNode {
 
     pub fn hook_mut(&mut self) -> &mut dyn StripHook {
         self.hook.as_mut()
+    }
+
+    /// Processing latency (samples) of the strip processing incl. engaged insert FX.
+    pub fn latency(&self) -> usize {
+        self.hook.latency()
     }
 
     /// Jump every gain to its target on the next block.
