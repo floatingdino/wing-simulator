@@ -49,7 +49,7 @@ use wing_blocks::std_models::{flt_slot, in_slot, FilterModel, InputModel};
 
 use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
 use crate::latency::StripAlign;
-use crate::meters::{abs_max, word, StripMeter};
+use crate::meters::{abs_max, band, word, StripMeter};
 use crate::params::std_models::model_factory;
 use crate::params::strip::{ModelSlot, INPUT_LAYOUT, MODEL_XFADE_S, SLOT_LAYOUT};
 use crate::params::telemetry_kind as kind;
@@ -973,9 +973,11 @@ impl ChannelStrip {
             if self.kind == StripKind::Channel {
                 m.level(word::GATE_KEY, slot_key_peak(&self.gate, gate_key, gate_in));
                 m.level(word::GATE_GR, self.telem.gate_gr_db);
+                m.slot_bands(band::GATE, &self.gate);
             }
             m.level(word::DYN_KEY, slot_key_peak(&self.dyn_, dyn_key, dyn_in));
             m.level(word::DYN_GR, self.telem.dyn_gr_db);
+            m.slot_bands(band::DYN, &self.dyn_);
         }
     }
 }
