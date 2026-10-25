@@ -1,0 +1,38 @@
+<REAPER_PROJECT 0.1 "7.0" 1761350400
+  TEMPO 120 4 4
+  MARKER 1 0 "WING:Intro" 0
+  MARKER 2 8 "Count-in click off" 0
+  MARKER 3 16 "WING:Verse" 0
+  MARKER 4 32 "WING:Chorus" 0
+  MARKER 5 48 "WING:Bridge" 1
+  MARKER 5 56 "" 1
+  MARKER 6 56 "WING:#1" 0
+  <TRACK
+    NAME "Kick"
+    VOLPAN 1 0 -1 -1 1
+    <VOLENV2
+      ACT 1 -1
+      VIS 1 1 1
+      LANEHEIGHT 0 0
+      ARM 0
+      DEFSHAPE 0 -1 -1
+      PT 0 1 0
+      PT 14 1 0
+      PT 16 0.5 0
+      PT 30 0.5 0
+      PT 32 1 0
+    >
+  >
+  <TRACK
+    NAME "Snare"
+    VOLPAN 1 0 -1 -1 1
+  >
+  <TRACK
+    NAME "Bass"
+    VOLPAN 1 0 -1 -1 1
+  >
+  <TRACK
+    NAME "Vox"
+    VOLPAN 1 0 -1 -1 1
+  >
+>

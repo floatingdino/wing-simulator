@@ -409,6 +409,7 @@ fn run(args: Args) -> Result<(), String> {
                     bind: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, args.osc_port),
                     identity: args.identity.clone(),
                     advertise_ip: args.ip,
+                    library: Some(library.clone()),
                     ..OscConfig::default()
                 },
             )
