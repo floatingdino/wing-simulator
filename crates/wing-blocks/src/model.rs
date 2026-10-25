@@ -358,6 +358,10 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Eq(_), "MACH4") => Box::new(AltEq::new(AltKind::Mach4)),
         (BlockKind::Eq(_), "PIA") => Box::new(AltEq::new(AltKind::Pia)),
         (BlockKind::Fx, "ST-DL") => Box::new(crate::models::fx_delay::StereoDelay::new()),
+        (BlockKind::Fx, "TAP-DL") => Box::new(crate::models::fx_delay::TapDelay::new()),
+        (BlockKind::Fx, "TAPE-DL") => Box::new(crate::models::fx_delay::TapeDelay::new()),
+        (BlockKind::Fx, "OILCAN") => Box::new(crate::models::fx_delay::Oilcan::new()),
+        (BlockKind::Fx, "BBD-DL") => Box::new(crate::models::fx_delay::BbdDelay::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -514,7 +518,7 @@ mod tests {
         }
         let fx_implemented = [
             // One line per FX model family.
-            "ST-DL",
+            "ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);
