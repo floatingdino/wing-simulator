@@ -410,6 +410,10 @@ dependencies = [
 [[package]]
 name = "wing-engine"
 version = "0.1.0"
+dependencies = [
+ "criterion",
+ "libc",
+]
 
 [[package]]
 name = "wing-model"

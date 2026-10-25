@@ -18,6 +18,7 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
+libc = "0.2"
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
 socket2 = { version = "0.6", features = ["all"] }
 libc = "0.2"
