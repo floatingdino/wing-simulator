@@ -45,6 +45,7 @@ crates/wing-dsp      primitives: biquads, SVF, envelope/detectors, oversampling,
 crates/wing-blocks   WING processing blocks + all alternate models (filter, gate, eq, dyn, insert FX, FX rack)
 crates/wing-engine   graph, routing, busses, scheduling, metering, RT threading
 crates/wing-shm      shared-memory ring layout shared with the driver (also a C header)
+crates/wing-hostio   host output bridge: CoreAudio client, SPSC ring, PI-steered resampler, route mapping
 apps/wing-sim        daemon binary (CLI + config: host routing, scene file)
 apps/wing-render     offline renderer (multitrack WAVs + .snap -> stems/mix)
 driver/              HAL plugin (C++/libASPL), installer scripts
