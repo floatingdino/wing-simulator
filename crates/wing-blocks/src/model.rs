@@ -358,6 +358,12 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Eq(_), "MACH4") => Box::new(AltEq::new(AltKind::Mach4)),
         (BlockKind::Eq(_), "PIA") => Box::new(AltEq::new(AltKind::Pia)),
         (BlockKind::Fx, "ST-DL") => Box::new(crate::models::fx_delay::StereoDelay::new()),
+        (BlockKind::Fx, "ENHANCE") => Box::new(crate::models::fx_enhance::UltraEnhancer::new()),
+        (BlockKind::Fx, "EXCITER") => Box::new(crate::models::fx_enhance::Exciter::new()),
+        (BlockKind::Fx, "P-BASS") => Box::new(crate::models::fx_enhance::PsychoBass::new()),
+        (BlockKind::Fx, "SUB-M") => Box::new(crate::models::fx_enhance::SubMonster::new()),
+        (BlockKind::Fx, "V-IMG") => Box::new(crate::models::fx_enhance::VelvetImager::new()),
+        (BlockKind::Fx, "TAPE") => Box::new(crate::models::fx_enhance::TapeMachine::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -515,6 +521,7 @@ mod tests {
         let fx_implemented = [
             // One line per FX model family.
             "ST-DL",
+            "ENHANCE", "EXCITER", "P-BASS", "SUB-M", "V-IMG", "TAPE",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);
