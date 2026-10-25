@@ -969,6 +969,9 @@ impl Default for DoubleParams {
     }
 }
 
+/// Seeds of the four voices' pitch/time wander generators (restored on `reset`).
+const DOUBLE_WANDER_SEEDS: [u32; 4] = [0x9e37_79b9, 0x85eb_ca6b, 0xc2b2_ae35, 0x27d4_eb2f];
+
 /// DOUBLE VOCAL (`DOUBLE`); see the module doc.
 pub struct DoubleVocal {
     p: DoubleParams,
@@ -1005,12 +1008,7 @@ impl DoubleVocal {
             mode: DOUBLE_MODES[2],
             line: DelayLine::new(1),
             sh: [Shifter::default(); 4],
-            wander: [
-                Wander::new(0x9e37_79b9),
-                Wander::new(0x85eb_ca6b),
-                Wander::new(0xc2b2_ae35),
-                Wander::new(0x27d4_eb2f),
-            ],
+            wander: DOUBLE_WANDER_SEEDS.map(Wander::new),
             ratio: [1.0; 4],
             lo: [DMIN; 4],
             gain: [(0.0, 0.0); 4],
@@ -1130,6 +1128,9 @@ impl Model for DoubleVocal {
     fn reset(&mut self) {
         self.fresh = true;
         self.ctr = 0;
+        // T081: voices and their wander restart, so a reset makes the output repeatable
+        self.sh = [Shifter::default(); 4];
+        self.wander = DOUBLE_WANDER_SEEDS.map(Wander::new);
         self.update();
         self.line.reset();
     }

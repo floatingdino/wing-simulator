@@ -1970,6 +1970,9 @@ pub fn mood_wave(w: MoodWave, u: f32, rnd: f32) -> f32 {
     }
 }
 
+/// Seeds of the random LFO shape (L, R), restored on `reset`.
+const MOOD_RNG_SEEDS: [u32; 2] = [0x1234_5678, 0x9e37_79b9];
+
 /// MOOD FILTER (`MOOD`).
 pub struct MoodFilter {
     p: MoodParams,
@@ -2022,7 +2025,7 @@ impl MoodFilter {
             lfo: Lfo::default(),
             phase_off: 0.0,
             env: AhrEnvelope::default(),
-            rng: [0x1234_5678, 0x9e37_79b9],
+            rng: MOOD_RNG_SEEDS,
             rnd: [0.5; 2],
             prev_u: [0.0; 2],
             oct: [0.0; 2],
@@ -2235,6 +2238,9 @@ impl Model for MoodFilter {
         self.g_step = [0.0; 2];
         self.oct = [0.0; 2];
         self.prev_u = [0.0; 2];
+        // T081: the random LFO restarts too (a reset must make the output repeatable)
+        self.rng = MOOD_RNG_SEEDS;
+        self.rnd = [0.5; 2];
         self.ctr = 0;
         self.primed = false;
     }

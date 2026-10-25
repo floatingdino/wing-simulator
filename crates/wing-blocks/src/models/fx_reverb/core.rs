@@ -645,6 +645,8 @@ impl<const N: usize> ReverbCore<N> {
         for l in &mut self.chorus_line {
             l.reset();
         }
+        // T081: the chorus LFO restarts too (a reset must make the output repeatable)
+        self.chorus_ph = [0.0, 1.7];
         self.ls.reset();
         self.hs.reset();
         self.hs2.reset();
