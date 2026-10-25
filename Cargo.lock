@@ -431,6 +431,7 @@ name = "wing-proto"
 version = "0.1.0"
 dependencies = [
  "socket2",
+ "wing-model",
 ]
 
 [[package]]
