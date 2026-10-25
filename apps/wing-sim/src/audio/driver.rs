@@ -38,7 +38,7 @@ use wing_model::ParamStore;
 use wing_shm::{DaemonLink, Error as ShmError, LayoutError, OpenOptions, Segment, WakeMode};
 
 use super::console::{Console, ConsoleConfig};
-use super::hostio::{self, HostOutputs};
+use super::hostio::{self, BridgeReport, HostOutputs};
 use super::stats::{AudioStats, Snapshot};
 use super::workgroup::WorkInterval;
 use super::ConsoleControl;
@@ -82,6 +82,10 @@ impl Default for AudioOptions {
 /// Process every complete engine block the driver has made available: USB In → console →
 /// USB Out → commit, then stamp the host bridges once for the whole burst (T027). Partial
 /// blocks wait for the next driver cycle. Returns frames processed. RT-safe.
+///
+/// The daemon heartbeat is refreshed per block (one `mach_absolute_time` + relaxed store), so a
+/// long burst (a console slower than realtime fed continuously, or a large backlog) never looks
+/// like a dead daemon to the driver, which would drop to loopback after 100 ms.
 #[inline]
 pub fn service(link: &mut DaemonLink, console: &mut Console) -> usize {
     let block = console.block();
@@ -90,6 +94,7 @@ pub fn service(link: &mut DaemonLink, console: &mut Console) -> usize {
         if b.frames < block {
             break;
         }
+        link.heartbeat();
         let l = &*link;
         console.cycle(
             |ch, buf| l.read_input(&b, ch, buf),
@@ -230,11 +235,45 @@ struct Session {
     last_check: Instant,
 }
 
+/// Machine-readable audio status (T064 status file), updated by the control thread together
+/// with the status line.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct AudioReport {
+    /// A driver session is running.
+    pub attached: bool,
+    /// Engine sample rate (0 while detached).
+    pub rate: u32,
+    /// `running` (the driver's IO is cycling) or `idle`.
+    pub driver: String,
+    /// Engine load over the current measurement window (%).
+    pub load_pct: f64,
+    /// Peak cycle load (%).
+    pub peak_load_pct: f64,
+    /// Cycle-time percentiles (us).
+    pub cycle_p50_us: u64,
+    pub cycle_p99_us: u64,
+    /// Driver underruns + overruns since the session started.
+    pub xruns: u32,
+    pub underruns: u32,
+    pub overruns: u32,
+    /// Engine cycles over budget.
+    pub slow_cycles: u64,
+    /// Host output bridges.
+    pub bridges: Vec<BridgeReport>,
+    /// The human-readable status line.
+    pub message: String,
+}
+
+/// Host-output reconfiguration request: `Some(new)` replaces `AudioOptions::hostio`.
+type PendingHostIo = Arc<Mutex<Option<Option<HostIoConfig>>>>;
+
 /// Handle on the running audio service.
 pub struct AudioService {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
     status: Arc<Mutex<String>>,
+    report: Arc<Mutex<AudioReport>>,
+    pending_hostio: PendingHostIo,
     stats: Arc<AudioStats>,
     recorder: Arc<Recorder>,
 }
@@ -262,6 +301,11 @@ impl AudioService {
     ) -> std::io::Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
         let status = Arc::new(Mutex::new("audio: starting".to_string()));
+        let report = Arc::new(Mutex::new(AudioReport {
+            message: "audio: starting".into(),
+            ..AudioReport::default()
+        }));
+        let pending_hostio = PendingHostIo::default();
         let stats = Arc::new(AudioStats::default());
         let ctl = Control {
             store,
@@ -270,6 +314,8 @@ impl AudioService {
             log,
             stop: stop.clone(),
             status: status.clone(),
+            report: report.clone(),
+            pending_hostio: pending_hostio.clone(),
             stats: stats.clone(),
             pipeline: None,
             last_msg: String::new(),
@@ -285,6 +331,8 @@ impl AudioService {
             stop,
             thread: Some(thread),
             status,
+            report,
+            pending_hostio,
             stats,
             recorder,
         })
@@ -293,6 +341,23 @@ impl AudioService {
     /// The recorder (T061).
     pub fn recorder(&self) -> &Arc<Recorder> {
         &self.recorder
+    }
+
+    /// The latest machine-readable status.
+    pub fn report(&self) -> AudioReport {
+        self.report
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Replace the host-output config (live reload, T064). A running session is restarted
+    /// with the new bridges (a short audio gap); the parameter pipeline is kept.
+    pub fn set_hostio(&self, cfg: Option<HostIoConfig>) {
+        *self
+            .pending_hostio
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(cfg);
     }
 
     /// The latest status line.
@@ -356,6 +421,8 @@ struct Control {
     log: LogFn,
     stop: Arc<AtomicBool>,
     status: Arc<Mutex<String>>,
+    report: Arc<Mutex<AudioReport>>,
+    pending_hostio: PendingHostIo,
     stats: Arc<AudioStats>,
     pipeline: Option<ParamPipeline>,
     last_msg: String,
@@ -375,10 +442,28 @@ impl Control {
         self.set_status(msg);
     }
 
+    /// Status while no session runs.
     fn set_status(&self, s: String) {
+        self.set_report(AudioReport {
+            message: s.clone(),
+            ..AudioReport::default()
+        });
         if let Ok(mut st) = self.status.lock() {
             *st = s;
         }
+    }
+
+    fn set_report(&self, r: AudioReport) {
+        if let Ok(mut rep) = self.report.lock() {
+            *rep = r;
+        }
+    }
+
+    fn take_pending_hostio(&self) -> Option<Option<HostIoConfig>> {
+        self.pending_hostio
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
     }
 
     fn run(mut self) {
@@ -397,6 +482,17 @@ impl Control {
             // it is drained so it never fills.
             if let Some(rx) = telem.as_mut() {
                 while rx.pop().is_some() {}
+            }
+            if let Some(cfg) = self.take_pending_hostio() {
+                self.opts.hostio = cfg;
+                (self.log)(&format!(
+                    "audio: host outputs reconfigured: {}",
+                    hostio::describe_opt(self.opts.hostio.as_ref())
+                ));
+                if let Some(s) = session.take() {
+                    self.end_session(s, "host outputs reconfigured; restarting the session");
+                }
+                next_try = Instant::now();
             }
             session = match session {
                 None if Instant::now() >= next_try => {
@@ -603,12 +699,16 @@ impl Control {
             .opts
             .status_every
             .is_some_and(|e| self.last_status.elapsed() >= e);
-        let line = self.format_status(&s, periodic);
+        let mut report = self.format_status(&s, periodic);
         if periodic {
             self.last_status = Instant::now();
-            (self.log)(&line);
+            (self.log)(&report.message);
         }
-        self.set_status(line);
+        if let Ok(mut st) = self.status.lock() {
+            *st = report.message.clone();
+        }
+        report.attached = true;
+        self.set_report(report);
         Some(s)
     }
 
@@ -627,8 +727,9 @@ impl Control {
         ));
     }
 
-    /// Status line; `advance` starts a new measurement interval (load/percentiles/peak).
-    fn format_status(&mut self, s: &Session, advance: bool) -> String {
+    /// Status (line in `message`); `advance` starts a new measurement interval
+    /// (load/percentiles/peak).
+    fn format_status(&mut self, s: &Session, advance: bool) -> AudioReport {
         let snap = self.stats.snapshot();
         let d = snap.since(&self.last_snap);
         if advance {
@@ -653,7 +754,7 @@ impl Control {
             d.percentile_ns(0.5) as f64 * 1e-6 * burst as f64 / self.opts.console.block as f64;
         let under = st.from_daemon.underruns.wrapping_sub(s.base_underruns);
         let over = st.to_daemon.overruns.wrapping_sub(s.base_overruns);
-        format!(
+        let message = format!(
             "audio: {} Hz, driver {driver}, load {:.1}% (peak {:.1}%), cycle p50 {} us p99 {} us, \
              xruns {} (driver underruns {under}, overruns {over}), slow cycles {}, {policy}{}, {}, {}",
             s.rate,
@@ -670,6 +771,21 @@ impl Control {
             },
             s.hosts.status(s.rate, upstream_ms),
             self.recorder.status()
-        )
+        );
+        AudioReport {
+            attached: true,
+            rate: s.rate,
+            driver: driver.into(),
+            load_pct: d.load_pct(),
+            peak_load_pct: d.peak_load_pct(),
+            cycle_p50_us: d.percentile_ns(0.5) / 1000,
+            cycle_p99_us: d.percentile_ns(0.99) / 1000,
+            xruns: under.wrapping_add(over),
+            underruns: under,
+            overruns: over,
+            slow_cycles: d.slow,
+            bridges: s.hosts.report(s.rate, upstream_ms),
+            message,
+        }
     }
 }

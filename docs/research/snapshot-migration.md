@@ -38,6 +38,16 @@ Round-trip result: factory scene -> store -> JSON is equal key-for-key with ever
   `wing-fullsize` (`ngc-rack`/`ngc-compact` -> `wing-rack`/`wing-compact`, **inferred**); `creator_sn`,
   `creator_name`, `created`, `creator_version` kept from the source; `active_show`/`active_scene` `""` when
   absent. New scenes (`Snapshot::factory()`) use the factory header.
+- **Export for a real console (T062, `apps/wing-sim/src/ab.rs`)**: `/wingsim/export` and `wing-sim --export` keep a
+  header that came from a genuine 3.x console file; a simulator-made scene (factory header / `creator_version`
+  `emulation`, or migrated from 1.x) gets the **advertised** identity instead: `creator_fw` = the firmware the
+  simulator advertises (default `3.3.4-0-g0c2b9d4a:release`, the build WING-Edit 3.3.4 matches), `creator_model`
+  (`wing-fullsize`/`wing-rack`/`wing-compact`), `creator_sn`, `creator_name`; `created` = export time (UTC);
+  `type` stays `snapshot.11` (only format number known for 3.x, 3.3.4 is a schema superset). Rationale: the factory
+  header's `...-dirty:dev_unidyn` is a development build string no shipped console writes. `--export-header factory`
+  restores the 3.0.6 header. Every export is re-loaded and refused unless 0 keys are rejected, the header is a
+  3.x `snapshot.11` and the content round-trips; a `<name>.changes.md` wing-diff report vs the scene as loaded is
+  written beside it.
 - **Unverified**: whether a real WING 3.x / WING-Edit checks `creator_fw` or `creator_model` on scene load.
   Writing the factory header values is the safest choice we have; verify on hardware (T062).
 

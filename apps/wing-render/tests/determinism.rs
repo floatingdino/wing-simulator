@@ -193,15 +193,11 @@ fn realtime(plan: &InputPlan, rec_dir: &Path) -> Vec<Vec<f32>> {
     while out[0].len() < FRAMES {
         let at = t + delay as i64;
         drv.write_output(at, &play(BUF), BUF, CHANNELS);
-        // Let the daemon catch up with everything written and return to its loop (it
-        // heartbeats between bursts; a debug-build PUBLIC.snap runs slower than realtime, and an
-        // unpaced feed would otherwise keep it in one burst past the driver's 100 ms
-        // heartbeat timeout, switching the simulated driver to loopback).
+        // Unpaced lock-step feed: a debug-build PUBLIC.snap runs slower than realtime, so the
+        // daemon stays in one long `service` burst; its per-block heartbeat must keep the
+        // simulated driver out of loopback (100 ms timeout).
         wait_for("daemon block", Duration::from_secs(20), || {
-            h.from_daemon.write_time.load(Relaxed) >= at + BUF as i64
-        });
-        wait_for("daemon heartbeat", Duration::from_secs(20), || {
-            drv.daemon_alive()
+            h.from_daemon.write_time.load(Relaxed) >= t + BUF as i64
         });
         drv.read_input(at, &mut rec, BUF, CHANNELS);
         assert_eq!(

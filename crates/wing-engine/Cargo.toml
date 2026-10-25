@@ -42,3 +42,7 @@ harness = false
 [[bench]]
 name = "monitor"
 harness = false
+
+[[bench]]
+name = "fx"
+harness = false

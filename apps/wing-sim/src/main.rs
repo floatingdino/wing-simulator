@@ -7,7 +7,7 @@
 //!          [--port 2222] [--osc-port 2223] [--save-on-exit PATH]
 //!          [--state-dir DIR] [--no-autosave] [--recall NAME] [--list-scenes]
 //!          [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N]
-//!          [--workers N] [--no-rt]
+//!          [--workers N] [--no-rt] [--no-control]
 //! wing-sim record start <TAPS> <DIR> | stop | status   [--host H] [--osc-port N]
 //! ```
 //! Ctrl-C (SIGINT) or SIGTERM shuts down cleanly.
@@ -18,6 +18,13 @@
 //! `$ctl/lib` (WING-Edit's library page); `--list-scenes` prints it, `--recall NAME` (or `#N`)
 //! starts from a library scene.
 //!
+//! A/B and export (T062, see `ab.rs`): `/wingsim/ab/{store_a,store_b,toggle,a,b}` over OSC (or
+//! `$ctl/lib/$action` = `AB:store_a` ...) switch two in-memory scene slots through the normal
+//! set path; `/wingsim/export <path>` / `--export PATH` write a console-ready 3.x `.snap` plus a
+//! `.changes.md` wing-diff report vs the scene as loaded. `--ab-a FILE` / `--ab-b FILE` preload
+//! the slots (starting on A when given), `--export-on-exit PATH` exports at shutdown,
+//! `--export-header advertised|factory` picks the header (default: the advertised firmware).
+//!
 //! Audio (T026, see `wing_sim::audio`): attaches to the Wing Simulator HAL driver's shared memory
 //! and runs the console on a real-time thread (USB In 1..48 -> routing -> 40 ch + 8 aux strips ->
 //! busses, mains, matrices (T036) -> output patch -> USB Out 1..48, plus host-device bridges). Without a
@@ -25,17 +32,24 @@
 //! wing-hostio TOML (see `crates/wing-hostio/hostio.example.toml`); by default monitor A (`mon/1`: the monitor source, MAIN.1 by default, with solo priority) plays on
 //! "Scarlett 2i4 USB" 1/2 when that device exists.
 //!
+//! Front ends (T064, see `wing_sim::control`): `<state-dir>/status.json` is rewritten every
+//! second (load, xruns, bridges, clients), and `<state-dir>/control.sock` takes line commands
+//! (`save`/`load` a scene file, `reload-hostio`, `quit`, ...); `--no-control` disables both.
+//!
 //! Recording (T061, see `wing_sim::record`): `/wingsim/record/start ,ss <taps> <dir>`,
 //! `/wingsim/record/stop`, `/wingsim/record/status` over OSC, or the `wing-sim record ...` client
 //! subcommand (sends those to a running daemon, default 127.0.0.1:2223, and prints the reply).
 //! Taps: `main/1,bus/3,mon/1,usb_out/1-48` (one 32-bit float WAV per stereo tap / flat lane).
-//! The audio status line shows the recording state.
+//! The audio status line and status.json show the recording state; the control socket
+//! takes `record start <taps> <dir>`, `record stop`, `record status` too.
 
+mod ab;
 mod library;
 mod persist;
 
 use wing_engine::meters::LevelBank;
 use wing_sim::audio::{self, AudioOptions, AudioService, ConsoleConfig, HostIoSetting};
+use wing_sim::control;
 use wing_sim::meters::meter_source;
 use wing_sim::record::Recorder;
 
@@ -83,13 +97,21 @@ struct Args {
     block: usize,
     workers: Option<usize>,
     rt: bool,
+    ab_a: Option<String>,
+    ab_b: Option<String>,
+    export: Option<String>,
+    export_on_exit: Option<String>,
+    export_header: ab::HeaderMode,
+    hostio_path: Option<PathBuf>,
+    control: bool,
 }
 
 const USAGE: &str = "usage: wing-sim [--name NAME] [--ip A.B.C.D] [--fw FIRMWARE] [--model MODEL] \
 [--serial SERIAL] [--scene PATH] [--idle-timeout SECS] [--no-meters] [--no-osc] [--port N] \
 [--osc-port N] [--save-on-exit PATH] [--state-dir DIR] [--no-autosave] [--recall NAME|#N] \
 [--list-scenes] [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N] \
-[--workers N] [--no-rt]";
+[--workers N] [--no-rt] [--no-control] [--ab-a FILE] [--ab-b FILE] [--export PATH] \
+[--export-on-exit PATH] [--export-header advertised|factory]";
 
 fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut a = Args {
@@ -112,6 +134,13 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         block: 64,
         workers: None,
         rt: true,
+        ab_a: None,
+        ab_b: None,
+        export: None,
+        export_on_exit: None,
+        export_header: ab::HeaderMode::default(),
+        hostio_path: None,
+        control: true,
     };
     while let Some(flag) = it.next() {
         let mut val = || it.next().ok_or(format!("{flag} needs a value"));
@@ -136,8 +165,15 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--recall" => a.recall = Some(val()?),
             "--list-scenes" => a.list_scenes = true,
             "--no-audio" => a.audio = false,
-            "--hostio" => a.hostio = HostIoSetting::from_file(&val()?)?,
-            "--no-hostio" => a.hostio = HostIoSetting::Off,
+            "--hostio" => {
+                let p = val()?;
+                a.hostio = HostIoSetting::from_file(&p)?;
+                a.hostio_path = Some(PathBuf::from(p));
+            }
+            "--no-hostio" => {
+                a.hostio = HostIoSetting::Off;
+                a.hostio_path = None;
+            }
             "--shm-name" => a.shm_name = val()?,
             "--block" => {
                 a.block = val()?.parse().map_err(|e| format!("--block: {e}"))?;
@@ -147,6 +183,16 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--workers" => a.workers = Some(val()?.parse().map_err(|e| format!("--workers: {e}"))?),
             "--no-rt" => a.rt = false,
+            "--ab-a" => a.ab_a = Some(val()?),
+            "--ab-b" => a.ab_b = Some(val()?),
+            "--export" => a.export = Some(val()?),
+            "--export-on-exit" => a.export_on_exit = Some(val()?),
+            "--export-header" => {
+                let v = val()?;
+                a.export_header = ab::HeaderMode::parse(&v)
+                    .ok_or(format!("--export-header: {v:?} is not advertised|factory"))?;
+            }
+            "--no-control" => a.control = false,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
@@ -325,6 +371,7 @@ fn run(args: Args) -> Result<(), String> {
         let (snap, rep) = Snapshot::load(&store, &text).map_err(|e| format!("--scene {p}: {e}"))?;
         report(&format!("scene {p}"), &rep);
         *doc.lock().unwrap_or_else(|e| e.into_inner()) = snap;
+        lib.set_loaded(text);
     } else if let Some(name) = &args.recall {
         let i = lib.find(name).ok_or_else(|| {
             format!(
@@ -340,11 +387,16 @@ fn run(args: Args) -> Result<(), String> {
     } else if state_file.exists() {
         let loaded = std::fs::read_to_string(&state_file)
             .map_err(|e| e.to_string())
-            .and_then(|t| Snapshot::load(&store, &t).map_err(|e| e.to_string()));
+            .and_then(|t| {
+                Snapshot::load(&store, &t)
+                    .map(|(s, r)| (s, r, t))
+                    .map_err(|e| e.to_string())
+            });
         match loaded {
-            Ok((snap, rep)) => {
+            Ok((snap, rep, text)) => {
                 report(&format!("restored {}", state_file.display()), &rep);
                 *doc.lock().unwrap_or_else(|e| e.into_inner()) = snap;
+                lib.set_loaded(text);
             }
             Err(e) => {
                 // keep the unreadable file for inspection and start from the factory scene
@@ -361,6 +413,33 @@ fn run(args: Args) -> Result<(), String> {
     }
     lib.adopt_doc_active();
     lib.publish(&store); // also sets `$syscfg/$cnsmdl`
+    lib.set_export_cfg(ab::ExportCfg {
+        mode: args.export_header,
+        firmware: args.identity.firmware.clone(),
+        console_model: console_model.into(),
+        serial: args.identity.serial.clone(),
+        name: args.identity.name.clone(),
+    });
+    // A/B slots from files (start on A when it is given)
+    for (slot, file) in [&args.ab_a, &args.ab_b].into_iter().enumerate() {
+        if let Some(p) = file {
+            let text = std::fs::read_to_string(p)
+                .map_err(|e| format!("--ab-{}: {p}: {e}", ["a", "b"][slot]))?;
+            lib.ab_set_slot(slot, text, false)
+                .map_err(|e| format!("--ab-{}: {p}: {e}", ["a", "b"][slot]))?;
+        }
+    }
+    if args.ab_a.is_some() {
+        log(&format!("A/B: {}", lib.ab_switch(&store, Some(0))?));
+    } else if args.ab_b.is_some() {
+        log(&format!("A/B: {}", lib.ab_switch(&store, Some(1))?));
+    }
+    if let Some(p) = &args.export {
+        // batch mode: export the state (after --scene/--recall/restore and A/B) and exit
+        let e = ab::run_export(&lib, &store, p)?;
+        log(&e);
+        return Ok(());
+    }
     log(&format!(
         "state dir {}: autosave {}, library {} scenes{}",
         args.state_dir.display(),
@@ -542,10 +621,12 @@ fn run(args: Args) -> Result<(), String> {
     ));
 
     // ---- audio ----
+    let mut hostio_note = "host outputs off (--no-audio)".to_string();
     let audio = match routing {
         Some(routing) => {
             let (hostio, note) = args.hostio.resolve();
             log(&format!("audio: {note}"));
+            hostio_note = note;
             let mut console = ConsoleConfig {
                 block: args.block,
                 rt_workers: args.rt,
@@ -588,9 +669,91 @@ fn run(args: Args) -> Result<(), String> {
             on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t,
         );
     }
+    // ---- local control socket + status file (T064) ----
+    let status_file = args.state_dir.join(control::STATUS_FILE);
+    let ctl = if args.control {
+        match control::ControlServer::spawn(&args.state_dir.join(control::SOCKET_FILE)) {
+            Ok((srv, rx)) => {
+                log(&format!(
+                    "control: socket {}, status {}",
+                    srv.path().display(),
+                    status_file.display()
+                ));
+                Some((srv, rx))
+            }
+            Err(e) => {
+                log(&format!("control: socket disabled: {e}"));
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let mut local = LocalState {
+        scene_file: args.scene.clone(),
+        hostio_path: args.hostio_path.clone(),
+        hostio_note,
+    };
+    let status = |local: &LocalState, running: bool| control::DaemonStatus {
+        running,
+        pid: std::process::id(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        name: args.identity.name.clone(),
+        updated_unix: control::unix_now(),
+        uptime_s: t0.elapsed().as_secs_f64(),
+        state_dir: args.state_dir.display().to_string(),
+        native_clients: server.clients(),
+        meter_reports: subs.live_reports(Instant::now()),
+        discovery_replies: discovery.replies(),
+        scene_file: local.scene_file.clone(),
+        active_scene: lib.active(),
+        hostio_path: local.hostio_path.as_ref().map(|p| p.display().to_string()),
+        hostio: local.hostio_note.clone(),
+        audio: audio.as_ref().map(|a| a.report()),
+        recording: recorder.is_recording(),
+        recorder: recorder.status(),
+    };
     let mut last_status = Instant::now();
+    let mut last_status_file: Option<Instant> = None;
     while !STOP.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_millis(100));
+        if let Some((_, rx)) = &ctl {
+            while let Ok(req) = rx.try_recv() {
+                let res = match &req.cmd {
+                    control::Command::Status => Ok(status(&local, true).to_json()),
+                    cmd => execute(
+                        cmd,
+                        &store,
+                        &doc,
+                        &lib,
+                        audio.as_ref(),
+                        &recorder,
+                        &mut local,
+                    ),
+                };
+                match &res {
+                    Ok(m)
+                        if !matches!(
+                            req.cmd,
+                            control::Command::Status
+                                | control::Command::Ping
+                                | control::Command::RecordStatus
+                        ) =>
+                    {
+                        log(&format!("control: {m}"))
+                    }
+                    Err(e) => log(&format!("control: {:?} failed: {e}", req.cmd)),
+                    _ => {}
+                }
+                req.respond(res);
+            }
+            if last_status_file.is_none_or(|t| t.elapsed() >= Duration::from_secs(1)) {
+                last_status_file = Some(Instant::now());
+                if let Err(e) = control::write_status(&status_file, &status(&local, true)) {
+                    log(&format!("control: writing {}: {e}", status_file.display()));
+                }
+            }
+        }
         if last_status.elapsed() >= Duration::from_secs(60) {
             last_status = Instant::now();
             log(&format!(
@@ -612,6 +775,11 @@ fn run(args: Args) -> Result<(), String> {
     if recorder.is_recording() {
         log(&format!("record: {}", recorder.stop()));
     }
+    if let Some((srv, rx)) = ctl {
+        drop(rx);
+        srv.stop();
+        let _ = control::write_status(&status_file, &status(&local, false));
+    }
     if let Some(a) = audio {
         a.stop(); // detaches: the driver falls back to loopback
     }
@@ -628,6 +796,12 @@ fn run(args: Args) -> Result<(), String> {
         let n = a.stop();
         log(&format!("autosave: {n} saves to {}", state_file.display()));
     }
+    if let Some(p) = &args.export_on_exit {
+        match ab::run_export(&lib, &store, p) {
+            Ok(m) => log(&m),
+            Err(e) => log(&format!("export to {p} failed: {e}")),
+        }
+    }
     if let Some(p) = &args.save_on_exit {
         match persist::save_state(&store, &doc, std::path::Path::new(p)) {
             Ok(_) => log(&format!("saved scene to {p}")),
@@ -636,6 +810,92 @@ fn run(args: Args) -> Result<(), String> {
     }
     log("stopped");
     Ok(())
+}
+
+/// Daemon state the control socket can change (T064).
+struct LocalState {
+    scene_file: Option<String>,
+    hostio_path: Option<PathBuf>,
+    hostio_note: String,
+}
+
+/// Execute a control command (main thread; `status` is answered by the caller).
+fn execute(
+    cmd: &control::Command,
+    store: &ParamStore,
+    doc: &persist::Doc,
+    lib: &library::SceneLib,
+    audio: Option<&AudioService>,
+    recorder: &Recorder,
+    local: &mut LocalState,
+) -> Result<String, String> {
+    use control::Command;
+    match cmd {
+        Command::Ping | Command::Status => Ok(format!(
+            "wing-sim {} pid {}",
+            env!("CARGO_PKG_VERSION"),
+            std::process::id()
+        )),
+        Command::Save(p) => {
+            let n =
+                persist::save_state(store, doc, p).map_err(|e| format!("{}: {e}", p.display()))?;
+            local.scene_file = Some(p.display().to_string());
+            Ok(format!("saved {n} bytes to {}", p.display()))
+        }
+        // validated console-ready export + `.changes.md` report (T062); scene file unchanged
+        Command::Export(p) => ab::run_export(lib, store, &p.display().to_string()),
+        Command::Load(p) => {
+            let text = std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
+            let rep = {
+                // hold the document while the store is rewritten (see SceneLib::recall)
+                let mut d = doc.lock().unwrap_or_else(|e| e.into_inner());
+                let (snap, rep) =
+                    Snapshot::load(store, &text).map_err(|e| format!("{}: {e}", p.display()))?;
+                *d = snap;
+                rep
+            };
+            lib.set_loaded(text);
+            lib.adopt_doc_active();
+            lib.publish(store);
+            local.scene_file = Some(p.display().to_string());
+            Ok(format!(
+                "loaded {}: {} keys, {} applied, {} rejected",
+                p.display(),
+                rep.keys,
+                rep.applied,
+                rep.rejected.len()
+            ))
+        }
+        Command::ReloadHostIo(p) => {
+            let audio = audio.ok_or("audio is off (--no-audio)")?;
+            let path = p
+                .clone()
+                .or_else(|| local.hostio_path.clone())
+                .ok_or("no --hostio file in use; give a path")?;
+            let cfg = match HostIoSetting::from_file(&path.display().to_string())? {
+                HostIoSetting::Config(c) => c,
+                _ => unreachable!("from_file returns a config"),
+            };
+            let (_, note) = HostIoSetting::Config(cfg.clone()).resolve();
+            audio.set_hostio(Some(cfg));
+            local.hostio_path = Some(path);
+            local.hostio_note = note.clone();
+            Ok(note)
+        }
+        Command::HostIoOff => {
+            audio.ok_or("audio is off (--no-audio)")?.set_hostio(None);
+            local.hostio_path = None;
+            local.hostio_note = "host outputs off".into();
+            Ok(local.hostio_note.clone())
+        }
+        Command::RecordStart { taps, dir } => recorder.start(taps, dir),
+        Command::RecordStop => Ok(recorder.stop()),
+        Command::RecordStatus => Ok(recorder.status()),
+        Command::Quit => {
+            STOP.store(true, Ordering::SeqCst);
+            Ok("stopping".into())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -695,10 +955,32 @@ mod tests {
         ])
         .unwrap();
         assert!(!a.audio && a.hostio == HostIoSetting::Off && a.block == 128);
+        assert!(a.control && a.hostio_path.is_none());
+        assert!(!args(&["--no-control"]).unwrap().control);
+        let ex = std::env::temp_dir().join(format!("wing-sim-cli-{}.toml", std::process::id()));
+        std::fs::write(&ex, wing_hostio::config::EXAMPLE_TOML).unwrap();
+        let h = args(&["--hostio", ex.to_str().unwrap()]).unwrap();
+        assert_eq!(h.hostio_path.as_deref(), Some(ex.as_path()));
+        let _ = std::fs::remove_file(&ex);
         assert_eq!(a.workers, Some(2));
         assert!(args(&["--block", "7"]).is_err());
         assert!(args(&["--hostio", "/nonexistent.toml"]).is_err());
         assert!(args(&["--name", "a,b"]).is_err());
+        let a = args(&[
+            "--ab-a",
+            "a.snap",
+            "--ab-b",
+            "b.snap",
+            "--export",
+            "o.snap",
+            "--export-header",
+            "factory",
+        ])
+        .unwrap();
+        assert_eq!(a.ab_a.as_deref(), Some("a.snap"));
+        assert_eq!(a.export.as_deref(), Some("o.snap"));
+        assert_eq!(a.export_header, ab::HeaderMode::Factory);
+        assert!(args(&["--export-header", "x"]).is_err());
     }
 
     #[test]

@@ -48,6 +48,9 @@
 //!   outputs are the `MON` legs 1..4.
 //! * **Matrices** take ch/aux `MXn` sends, bus and main sends. Matrix direct inputs (`mtx/*/dir`:
 //!   AES / monitor) have no source in the simulator yet.
+//! * **Inserts / FX rack** (T050/T044, [`crate::fx`]): every strip's Ins1/Ins2 run their FX slot inline
+//!   through the rack handle the builder installs; the rack node after the matrices publishes the FX
+//!   SEND legs and sums the automix groups.
 //! * Mix outputs (BUS/MAIN/MTX legs), strip taps (user signals PRE FADER / POST PROCESSING) feed
 //!   the USB output router directly and the channel sources (re-inputs) one block late
 //!   ([`crate::routing::feedback`]).
@@ -164,6 +167,9 @@ pub struct MixConfig {
     /// (strip outs, bus/main/matrix in/out, mix-output sources) are port meters:
     /// [`crate::meters::PortMeters::for_mix`].
     pub meters: Option<std::sync::Arc<crate::meters::LevelBank>>,
+    /// FX rack hosting the strips' inserts (T050; `None` = a new [`crate::fx::FxRack`] with every
+    /// catalog model). Tests pass one built with [`crate::fx::FxRack::with_factory`].
+    pub fx_rack: Option<crate::fx::FxRack>,
 }
 
 impl Default for MixConfig {
@@ -179,6 +185,7 @@ impl Default for MixConfig {
             hooks: None,
             logic: None,
             meters: None,
+            fx_rack: None,
         }
     }
 }
@@ -196,6 +203,7 @@ impl std::fmt::Debug for MixConfig {
             .field("hooks", &self.hooks.is_some())
             .field("logic", &self.logic.is_some())
             .field("meters", &self.meters.is_some())
+            .field("fx_rack", &self.fx_rack.is_some())
             .finish()
     }
 }

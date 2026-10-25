@@ -551,6 +551,9 @@ name = "wing-sim"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "serde",
+ "serde_json",
+ "wing-diff",
  "wing-engine",
  "wing-hostio",
  "wing-model",

@@ -14,10 +14,14 @@
 //! * **Dynamics slot** (`dyn`, any model of the shared gate/dynamics table), key filter `dynsc
 //!   type/f/q`, crossover `dynxo`. The key is the strip itself (SELF); external `dynsc.src` keys
 //!   need graph wiring and are not resolved yet.
-//! * **Inserts** (`preins`/`postins` `on ins`) call an [`InsertHost`] placeholder (the FX rack, T050).
+//! * **Inserts** (`preins`/`postins` `on ins`) run their FX slot inline through the strip's
+//!   [`InsertHost`] (the FX rack handle, [`crate::fx`]; T050/T044).
 //! * **Output delay** (`dly on`, model group `dly/mode` M/FT/MS/SMP with target `dly`) runs on the
 //!   POST signal ([`StripHook::process_post`]) so PRE taps/sends stay undelayed. It is the
 //!   wing-blocks input-stage delay (50 ms glide, linear interpolation, settled integer delays exact).
+//! * **Latency** (T03E, [`crate::latency`]): constant (EQ + dynamics slot latency, independent of models
+//!   and switches), plus an alignment pad before the fader ([`MixStrip::set_align_latency`],
+//!   [`MixStrip::set_insert_latency`]); the output delay comes on top.
 //! * **Stereo-linked**: one stereo pair; dynamics models detect on the linked key.
 //! * **Bypass**: every block has its own switch; model slots crossfade on/off and cost nothing when
 //!   off; trim at unity is skipped.
@@ -32,9 +36,11 @@ use wing_blocks::input::{DelayMode, InputParams, InputStage, SourceMode};
 use wing_blocks::sidechain::XoverKind;
 
 use crate::channel::{
-    slot_key_peak, InsertHost, InsertPoint, NoInserts, PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT,
+    claimed_latency, slot_key_peak, sync_inserts, InsertHost, InsertPoint, InsertPos, NoInserts,
+    PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT,
 };
 use crate::graph::NodeId;
+use crate::latency::StripAlign;
 use crate::meters::{abs_max, word, StripMeter};
 use crate::params::std_models::{block_kind, model_factory};
 use crate::params::strip::{ModelSlot, SLOT_LAYOUT};
@@ -146,8 +152,11 @@ pub struct MixStrip {
     dly_p: InputParams,
     dly_dirty: bool,
     fx: Box<dyn InsertHost + Send>,
+    /// Insert state last forwarded to `fx`.
+    ins_seen: (InsertPoint, InsertPoint),
     telem: MixStripTelemetry,
     meter: Option<StripMeter>,
+    align: StripAlign,
 }
 
 impl MixStrip {
@@ -177,6 +186,8 @@ impl MixStrip {
         };
         dly.set_params(&dly_p);
         dly.prepare(fs, max_block);
+        let own = eq.latency() + dyn_.latency();
+        let align = StripAlign::new(own, own);
         let trim = InputParams {
             source_mode: SourceMode::Stereo,
             ..InputParams::default()
@@ -198,8 +209,10 @@ impl MixStrip {
             dly_p,
             dly_dirty: false,
             fx: Box::new(NoInserts),
+            ins_seen: Default::default(),
             telem: MixStripTelemetry::default(),
             meter: None,
+            align,
         };
         s.settle();
         s
@@ -243,14 +256,36 @@ impl MixStrip {
         self.meter.as_ref()
     }
 
-    /// Install the FX rack (off the RT thread).
+    /// Install the FX rack (off the RT thread); the current insert assignment is forwarded to it.
     pub fn set_insert_host(&mut self, fx: Box<dyn InsertHost + Send>) {
         self.fx = fx;
+        self.ins_seen = Default::default();
+        sync_inserts(
+            &mut *self.fx,
+            &mut self.ins_seen,
+            (self.preins, self.postins),
+        );
     }
 
-    /// Processing latency (samples) of the active models (output delay excluded).
+    /// Strip latency in samples (model slots + inserts + alignment pad; output delay excluded).
+    /// Constant: it does not depend on the selected models or block switches.
     pub fn latency(&self) -> usize {
-        self.eq.latency() + self.dyn_.latency()
+        self.align.total()
+    }
+
+    /// Latency alignment state.
+    pub fn align(&self) -> &StripAlign {
+        &self.align
+    }
+
+    /// Align the pre-fader output to `target` samples (`None` = EQ + dynamics slot latency). RT-safe.
+    pub fn set_align_latency(&mut self, target: Option<usize>) -> usize {
+        self.align.set_target(target)
+    }
+
+    /// Latency added by the engaged inserts (FX rack); the alignment pad absorbs it. RT-safe.
+    pub fn set_insert_latency(&mut self, n: usize) -> usize {
+        self.align.set_insert_latency(n)
     }
 
     /// Commit and jump every ramp/fade/glide to its target (tests, scene start).
@@ -260,6 +295,7 @@ impl MixStrip {
         self.eq.settle();
         self.dyn_.settle();
         self.dly.reset();
+        self.align.reset();
     }
 
     pub fn telemetry(&self) -> MixStripTelemetry {
@@ -340,6 +376,8 @@ impl MixStrip {
                     1 => ins.fx = v.clamp(0.0, 16.0) as u8,
                     _ => {}
                 }
+                // mode FX only (bus/main/mtx inserts have no automix)
+                ins.mode = 0;
             }
             hook::DLY => {
                 match param {
@@ -391,12 +429,22 @@ impl MixStrip {
                 }
                 self.eq.commit();
                 self.dyn_.commit();
+                sync_inserts(
+                    &mut *self.fx,
+                    &mut self.ins_seen,
+                    (self.preins, self.postins),
+                );
             }
         }
     }
 
     /// Process the summed signal up to the pre-fader point, in place (RT-safe).
     pub fn process_pre(&mut self, l: &mut [f32], r: &mut [f32]) {
+        // insert FX latency pads the strip (ownership only changes between cycles)
+        let il = claimed_latency(&*self.fx, &self.preins, &self.postins);
+        if il != self.align.insert_latency() {
+            self.align.set_insert_latency(il);
+        }
         let (g0, g1) = self.gain.step();
         if g0 != [1.0, 1.0] || g1 != [1.0, 1.0] {
             ramp_in_place(l, g0[0], g1[0]);
@@ -406,8 +454,9 @@ impl MixStrip {
         if let Some(m) = &self.meter {
             m.stereo(word::IN_L, l, r);
         }
-        if let Some(n) = self.preins.engaged() {
-            self.fx.process_insert(n, l, r);
+        if let Some(n) = self.preins.claimed() {
+            self.fx
+                .process_claimed(InsertPos::Pre, n, self.preins.on, l, r);
         }
         self.tap(MixTap::Ins1, l, r);
         self.eq.process(l, r);
@@ -419,9 +468,11 @@ impl MixStrip {
         };
         self.dyn_.process_keyed(l, r, None);
         self.tap(MixTap::Dyn, l, r);
-        if let Some(n) = self.postins.engaged() {
-            self.fx.process_insert(n, l, r);
+        if let Some(n) = self.postins.claimed() {
+            self.fx
+                .process_claimed(InsertPos::Post, n, self.postins.on, l, r);
         }
+        self.align.process(l, r);
         self.tap(MixTap::Pfl, l, r);
         // An off slot can still run its model for one wrapper-ramp after a parameter change
         // (inaudible, wet = 0): report GR only while the slot is on.
@@ -468,6 +519,14 @@ impl StripHook for MixStrip {
 
     fn set_param(&mut self, msg: &ParamMsg) {
         self.apply(msg);
+    }
+
+    fn set_insert_host(&mut self, fx: Box<dyn InsertHost + Send>) {
+        MixStrip::set_insert_host(self, fx);
+    }
+
+    fn latency(&self) -> usize {
+        MixStrip::latency(self)
     }
 
     fn telemetry(&mut self, out: &mut TelemetryWriter<'_>) {
@@ -520,12 +579,17 @@ mod tests {
 
     #[test]
     fn default_strip_is_transparent() {
+        // transparent up to the strip's constant latency (T03E)
         let mut m = MixStrip::new(Strip::Main(1), 48_000.0, 64);
-        let x: Vec<f32> = (0..64).map(|i| (i as f32 * 0.3).sin() * 0.5).collect();
+        let lat = m.latency();
+        let x: Vec<f32> = (0..512).map(|i| (i as f32 * 0.3).sin() * 0.5).collect();
         let (mut l, mut r) = (x.clone(), x.clone());
-        m.process_pre(&mut l, &mut r);
-        m.process_out(&mut l, &mut r);
-        assert_eq!(l, x);
-        assert_eq!(r, x);
+        for (a, b) in l.chunks_mut(64).zip(r.chunks_mut(64)) {
+            m.process_pre(a, b);
+            m.process_out(a, b);
+        }
+        assert!(l[..lat].iter().all(|&v| v == 0.0));
+        assert_eq!(l[lat..], x[..512 - lat]);
+        assert_eq!(r[lat..], x[..512 - lat]);
     }
 }

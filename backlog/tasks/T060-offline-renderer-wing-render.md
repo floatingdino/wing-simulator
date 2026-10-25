@@ -49,3 +49,7 @@ Multitrack WAVs (or REAPER-rendered stems) + .snap -> mains/stems faster than re
     (debug build) that is fed continuously never leaves `service()` and the driver drops to loopback after 100 ms
     (the determinism test paces its feed); consider a heartbeat per block in `driver::service`. Resampling of
     non-48k inputs; RF64 for >4 GiB renders; multi-item REAPER tracks.
+- 2026-10-25 engineering-agent: after merging `main` (T03E latency compensation, T050 FX rack) the determinism test
+  still passes bit-exact. Heartbeat follow-up fixed: `driver::service` refreshes the daemon heartbeat per engine
+  block (atomic store of `mach_absolute_time`, RT-safe), so a long burst no longer drops the driver to loopback;
+  the determinism test now feeds the realtime path unpaced (it failed that way before the fix). `make check` passes.

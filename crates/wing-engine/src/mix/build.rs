@@ -6,6 +6,7 @@ use std::sync::Arc;
 use wing_model::ParamStore;
 
 use crate::channel::{bind_aux_strip, bind_channel_strip, ChannelStrip};
+use crate::fx::{bind_fx_params, FxRack, SEND_OUTPUTS};
 use crate::graph::{Graph, GraphBuilder, GraphError, NodeId, Port};
 use crate::params::{BindError, BlockLayout, ParamMap, ParamMapBuilder};
 use crate::routing::{
@@ -70,6 +71,8 @@ pub struct MixNodes {
     pub mtx: [NodeId; 8],
     /// Monitor section ([`MonitorNode`]): outputs 0/1 = monitor 1 L/R, 2/3 = monitor 2 L/R.
     pub monitor: NodeId,
+    /// FX rack node ([`crate::fx::FxRackNode`]): outputs = FX SEND legs 1..32.
+    pub fx: NodeId,
     /// One-block feedback writer for re-inputs.
     pub feedback: NodeId,
     /// USB output router (48 outputs = driver `USB Out 1..48`).
@@ -139,7 +142,15 @@ impl MixNodes {
         self.strip_port(s, StripPoint::PostProc, side)
     }
 
-    /// Every tap the routing layer can address, wired to its port (MON legs 1..4 = monitor A/B L/R; SEND legs stay `None`).
+    /// FX SEND leg `leg` (1..32; 2k-1/2k = L/R of slot k): the input of FX slot k while it runs.
+    pub fn send_port(&self, leg: u16) -> Option<Port> {
+        (1..=SEND_OUTPUTS as u16)
+            .contains(&leg)
+            .then(|| Port::node(self.fx, leg as u32 - 1))
+    }
+
+    /// Every tap the routing layer can address, wired to its port (MON legs 1..4 = monitor A/B L/R;
+    /// SEND legs 1..32 = FX slot inputs).
     pub fn tap_ports(&self) -> Box<TapPorts> {
         let mut taps = Box::new(NO_TAPS);
         for (id, slot) in taps.iter_mut().enumerate() {
@@ -159,7 +170,10 @@ impl MixNodes {
                                 .then(|| Port::node(self.monitor, leg as u32 - 1));
                             continue;
                         }
-                        MixGroup::Send => None,
+                        MixGroup::Send => {
+                            *slot = self.send_port(leg);
+                            continue;
+                        }
                     };
                     s.and_then(|s| self.post(s, side))
                 }
@@ -185,6 +199,8 @@ pub struct MixGraph {
     pub bus_tiers: [u8; 16],
     /// The DCA / mute-group / solo state the nodes follow.
     pub logic: Arc<MixShared>,
+    /// The FX rack the strips' inserts run (slot owners, `$stat`, latency).
+    pub fx: FxRack,
 }
 
 impl MixGraph {
@@ -382,11 +398,12 @@ pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), 
 /// ```text
 /// level 0  osc                         (+ 48 external inputs = USB In 1..48)
 /// level 1  input router                (USB/osc sources, re-inputs from the previous block)
-/// level 2  40 ch + 8 aux strips        (InputStripNode: T035 strip + fader/pan/taps)
-/// 3..      16 bus nodes in tiers       (MixStripNode: sum -> hook -> fader/pan)
+/// level 2  40 ch + 8 aux strips        (InputStripNode: T035 strip + fader/pan/taps; inserts inline)
+/// 3..      16 bus nodes in tiers       (MixStripNode: sum -> hook -> fader/pan; inserts inline)
 /// next     4 mains                     (sum of ch/aux/bus main sends)
 /// next     8 matrices                  (sum of ch/aux/bus/main MX sends)
 /// next     monitor section             (solo busses + cfg/mon 1|2 = MON legs 1..4)
+///          FX rack                     (fx/* + cfg/amix params, SEND legs, automix sums; see crate::fx)
 /// last     feedback writer, USB output router (every tap wired)
 /// ```
 ///
@@ -403,6 +420,7 @@ pub fn build_mix_graph(
     let bs = cfg.block_size;
     let tiers = bus_tiers(store, cfg.bus_order);
     let logic = cfg.logic.clone().unwrap_or_default();
+    let rack = cfg.fx_rack.take().unwrap_or_else(|| FxRack::new(fs, bs));
     let mut g = GraphBuilder::new(bs, cfg.sample_rate, USB_CHANNELS as u32);
     let fb = TapFeedback::new(bs);
     let io = add_input_stage_with_feedback(&mut g, routing, fb.clone())?;
@@ -424,7 +442,14 @@ pub fn build_mix_graph(
             InputRouter::port(io.inputs, i, 0),
             InputRouter::port(io.inputs, i, 1),
         ];
-        let node = InputStripNode::new(strip, &cfg).with_logic(logic.clone(), i);
+        let s = if i < 40 {
+            Strip::Ch(i as u8 + 1)
+        } else {
+            Strip::Aux((i - 39) as u8)
+        };
+        let node = InputStripNode::new(strip, &cfg)
+            .with_logic(logic.clone(), i)
+            .with_inserts(rack.host(s));
         *id = g.add_node(name, INPUT_OUTPUTS, &src, node)?;
     }
     // ports of an Input slot: Pre, PreLinked, Afl, Post (output channels 2..10)
@@ -449,7 +474,7 @@ pub fn build_mix_graph(
                 }
             })
             .collect();
-        let hook = match cfg.hooks.as_mut() {
+        let mut hook = match cfg.hooks.as_mut() {
             Some(f) => f(strip),
             None => {
                 let mut m = MixStrip::new(strip, fs, bs);
@@ -461,6 +486,7 @@ pub fn build_mix_graph(
                 Box::new(m)
             }
         };
+        hook.set_insert_host(rack.host(strip));
         let idx = strip.index().expect("mix strip");
         let node = MixStripNode::new(strip, &specs, hook, &cfg).with_logic(logic.clone(), idx);
         debug_assert_eq!(node.num_inputs(), ports.len());
@@ -527,6 +553,10 @@ pub fn build_mix_graph(
         MonitorNode::new(logic.clone(), &cfg),
     )?;
 
+    // After the matrices (the last strip level): every slot has run when its SEND capture is read.
+    let mtx_ports: Vec<Port> = mtx.iter().map(|&n| Port::node(n, 0)).collect();
+    let fx = g.add_node("fx", SEND_OUTPUTS, &mtx_ports, rack.node())?;
+
     let mut nodes = MixNodes {
         io,
         inputs,
@@ -534,6 +564,7 @@ pub fn build_mix_graph(
         main,
         mtx,
         monitor,
+        fx,
         feedback: NodeId(0),
         usb_out: NodeId(0),
     };
@@ -550,6 +581,7 @@ pub fn build_mix_graph(
     let mut params = ParamMapBuilder::new();
     bind_mix_params(&mut params, &nodes)?;
     bind_monitor_params(&mut params, monitor)?;
+    bind_fx_params(&mut params, fx)?;
     Ok(MixGraph {
         graph: g,
         params,
@@ -557,5 +589,6 @@ pub fn build_mix_graph(
         taps,
         bus_tiers: tiers,
         logic,
+        fx: rack,
     })
 }

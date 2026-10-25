@@ -20,6 +20,7 @@ use super::std_models::std_factory;
 use super::telemetry::kind;
 use super::{ParamMsg, TelemetryWriter};
 use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
+use crate::latency::TapLine;
 
 /// Block indices of [`ParamStrip`].
 pub mod block {
@@ -218,7 +219,10 @@ pub trait RtModel: Send {
 
 /// Instance index meaning "no implementation: pass-through".
 const BYPASS: u8 = u8::MAX;
-const MAX_MODELS: usize = 64;
+/// Largest WING model enum index + 1 a slot can map (the FX table has 65 entries incl. `NONE`).
+const MAX_MODELS: usize = 128;
+/// Most preallocated instances per slot (the `dirty` bit set is a `u64`).
+const MAX_INSTANCES: usize = 64;
 
 /// A model-dependent slot (gate, dynamics, EQ, filter tool, ...): one preallocated [`RtModel`]
 /// instance per model the slot can host, crossfaded swaps and smoothed wrapper parameters
@@ -239,6 +243,11 @@ const MAX_MODELS: usize = 64;
 /// equal-gain fade keeps the level). Selecting the fading-out model during a fade reverses it;
 /// any other selection is applied when the running fade completes. Models without an instance
 /// pass audio through.
+///
+/// Latency (T03E, see [`crate::latency`]): the slot has a constant latency, the maximum
+/// [`RtModel::latency`] of its instances. An input delay line feeds the dry path at that latency and
+/// each model (and its key) at `slot latency - model latency`, so dry/wet blends, crossfades and
+/// on/off are phase-aligned whatever the model, and an incoming model sees continuous input.
 pub struct ModelSlot {
     instances: Box<[Box<dyn RtModel>]>,
     /// WING enum index -> instance index (or BYPASS).
@@ -276,6 +285,17 @@ pub struct ModelSlot {
     key_l: Vec<f32>,
     key_r: Vec<f32>,
     key_len: usize,
+    /// Constant slot latency (max instance latency).
+    lat: usize,
+    /// Latency of each instance.
+    inst_lat: Box<[usize]>,
+    /// Input history (L, R); taps: dry at `lat`, model k at `lat - inst_lat[k]`.
+    in_line: [TapLine; 2],
+    /// Formed key history (L, R), same taps as the models' inputs.
+    key_line: [TapLine; 2],
+    /// Delayed key of the audible / fading-out model (L, R each).
+    kd_cur: [Vec<f32>; 2],
+    kd_prev: [Vec<f32>; 2],
 }
 
 impl ModelSlot {
@@ -294,7 +314,7 @@ impl ModelSlot {
         if let Some(g) = s.groups().iter().find(|g| g.key == group_key) {
             for m in s.models(g) {
                 let e = m.enum_index as usize;
-                if e >= MAX_MODELS || instances.len() >= BYPASS as usize {
+                if e >= MAX_MODELS || instances.len() >= MAX_INSTANCES {
                     continue;
                 }
                 if let Some(inst) = factory(m.enum_index as u16, m.name) {
@@ -303,10 +323,19 @@ impl ModelSlot {
                 }
             }
         }
-        assert!(instances.len() <= 64, "at most 64 model instances per slot");
+        assert!(
+            instances.len() <= MAX_INSTANCES,
+            "at most 64 model instances per slot"
+        );
+        let inst_lat: Box<[usize]> = instances.iter().map(|m| m.latency()).collect();
+        let lat = inst_lat.iter().copied().max().unwrap_or(0);
         // WING EQ mix law (T03C/T04J): every EQ model scales its band gains by mix/100, 0..125 %.
         let eq = group_key.ends_with("/eq");
         let n = max_block.max(1);
+        // without latency the lines are never touched: keep them minimal
+        let (ld, lb, kn) = if lat > 0 { (lat, n, n) } else { (0, 1, 0) };
+        let line = || [TapLine::new(ld, lb), TapLine::new(ld, lb)];
+        let kd = || [vec![0.0; kn], vec![0.0; kn]];
         let ramp = (SLOT_RAMP_S * fs).round() as u32;
         Self {
             instances: instances.into(),
@@ -342,6 +371,12 @@ impl ModelSlot {
             key_l: vec![0.0; n],
             key_r: vec![0.0; n],
             key_len: 0,
+            lat,
+            inst_lat,
+            in_line: line(),
+            key_line: line(),
+            kd_cur: kd(),
+            kd_prev: kd(),
         }
     }
 
@@ -397,6 +432,9 @@ impl ModelSlot {
             self.prev = self.cur;
             self.cur = self.logical;
         }
+        for t in self.in_line.iter_mut().chain(self.key_line.iter_mut()) {
+            t.reset();
+        }
         self.reset_instance(self.cur);
         self.key_filt.reset();
         self.xo.reset();
@@ -408,11 +446,21 @@ impl ModelSlot {
         !self.idle
     }
 
-    /// Latency of the audible model (samples).
+    /// Constant slot latency in samples (the maximum latency of the hostable models), independent of
+    /// the selected model and of on/mix.
     pub fn latency(&self) -> usize {
-        self.instances
-            .get(self.cur as usize)
-            .map_or(0, |m| m.latency())
+        self.lat
+    }
+
+    /// Own latency of the audible model (samples); the slot pads it to [`ModelSlot::latency`].
+    pub fn model_latency(&self) -> usize {
+        self.inst_lat.get(self.cur as usize).copied().unwrap_or(0)
+    }
+
+    /// Input delay for instance `k` (BYPASS = identity, latency 0).
+    #[inline]
+    fn pre_delay(&self, k: u8) -> usize {
+        self.lat - self.inst_lat.get(k as usize).copied().unwrap_or(0)
     }
 
     /// Crossfade length in samples (0 = hard switch; tests use it for the click baseline).
@@ -499,9 +547,28 @@ impl ModelSlot {
         }
     }
 
+    /// Reset instance `k` and, for a model with latency, prime it with the input history it would
+    /// have seen over its latency (from the slot's input line), so its output is populated from the
+    /// first sample it becomes audible instead of starting with `latency` samples of silence.
     fn reset_instance(&mut self, k: u8) {
-        if let Some(m) = self.instances.get_mut(k as usize) {
-            m.reset();
+        let Some(m) = self.instances.get_mut(k as usize) else {
+            return;
+        };
+        m.reset();
+        let lk = self.inst_lat[k as usize];
+        if lk == 0 {
+            return;
+        }
+        // the model's next input is x[t - d]; prime with x[t - d - lk .. t - d)
+        let d = self.lat - lk;
+        let mut done = 0;
+        while done < lk {
+            let n = (lk - done).min(self.max_block);
+            let back = d + lk - done - n;
+            self.in_line[0].read(&mut self.dry_l[..n], back);
+            self.in_line[1].read(&mut self.dry_r[..n], back);
+            m.process_keyed(&mut self.dry_l[..n], &mut self.dry_r[..n], None);
+            done += n;
         }
     }
 
@@ -598,6 +665,13 @@ impl ModelSlot {
             if self.logical != self.cur {
                 self.start_fade(self.logical);
             }
+            if self.lat > 0 {
+                // bypassed slot: the dry path at the slot's constant latency
+                self.in_line[0].push(l);
+                self.in_line[1].push(r);
+                self.in_line[0].read(l, self.lat);
+                self.in_line[1].read(r, self.lat);
+            }
             return;
         }
         if self.idle {
@@ -611,7 +685,15 @@ impl ModelSlot {
             && self.wet.value() == 1.0
             && !self.makeup.is_ramping()
             && self.makeup.value() == 1.0;
-        if !full {
+        let lat = self.lat;
+        if lat > 0 {
+            self.in_line[0].push(l);
+            self.in_line[1].push(r);
+            if !full {
+                self.in_line[0].read(&mut self.dry_l[..n], lat);
+                self.in_line[1].read(&mut self.dry_r[..n], lat);
+            }
+        } else if !full {
             self.dry_l[..n].copy_from_slice(l);
             self.dry_r[..n].copy_from_slice(r);
         }
@@ -637,13 +719,45 @@ impl ModelSlot {
             }
         }
         self.key_len = if use_key { n } else { 0 };
-        let sc = use_key.then(|| (&self.key_l[..n], &self.key_r[..n]));
-        if self.fading {
-            self.prev_l[..n].copy_from_slice(l);
-            self.prev_r[..n].copy_from_slice(r);
-            if let Some(m) = self.instances.get_mut(self.prev as usize) {
-                m.process_keyed(&mut self.prev_l[..n], &mut self.prev_r[..n], sc);
+        let (d_cur, d_prev) = (self.pre_delay(self.cur), self.pre_delay(self.prev));
+        if lat > 0 && use_key {
+            self.key_line[0].push(&self.key_l[..n]);
+            self.key_line[1].push(&self.key_r[..n]);
+            for (c, kd) in self.kd_cur.iter_mut().enumerate() {
+                self.key_line[c].read(&mut kd[..n], d_cur);
             }
+            if self.fading {
+                for (c, kd) in self.kd_prev.iter_mut().enumerate() {
+                    self.key_line[c].read(&mut kd[..n], d_prev);
+                }
+            }
+        }
+        let (sc, sc_prev) = match (use_key, lat > 0) {
+            (false, _) => (None, None),
+            (true, false) => {
+                let k = Some((&self.key_l[..n], &self.key_r[..n]));
+                (k, k)
+            }
+            (true, true) => (
+                Some((&self.kd_cur[0][..n], &self.kd_cur[1][..n])),
+                Some((&self.kd_prev[0][..n], &self.kd_prev[1][..n])),
+            ),
+        };
+        if self.fading {
+            if lat > 0 {
+                self.in_line[0].read(&mut self.prev_l[..n], d_prev);
+                self.in_line[1].read(&mut self.prev_r[..n], d_prev);
+            } else {
+                self.prev_l[..n].copy_from_slice(l);
+                self.prev_r[..n].copy_from_slice(r);
+            }
+            if let Some(m) = self.instances.get_mut(self.prev as usize) {
+                m.process_keyed(&mut self.prev_l[..n], &mut self.prev_r[..n], sc_prev);
+            }
+        }
+        if lat > 0 {
+            self.in_line[0].read(l, d_cur);
+            self.in_line[1].read(r, d_cur);
         }
         if let Some(m) = self.instances.get_mut(self.cur as usize) {
             m.process_keyed(l, r, sc);

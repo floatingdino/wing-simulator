@@ -42,3 +42,10 @@ Record any output pair/mains to WAV from CLI/OSC while running.
   - Files: apps/wing-sim/src/{record.rs,wav.rs,lib.rs,main.rs,audio/console.rs,audio/driver.rs},
     apps/wing-sim/tests/record.rs, crates/wing-proto/src/osc/{mod.rs,server.rs,service.rs}.
   - Test: `make check` (passes). Manual: `wing-sim record start main/1,usb_out/1-2 ~/rec` … `wing-sim record stop`.
+- 2026-10-25 engineering-agent: merged `main` (T062/T064/T065/T03E/T050) into `task/T060-T061`; conflicts in
+  `audio/driver.rs` (kept `report()`/`set_hostio` + `recorder()`; status message keeps the recorder state inside
+  `AudioReport.message`), `main.rs` (docs, shutdown: recorder stopped before the control socket), `osc/service.rs`
+  (both tests kept). T064 integration: control socket `record start <taps> <dir>` / `record stop` / `record status`
+  (`control::Command::Record*`, parse test), `status.json` gains `recording` (bool) and `recorder` (state line);
+  shared fixture `fixtures/control/status.json` and the Swift mirror (`WingSimCore/DaemonStatus.swift`, optional
+  fields) updated; `swift test` in apps/WingSimMenu passes (19 tests). `make check` passes.

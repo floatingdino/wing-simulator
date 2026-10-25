@@ -20,7 +20,9 @@
 //!   at block boundaries (an order change is a discontinuity, as on the console).
 //! * **Bypass**: every block has its own switch (`lc`/`hc`/`tf`, `gate.on`, `peq.on`, `eq.on`, `dyn.on`,
 //!   `preins.on`/`postins.on`). Model slots crossfade on/off over 5 ms and cost nothing when off; LC/HC and
-//!   PRE EQ fade internally; an insert that is off, unassigned (`NONE`) or in automix mode passes through.
+//!   PRE EQ fade internally; an insert that is off, unassigned (`NONE`) or whose FX slot another insert owns
+//!   (`$stat` N/A) passes through. Inserts run their FX slot inline via the [`InsertHost`] (the FX rack,
+//!   [`crate::fx`]); a channel post-insert in AUTO_X/AUTO_Y mode applies the automix gain instead.
 //! * **Stereo-linked**: strips are always processed as stereo pairs (a mono source feeds both sides in the
 //!   input stage); gate and dynamics models detect on the linked key and apply one gain to both sides.
 //! * **Side-chain**: `gatesc`/`dynsc` `type f q` filter the key inside the slot; `src` != SELF makes the slot
@@ -33,6 +35,10 @@
 //!   dynamics key peaks (the filtered side-chain when the slot forms one, else the slot input) and their
 //!   gain reduction are folded into the engine's [`crate::meters::LevelBank`] (lock-free, no allocation).
 //!   The post-fader words belong to the node that applies the fader.
+//! * **Latency** (T03E, [`crate::latency`]): constant, independent of models and switches. Channel and aux
+//!   strips share one latency (aux pads by the filter-tool and gate slot latency it does not run), applied
+//!   by an alignment pad at the strip output ([`ChannelStrip::latency`], [`ChannelStrip::set_align_latency`],
+//!   [`ChannelStrip::set_insert_latency`]).
 //! * **Tap capture**: the signal at `ptap` is copied into [`ChannelStrip::tap_signal`] (and graph outputs
 //!   2/3 when the node has 4 outputs) for PRE sends.
 
@@ -42,6 +48,7 @@ use wing_blocks::model::{BlockKind, Model, ParamValue};
 use wing_blocks::std_models::{flt_slot, in_slot, FilterModel, InputModel};
 
 use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
+use crate::latency::StripAlign;
 use crate::meters::{abs_max, word, StripMeter};
 use crate::params::std_models::model_factory;
 use crate::params::strip::{ModelSlot, INPUT_LAYOUT, SLOT_LAYOUT};
@@ -287,10 +294,55 @@ impl Tap {
 
 // ---- inserts ----------------------------------------------------------------------------------------------
 
-/// Hosts insert effects (the FX rack, T050). The strip calls it for an engaged insert.
+/// Which insert point of a strip (`preins` / `postins`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum InsertPos {
+    /// Insert 1 (`preins`).
+    Pre = 0,
+    /// Insert 2 (`postins`).
+    Post = 1,
+}
+
+/// Hosts insert effects (the FX rack, [`crate::fx`]). The strip calls it for an engaged insert; the
+/// strip's node tells it which slots the strip claims ([`InsertHost::assign`], between cycles).
+///
+/// Only [`InsertHost::process_insert`] is required; the other methods have pass-through defaults so
+/// test hosts stay small.
 pub trait InsertHost {
     /// Process FX slot `fx` (1..=16) in place on the strip signal.
     fn process_insert(&mut self, fx: u8, l: &mut [f32], r: &mut [f32]);
+
+    /// [`InsertHost::process_insert`] for insert point `pos` (the FX rack checks that this insert owns
+    /// the slot; a slot claimed by another insert passes through = `$stat` N/A).
+    fn process_insert_at(&mut self, _pos: InsertPos, fx: u8, l: &mut [f32], r: &mut [f32]) {
+        self.process_insert(fx, l, r);
+    }
+
+    /// Run the insert at `pos` that claims slot `fx` (assigned in FX mode), on or off. The FX rack
+    /// crossfades the owned slot in/out with `on` (5 ms) at its constant latency, so switching an insert
+    /// neither clicks nor changes timing. Default: [`InsertHost::process_insert_at`] while `on`.
+    fn process_claimed(&mut self, pos: InsertPos, fx: u8, on: bool, l: &mut [f32], r: &mut [f32]) {
+        if on {
+            self.process_insert_at(pos, fx, l, r);
+        }
+    }
+
+    /// Insert `pos` now claims FX slot `fx` (0 = none). Called between cycles (driver thread).
+    fn assign(&mut self, _pos: InsertPos, _fx: u8) {}
+
+    /// Channel post-insert in automix mode: `group` 1 = AUTO_X, 2 = AUTO_Y, 0 = not a member (called
+    /// between cycles when the membership changes).
+    fn automix_group(&mut self, _group: u8) {}
+
+    /// Apply the automix gain of a member channel in place (`weight_db` = `postins.w`).
+    fn automix(&mut self, _weight_db: f32, _l: &mut [f32], _r: &mut [f32]) {}
+
+    /// Latency (samples) the insert at `pos` claiming slot `fx` adds (constant per slot, on or off;
+    /// 0 when another insert owns the slot).
+    fn insert_latency(&self, _pos: InsertPos, _fx: u8) -> usize {
+        0
+    }
 }
 
 /// No FX rack: every insert passes through.
@@ -300,13 +352,13 @@ impl InsertHost for NoInserts {
     fn process_insert(&mut self, _fx: u8, _l: &mut [f32], _r: &mut [f32]) {}
 }
 
-/// Insert point state (placeholder until the FX rack exists: engaged inserts call the [`InsertHost`]).
+/// Insert point state; engaged inserts call the [`InsertHost`].
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct InsertPoint {
     pub on: bool,
     /// 0 = NONE, n = FXn.
     pub fx: u8,
-    /// `postins.mode`: 0 FX, 1 AUTO_X, 2 AUTO_Y (automix: TODO, passes through).
+    /// `postins.mode`: 0 FX, 1 AUTO_X, 2 AUTO_Y (channel post-insert only).
     pub mode: u8,
     /// Automix weight `w` (dB).
     pub weight_db: f32,
@@ -317,6 +369,58 @@ impl InsertPoint {
     pub fn engaged(&self) -> Option<u8> {
         (self.on && self.fx != 0 && self.mode == 0).then_some(self.fx)
     }
+
+    /// The claimed FX slot, if any (`Some(fx)` for [`InsertPoint::claim`] != 0).
+    pub fn claimed(&self) -> Option<u8> {
+        Some(self.claim()).filter(|&n| n != 0)
+    }
+
+    /// The FX slot this insert claims (assigned in FX mode, on or off; 0 = none). WING: a slot serves one
+    /// insert at a time (`$stat` N/A for the others).
+    pub fn claim(&self) -> u8 {
+        if self.mode == 0 {
+            self.fx.min(16)
+        } else {
+            0
+        }
+    }
+
+    /// Automix group of a channel post-insert (1 = X, 2 = Y), 0 when not mixing.
+    pub fn automix_group(&self) -> u8 {
+        if self.on && self.mode != 0 {
+            self.mode.min(2)
+        } else {
+            0
+        }
+    }
+}
+
+/// Latency of the slots `pre`/`post` claim and own (as reported by `host`).
+pub fn claimed_latency(host: &dyn InsertHost, pre: &InsertPoint, post: &InsertPoint) -> usize {
+    pre.claimed()
+        .map_or(0, |n| host.insert_latency(InsertPos::Pre, n))
+        + post
+            .claimed()
+            .map_or(0, |n| host.insert_latency(InsertPos::Post, n))
+}
+
+/// Forward insert-claim and automix-membership changes from `old` to `new` to `host` (call after
+/// `Commit`, between cycles).
+pub fn sync_inserts(
+    host: &mut dyn InsertHost,
+    old: &mut (InsertPoint, InsertPoint),
+    new: (InsertPoint, InsertPoint),
+) {
+    if old.0.claim() != new.0.claim() {
+        host.assign(InsertPos::Pre, new.0.claim());
+    }
+    if old.1.claim() != new.1.claim() {
+        host.assign(InsertPos::Post, new.1.claim());
+    }
+    if old.1.automix_group() != new.1.automix_group() {
+        host.automix_group(new.1.automix_group());
+    }
+    *old = new;
 }
 
 // ---- telemetry --------------------------------------------------------------------------------------------
@@ -369,6 +473,7 @@ pub struct ChannelStrip {
     tap_len: usize,
     telem: StripTelemetry,
     meter: Option<StripMeter>,
+    align: StripAlign,
 }
 
 fn sc_filter(i: u32) -> ScFilter {
@@ -459,7 +564,14 @@ impl ChannelStrip {
             tap_len: 0,
             telem: StripTelemetry::default(),
             meter: None,
+            align: StripAlign::new(0, 0),
         };
+        let natural = s.tool.latency() + s.gate.latency() + s.eq.latency() + s.dyn_.latency();
+        let own = match kind {
+            StripKind::Channel => natural,
+            StripKind::Aux => s.eq.latency() + s.dyn_.latency(),
+        };
+        s.align = StripAlign::new(own, natural);
         // Factory model choices (the pipeline's sync_all overrides them from the store).
         s.tool.select(0);
         s.gate.select(0);
@@ -530,9 +642,26 @@ impl ChannelStrip {
         (self.preins, self.postins)
     }
 
-    /// Total processing latency (samples) of the active models.
+    /// Total strip latency in samples (model slots + inserts + alignment pad). Constant: it does not
+    /// depend on the selected models or block switches.
     pub fn latency(&self) -> usize {
-        self.tool.latency() + self.gate.latency() + self.eq.latency() + self.dyn_.latency()
+        self.align.total()
+    }
+
+    /// Latency alignment state (own slot latency, insert latency, pad).
+    pub fn align(&self) -> &StripAlign {
+        &self.align
+    }
+
+    /// Align the strip output to `target` samples (`None` = the input-strip default: sum of the channel
+    /// slot latencies). Returns the resulting total. RT-safe.
+    pub fn set_align_latency(&mut self, target: Option<usize>) -> usize {
+        self.align.set_target(target)
+    }
+
+    /// Latency added by the engaged inserts (FX rack); the alignment pad absorbs it. RT-safe.
+    pub fn set_insert_latency(&mut self, n: usize) -> usize {
+        self.align.set_insert_latency(n)
     }
 
     /// Commit everything and jump all smoothers/fades to their targets (tests, offline renders).
@@ -544,6 +673,7 @@ impl ChannelStrip {
         for s in [&mut self.tool, &mut self.gate, &mut self.eq, &mut self.dyn_] {
             s.settle();
         }
+        self.align.reset();
     }
 
     fn set(&mut self, blk: u8, param: u16, v: f32) {
@@ -747,6 +877,11 @@ impl ChannelStrip {
         fx: &mut dyn InsertHost,
     ) {
         debug_assert_eq!(l.len(), r.len());
+        // insert FX latency pads the strip (ownership only changes between cycles)
+        let il = claimed_latency(fx, &self.preins, &self.postins);
+        if il != self.align.insert_latency() {
+            self.align.set_insert_latency(il);
+        }
         Model::process(&mut self.input, l, r, None);
         self.tap(Tap::In as usize, l, r);
         let gate_key = keys.gate.filter(|_| self.gate_sc.3);
@@ -760,8 +895,8 @@ impl ChannelStrip {
                 }
                 self.tool.process(l, r);
                 self.tap(Tap::Filt as usize, l, r);
-                if let Some(n) = self.preins.engaged() {
-                    fx.process_insert(n, l, r);
+                if let Some(n) = self.preins.claimed() {
+                    fx.process_claimed(InsertPos::Pre, n, self.preins.on, l, r);
                 }
                 let order = self.order.0;
                 for (k, b) in order.into_iter().enumerate() {
@@ -783,8 +918,10 @@ impl ChannelStrip {
                             self.dyn_.process_keyed(l, r, dyn_key)
                         }
                         ProcBlock::Insert => {
-                            if let Some(n) = self.postins.engaged() {
-                                fx.process_insert(n, l, r);
+                            if let Some(n) = self.postins.claimed() {
+                                fx.process_claimed(InsertPos::Post, n, self.postins.on, l, r);
+                            } else if self.postins.automix_group() != 0 {
+                                fx.automix(self.postins.weight_db, l, r);
                             }
                         }
                     }
@@ -793,8 +930,8 @@ impl ChannelStrip {
             }
             StripKind::Aux => {
                 self.tap(Tap::Filt as usize, l, r);
-                if let Some(n) = self.preins.engaged() {
-                    fx.process_insert(n, l, r);
+                if let Some(n) = self.preins.claimed() {
+                    fx.process_claimed(InsertPos::Pre, n, self.preins.on, l, r);
                 }
                 self.tap(Tap::T3 as usize, l, r);
                 self.eq.process(l, r);
@@ -807,6 +944,7 @@ impl ChannelStrip {
                 self.tap(Tap::Pfl as usize, l, r);
             }
         }
+        self.align.process(l, r);
         self.telem.gate_gr_db = self.gate.gain_reduction_db();
         self.telem.dyn_gr_db = self.dyn_.gain_reduction_db();
         if let Some(m) = &self.meter {
@@ -903,11 +1041,16 @@ mod tests {
             ChannelStrip::channel(48_000.0, 64),
             ChannelStrip::aux(48_000.0, 64),
         ] {
-            let x: Vec<f32> = (0..64).map(|i| (i as f32 * 0.3).sin() * 0.5).collect();
+            // transparent up to the strip's constant latency (T03E)
+            let lat = s.latency();
+            let x: Vec<f32> = (0..512).map(|i| (i as f32 * 0.3).sin() * 0.5).collect();
             let (mut l, mut r) = (x.clone(), x.clone());
-            s.process_stereo(&mut l, &mut r);
-            assert_eq!(l, x);
-            assert_eq!(r, x);
+            for (a, b) in l.chunks_mut(64).zip(r.chunks_mut(64)) {
+                s.process_stereo(a, b);
+            }
+            assert!(l[..lat].iter().all(|&v| v == 0.0));
+            assert_eq!(l[lat..], x[..512 - lat]);
+            assert_eq!(r[lat..], x[..512 - lat]);
             assert_eq!(
                 s.dyn_slot().model_index(),
                 Some(if s.kind() == StripKind::Channel {

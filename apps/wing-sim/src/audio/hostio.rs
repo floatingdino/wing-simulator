@@ -61,7 +61,47 @@ impl HostIoSetting {
     }
 }
 
-fn describe(c: &HostIoConfig) -> String {
+/// [`describe`] for an optional config.
+pub fn describe_opt(c: Option<&HostIoConfig>) -> String {
+    c.map_or_else(|| "host outputs off".into(), describe)
+}
+
+/// Machine-readable state of one host bridge (T064 status file).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct BridgeReport {
+    pub device: String,
+    /// `Stopped`, `Priming`, `Running`, ...
+    pub state: String,
+    pub fill_ms: f64,
+    pub target_ms: f64,
+    /// End-to-end latency DAW out -> device out (`None` while not running).
+    pub e2e_ms: Option<f64>,
+    pub correction_ppm: f64,
+    pub drift_ppm: f64,
+    pub underruns: u64,
+    pub resyncs: u64,
+}
+
+impl BridgeReport {
+    /// From a bridge's stats (see [`bridge_status`] for `upstream_ms`).
+    pub fn new(name: &str, s: &StatsSnapshot, rate: u32, upstream_ms: f64) -> Self {
+        let fs = rate as f64;
+        Self {
+            device: name.into(),
+            state: format!("{:?}", s.state),
+            fill_ms: s.fill_ms(fs),
+            target_ms: s.target_frames / fs * 1e3,
+            e2e_ms: s.latency_ms(fs).map(|l| l + upstream_ms),
+            correction_ppm: s.correction_ppm,
+            drift_ppm: s.drift_ppm,
+            underruns: s.underruns,
+            resyncs: s.resyncs,
+        }
+    }
+}
+
+/// Human-readable summary of a host-output config.
+pub fn describe(c: &HostIoConfig) -> String {
     let routes: Vec<String> = c
         .routes
         .iter()
@@ -193,6 +233,14 @@ impl HostOutputs {
         (Self { outputs }, feeds, errors)
     }
 
+    /// Per-bridge machine-readable status (see [`HostOutputs::status`]).
+    pub fn report(&self, rate: u32, upstream_ms: f64) -> Vec<BridgeReport> {
+        self.outputs
+            .iter()
+            .map(|(name, st, _)| BridgeReport::new(name, &st.snapshot(), rate, upstream_ms))
+            .collect()
+    }
+
     /// `name: state fill/target, end-to-end latency, correction (drift), counters` per bridge.
     /// `upstream_ms`: time from the driver handing over a buffer to the daemon pushing it into
     /// the bridges (the daemon's processing of one burst), added to each bridge's own latency
@@ -279,5 +327,9 @@ mod tests {
         // (1008 - 512) / 48 = 10.333 ms + 12 ms + 1 ms upstream
         let line = bridge_status("dev", &snap, 48_000, 1.0);
         assert!(line.contains("fill 21.0/21.0ms e2e 23.3ms"), "{line}");
+        let r = BridgeReport::new("dev", &snap, 48_000, 1.0);
+        assert_eq!(r.state, "Running");
+        assert!((r.e2e_ms.unwrap() - 23.333).abs() < 0.01, "{r:?}");
+        assert!((r.fill_ms - 21.0).abs() < 1e-9);
     }
 }
