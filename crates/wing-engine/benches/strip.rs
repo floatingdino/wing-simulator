@@ -95,6 +95,31 @@ fn bench(c: &mut Criterion) {
     c.bench_function("strips_40ch_8aux_full_64", |b| {
         b.iter(|| cycle(&mut strips, &mut bufs))
     });
+
+    // T03E: latency-compensated parallel blend (NSTR, mix 80 %: input line + dry tap + model)
+    let mut slot = wing_engine::params::strip::ModelSlot::from_group(
+        "ch/*/dyn",
+        48_000.0,
+        N,
+        wing_engine::params::std_models::model_factory(
+            wing_blocks::model::BlockKind::Dynamics,
+            48_000.0,
+            N,
+        ),
+    );
+    slot.select(26); // NSTR
+    slot.set_wrapper(0, 1.0);
+    slot.set_wrapper(1, 80.0);
+    slot.settle();
+    let (mut l, mut r) = ([0.0f32; N], [0.0f32; N]);
+    c.bench_function("slot_nstr_mix80_64", |b| {
+        b.iter(|| {
+            l.copy_from_slice(&src[..N]);
+            r.copy_from_slice(&src[..N]);
+            slot.process(&mut l, &mut r);
+            black_box(l[0])
+        })
+    });
 }
 
 criterion_group!(benches, bench);
