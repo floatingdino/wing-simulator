@@ -2,8 +2,8 @@
 id: T007
 title: Research: reusable DSP libraries + licensing
 stage: S0
-status: todo
-owner: -
+status: done
+owner: research-agent
 depends: []
 branch: -
 ---
@@ -17,3 +17,4 @@ Survey permissive open-source DSP to reuse for WING blocks/models (Rust: fundsp,
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 research agent: surveyed Rust/C++ DSP libs, licenses (GPL/LGPL flagged), mapped WING families to sources, recommended rubato + PI drift control and halfband/ADAA oversampling. Output docs/research/dsp-reuse.md. Some licenses marked (verify) (Signalsmith, Faust libs, chowdsp_utils, NAM) as not confirmed online. Files changed: docs/research/dsp-reuse.md. Proposed follow-ups: verify licenses; THIRD_PARTY_LICENSES + CI check.
