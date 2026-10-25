@@ -261,7 +261,19 @@ fn owning_task(kind: BlockKind, id: &str) -> &'static str {
             "SOUL" | "E88" | "E84" => "T04G",
             _ => "T04H",
         },
-        BlockKind::Fx => "T050/T051",
+        BlockKind::Fx => match id {
+            "RACKAMP" | "UKROCK" | "ANGEL" | "JAZZC" | "DELUXE" | "BODY" => "T05A",
+            "*EVEN*" | "*SOUL*" | "*VINTAGE*" | "*BUS*" | "*MASTER*" | "EXT" => "T05C",
+            "ST-DL" | "TAP-DL" | "TAPE-DL" | "OILCAN" | "BBD-DL" => "T05D",
+            "ENHANCE" | "EXCITER" | "P-BASS" | "SUB-M" | "V-IMG" | "TAPE" => "T05E",
+            "DIMCRS" | "CHORUS" | "FLANGER" | "PHASER" | "ROTARY" | "PANNER" | "MOOD" => "T05M",
+            "SPRING" | "PLATE" | "V-PLATE" | "BPLATE" => "T05P",
+            "HALL" | "ROOM" | "CHAMBER" | "CONCERT" | "AMBI" => "T05R",
+            "GATED" | "REVERSE" | "DEL/REV" | "SHIMMER" => "T05S",
+            "PITCH" | "D-PITCH" | "DOUBLE" | "PCORR" | "SUB" => "T05T",
+            "V-ROOM" | "V-REV" | "VSS3" => "T05V",
+            _ => "T05Q",
+        },
     }
 }
 
@@ -335,6 +347,7 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Eq(_), "PULSAR") => Box::new(AltEq::new(AltKind::Pulsar)),
         (BlockKind::Eq(_), "MACH4") => Box::new(AltEq::new(AltKind::Mach4)),
         (BlockKind::Eq(_), "PIA") => Box::new(AltEq::new(AltKind::Pia)),
+        (BlockKind::Fx, "ST-DL") => Box::new(crate::models::fx_delay::StereoDelay::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -486,8 +499,14 @@ mod tests {
         for id in FILTER_TOOL_IDS {
             assert!(!create_model(BlockKind::FilterTool, id).is_stub());
         }
+        let fx_implemented = [
+            // One line per FX model family.
+            "ST-DL",
+        ];
         for id in FX_IDS {
-            assert!(create_model(BlockKind::Fx, id).is_stub());
+            let m = create_model(BlockKind::Fx, id);
+            assert_eq!(m.id(), id);
+            assert_eq!(m.is_stub(), !fx_implemented.contains(&id), "{id}");
         }
         assert_eq!(create_model(BlockKind::Fx, "NEWFX").todo(), Some("unknown"));
     }
