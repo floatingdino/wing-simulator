@@ -14,8 +14,10 @@
 //!   | `BUS` `MAIN` `MTX` `SEND` `MON` | 32/8/16/32/4 | derived: mix output legs (2k-1/2k = L/R of strip k) |
 //!   | `LCL` `AUX` `A` `B` `C` `SC` `CRD` `MOD` `PLAY` `AES` | 24/8/48/48/48/32/64/64/4/2 | silent but routable |
 //!
-//!   Derived signals resolve to a [`Tap`] (dense [`TapId`]); the engine wires a `Port` per tap
-//!   once the mixing nodes exist (T036, [`TapPorts`]). Until then taps read as silence.
+//!   Derived signals resolve to a [`Tap`] (dense [`TapId`]); the mix graph
+//!   ([`crate::mix::build_mix_graph`]) wires a `Port` per tap ([`TapPorts`]); SEND/MON legs read as
+//!   silence until the FX rack / monitor section exist. Taps used as *channel sources* are
+//!   feedback paths and arrive one block late ([`feedback`]).
 //! * **Source settings** (`io/in/<grp>/<n>`): preamp gain `g` (LCL/A/B/C/SC) applies as linear
 //!   gain, `mute` zeroes the leg, `pol` inverts it, `mode` M/ST/M-S sets the width of a channel
 //!   connected to that leg (ST/M-S: the odd-aligned pair containing n, so `AUX.4` of a stereo
@@ -43,6 +45,7 @@
 //! without allocating or freeing (see [`swap`]). Route changes are not crossfaded.
 
 mod addr;
+pub mod feedback;
 mod nodes;
 pub mod swap;
 mod table;
@@ -51,9 +54,10 @@ pub use addr::{
     Liveness, MixGroup, OutAddr, OutGroup, Side, SourceAddr, SrcGroup, Strip, StripPoint, Tap,
     TapId, OUTPUT_COUNT, SOURCE_COUNT, STRIP_COUNT, TAP_COUNT,
 };
+pub use feedback::{FeedbackWriter, TapFeedback};
 pub use nodes::{
-    add_input_stage, add_usb_output, InputRouter, IoNodes, Oscillators, TapPorts, UsbOutRouter,
-    NO_TAPS,
+    add_input_stage, add_input_stage_with_feedback, add_usb_output, InputRouter, IoNodes,
+    Oscillators, TapPorts, UsbOutRouter, NO_TAPS,
 };
 pub use swap::{TableReader, TableSender};
 pub use table::{

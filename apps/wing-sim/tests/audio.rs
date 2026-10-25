@@ -1,7 +1,7 @@
 //! T026 integration tests for the daemon's audio path.
 //!
 //! * `offline_sine_*`: free-running (offline-clocked) console: sine on USB In 1 -> ch 1 (trim,
-//!   EQ) -> provisional main 1 -> USB Out 1/2 per the output patch -> host bridge (mock device
+//!   EQ) -> main 1 (T036 mix) -> USB Out 1/2 per the output patch -> host bridge (mock device
 //!   side: the bridge consumer rendered by the test).
 //! * `rt_path_does_not_allocate`: counting allocator around `Console::cycle` and the shm
 //!   `service` loop (with parameter changes and routing swaps in between).
@@ -84,6 +84,8 @@ fn scene(store: &ParamStore) {
     set(store, "ch/1/in/conn/grp", "USB");
     set(store, "ch/1/in/conn/in", "1");
     set(store, "io/in/USB/1/mute", "0");
+    // mono source (the factory USB legs are stereo pairs; the router decodes the source mode)
+    set(store, "io/in/USB/1/mode", "M");
     set(store, "io/in/USB/3/mute", "0");
     set(store, "ch/1/in/set/trim", "6");
     set(store, "ch/1/fdr", "0");
@@ -117,6 +119,9 @@ fn rms_db(x: &[f32]) -> f64 {
     let p = x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / x.len().max(1) as f64;
     10.0 * p.max(1e-30).log10()
 }
+
+/// Expected channel -> main 1 gain: trim +6 dB, fader 0 dB, centre pan (-3.01 dB, T036 law).
+const MAIN_DB: f64 = 6.0 - 3.0103;
 
 struct Rig {
     store: ParamStore,
@@ -185,7 +190,8 @@ fn offline_sine_through_channel_main_usb_out_and_bridge() {
     )
     .unwrap();
 
-    // Settle (fader ramps), then measure: trim +6 dB, flat EQ.
+    // Settle (fader ramps), then measure: trim +6 dB, flat EQ, centre pan -3 dB (T036
+    // constant-power channel pan law): +2.99 dB.
     run_sine(&mut console, 0, 50);
     let [l, r, direct] = run_sine(&mut console, 50 * BLOCK as u64, 150);
     let input_db = rms_db(
@@ -194,7 +200,7 @@ fn offline_sine_through_channel_main_usb_out_and_bridge() {
             .collect::<Vec<_>>(),
     );
     let gain = rms_db(&l) - input_db;
-    assert!((gain - 6.0).abs() < 0.1, "main L gain {gain:.2} dB");
+    assert!((gain - MAIN_DB).abs() < 0.1, "main L gain {gain:.2} dB");
     assert!((rms_db(&r) - rms_db(&l)).abs() < 0.01, "L/R differ");
     // USB Out 3 patched straight to USB In 3: bit exact.
     let t = 200 * BLOCK as u64 - direct.len() as u64;
@@ -216,7 +222,7 @@ fn offline_sine_through_channel_main_usb_out_and_bridge() {
     assert_eq!(consumer.stats().snapshot().state, BridgeState::Running);
     let tail = &dev[0][dev[0].len() - 1024..];
     let bdb = rms_db(tail) - input_db;
-    assert!((bdb - 6.0).abs() < 0.5, "bridge level {bdb:.2} dB");
+    assert!((bdb - MAIN_DB).abs() < 0.5, "bridge level {bdb:.2} dB");
 
     // EQ: STD band 2 +6 dB at 1 kHz on top of the trim (live edit through the pipeline).
     set(&store, "ch/1/eq/on", "1");
@@ -225,11 +231,14 @@ fn offline_sine_through_channel_main_usb_out_and_bridge() {
     run_sine(&mut console, t, 100);
     let [l, ..] = run_sine(&mut console, t + 100 * BLOCK as u64, 150);
     let gain = rms_db(&l) - input_db;
-    assert!((gain - 12.0).abs() < 0.6, "trim + EQ gain {gain:.2} dB");
+    assert!(
+        (gain - (MAIN_DB + 6.0)).abs() < 0.6,
+        "trim + EQ gain {gain:.2} dB"
+    );
 
-    // Mute the channel: main goes silent (after the ramp).
+    // Mute the channel: main goes silent (after the 5 ms one-pole ramp reaches -100 dB).
     set(&store, "ch/1/mute", "1");
-    run_sine(&mut console, 0, 2);
+    run_sine(&mut console, 0, 60);
     let [l, ..] = run_sine(&mut console, 0, 10);
     assert!(l.iter().all(|&v| v == 0.0));
     set(&store, "ch/1/mute", "0");
@@ -543,7 +552,7 @@ fn service_attaches_processes_follows_rate_and_detaches() {
                 .map(|n| sine(n, 1000.0, 0.1))
                 .collect::<Vec<_>>(),
         );
-    assert!((g - 6.0).abs() < 0.1, "main via shm {g:.2} dB");
+    assert!((g - MAIN_DB).abs() < 0.1, "main via shm {g:.2} dB");
     assert_eq!(
         drv.segment().header().from_daemon.underruns.load(Relaxed),
         0
