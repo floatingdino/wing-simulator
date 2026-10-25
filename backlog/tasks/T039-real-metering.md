@@ -2,7 +2,7 @@
 id: T039
 title: Real metering
 stage: S3
-status: review
+status: done
 owner: agent-T039
 depends: [T015, T035, T026]
 branch: task/T039
