@@ -417,6 +417,8 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "libc",
+ "serde_json",
+ "wing-model",
 ]
 
 [[package]]

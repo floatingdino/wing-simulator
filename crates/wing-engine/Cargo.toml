@@ -7,10 +7,16 @@ publish.workspace = true
 
 [dependencies]
 libc.workspace = true
+wing-model = { path = "../wing-model" }
 
 [dev-dependencies]
 criterion.workspace = true
+serde_json.workspace = true
 
 [[bench]]
 name = "scheduler"
+harness = false
+
+[[bench]]
+name = "routing"
 harness = false
