@@ -338,6 +338,8 @@ impl Model for DynModel {
 pub struct StdEqModel {
     eq: StdEq,
     p: EqParams,
+    /// Wrapper `mix` % (gain scale), kept across `load_defaults`.
+    mix_pct: f32,
     defaults: EqParams,
     dirty: bool,
 }
@@ -355,6 +357,7 @@ impl StdEqModel {
         Self {
             eq,
             p,
+            mix_pct: 100.0,
             defaults: p,
             dirty: false,
         }
@@ -371,6 +374,7 @@ impl StdEqModel {
     fn apply(&mut self) {
         if self.dirty {
             self.dirty = false;
+            self.p.mix = self.mix_pct;
             self.eq.set_params(&self.p);
         }
     }
@@ -453,6 +457,10 @@ impl Model for StdEqModel {
     }
     fn load_defaults(&mut self) {
         self.p = self.defaults;
+        self.dirty = true;
+    }
+    fn set_gain_scale(&mut self, mix_pct: f32) {
+        self.mix_pct = mix_pct;
         self.dirty = true;
     }
     fn commit(&mut self) {

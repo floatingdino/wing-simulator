@@ -106,6 +106,11 @@ pub trait Model: Send {
     /// Load the model's WING-Edit default parameters (staged like `set_param`).
     fn load_defaults(&mut self) {}
 
+    /// EQ `mix` (%): WING scales every EQ model's band gains (dB) by `mix/100` instead of blending dry/wet
+    /// (`ae::Cequalizer::update`, T03C). Models without gain-scaled bands ignore it. Survives
+    /// [`Model::load_defaults`]; staged like `set_param`.
+    fn set_gain_scale(&mut self, _mix_pct: f32) {}
+
     /// Apply staged parameter changes now (block rate). Models that apply lazily may do nothing.
     fn commit(&mut self) {}
 

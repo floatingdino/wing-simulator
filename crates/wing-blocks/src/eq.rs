@@ -8,43 +8,46 @@
 //!   offer PEQ, SHV, CUT, BW6, BW12, BS12, LR12, BW18, BW24, BS24, LR24, BW48, LR48.
 //! - Wrapper: `on` (default off), `mix` 0..125 % (default 100).
 //! - [`PreEq`]: channel `peq` ("PRE EQ"): `on` + 3 peaking bands `1..3` g/f/q (same ranges as the main EQ).
-//!   Placement (signal-flow.md §2, [I]) is directly before the EQ model inside the E block; whether `eq.mix`
-//!   also covers it is an open question (signal-flow.md §13.2), so it is a separate block with its own `on`.
+//!   Placement (signal-flow.md §2, [I]) is directly before the EQ model inside the E block; `mix` does not scale
+//!   it (`Cequalizer::update` designs it without the mix factor).
 //!
 //! Ranges: gain -15..+15 dB, freq 20..20000 Hz, Q 0.442..10 (WING-Edit 3.3.4 / T003 schema); values are clamped.
 //!
-//! Response conventions (all bilinear transforms of analog prototypes, pre-warped at the band frequency, so the
-//! band frequency lands exactly where the analog prototype puts it):
-//! - PEQ = RBJ cookbook peaking EQ with Q used directly: `H(s) = (s^2 + s*A/Q + 1)/(s^2 + s/(A*Q) + 1)`,
-//!   `A = 10^(g/40)`. Boost/cut are mirror images, the gain at f is exact, and Q is the RBJ "bandwidth" Q
-//!   (Q = 1.414 <-> 1 octave between the half-gain(dB) points; WING's own default 1.41 suggests this octave
-//!   convention). **Assumption, verify** against WING-Edit reference curves (T03C).
-//! - SHV = RBJ low/high shelf with the band Q as RBJ shelf Q (gain/2 at f; Q > 0.707 gives the usual
-//!   overshoot/undershoot "bump"). **Assumption, verify** (T03C).
-//! - CUT = 2nd-order RBJ high-pass (low band) / low-pass (high band) using the band Q (resonant cut). **Assumption**.
-//! - BWn / LRn = Butterworth / Linkwitz-Riley of slope n dB/oct (gain and Q ignored), BSn = Bessel low-pass/high-pass
-//!   normalised to -3.01 dB at f (n = 12, 24). The Bessel normalisation (-3 dB vs phase-delay) is an
-//!   **assumption**; BW is -3.01 dB at f, LR -6.02 dB at f.
-//! - Tilt (bus/main/mtx): 1st-order tilt `H(s) = r (s + 1/r)/(s + r)`, `r = 10^(tilt/40)`, pivot
-//!   [`TILT_PIVOT_HZ`]: 0 dB at the pivot, -tilt/2 dB at DC and +tilt/2 dB at Nyquist (positive = brighter).
-//!   Pivot and span convention are **assumptions** (models.md TILT tool: pivot not recovered).
-//! - `mix`: dry/wet blend `y = x + m (eq(x) - x)`, `m = mix/100` (125 % extrapolates = exaggerated EQ).
+//! Response (T03C): every band uses WING-Edit's own coefficient routines ([`crate::wingcoef`], ported from
+//! `ae::eq_parchg_xseries[_bus]`), so magnitudes match `data/reference-curves/eq-std-*.json` to float32 rounding:
+//! - PEQ ([`wingcoef::peq`], `hqpeq`): Orfanidis peaking EQ, exact gain at f, analog gain at Nyquist (no
+//!   cramping). **Q convention**: Q describes the un-boosted side; the bandwidth (octaves) is that of
+//!   `Q / sqrt(G)` (`G` = linear |gain|), measured at the dB midpoint. Boost and cut are exact inverses.
+//! - SHV low: `ls12(f', g, 0.707)` with `f' = min(trunc(f), 8000)`; SHV high: `hqhs12(max(trunc(f), 50), g)`.
+//!   **Shelf Q is ignored** (fixed Butterworth 0.707, table-corrected above 2.5 kHz for the high shelf). `f` is
+//!   the corner of the unity-gain side, so a +6 dB shelf reads about +3.9 dB at `f`.
+//! - CUT: aux low = bilinear 12 dB/oct Butterworth HP, low on bus = two `hqhp12` (= LR24), high (aux/bus) =
+//!   `hqlp12` 12 dB/oct (Massberg matched). **Q is ignored.**
+//! - BW/LR/BS (bus): `Cxover48` shapes. Bessel types are *not* -3 dB-normalised: BS12 = Q 0.577 at f, BS24 =
+//!   sections at f*1.0588 (Q 0.806) and f*0.9444 (Q 0.522).
+//! - Bus section budget (WING-Edit layout, 10 biquads): a low cut needing n > 2 sections takes over bands 1..
+//!   (n-2), a high cut needing n > 1 sections takes over bands 6, 5, 4 (n-1 of them); those bands go silent.
+//! - Tilt (bus): `hs12(pivot, -2*tilt, Q 0.2) * 10^(tilt/20)`: **positive tilt raises the low end** by `tilt` dB
+//!   and lowers the top by `tilt` dB. Pivot [`tilt_pivot_hz`] 650 Hz (0 dB) .. 780 Hz (3 dB) .. 925 Hz (6 dB).
+//! - **`mix` law**: `mix/100` scales the gain (dB) of every PEQ/SHV band (L, 1..n, H; not tilt, not cuts),
+//!   i.e. 50 % = half the boost/cut in dB, 125 % = exaggerated. It is not a dry/wet blend
+//!   (`ae::Cequalizer::update` passes `mix/100` to `eq_parchg_*`, which multiplies each band gain).
 //!
-//! Real-time behaviour: f64 coefficients and state (20 Hz shelves/cuts at 48 kHz need it). Gain (dB), log2(f) and
-//! log2(Q) follow 20 ms one-pole smoothers; while gliding, coefficients are redesigned every [`SUB_BLOCK`]
-//! samples and interpolated linearly per sample in between (convex combination of stable 1st/2nd-order sections
-//! is stable), so fast automation is zipper- and click-free. A band-type change crossfades over 10 ms from the old
-//! filter to the new one (fresh state); `on`/`mix` changes ramp over a 5 ms one-pole. Bands at 0 dB (PEQ/SHV)
-//! and a switched-off EQ cost nothing. `prepare` is the only call that may allocate (it does not, currently).
+//! Real-time behaviour: f64 state; coefficients are the f32 WING designs. Gain (dB), log2(f) and log2(Q) follow
+//! 20 ms one-pole smoothers; while gliding, coefficients are redesigned every [`SUB_BLOCK`] samples and
+//! interpolated linearly per sample in between, so fast automation is zipper- and click-free. A band-type change
+//! crossfades over 10 ms from the old filter to the new one (fresh state); `on` ramps over a 5 ms one-pole.
+//! PEQ/SHV bands at 0 dB and a switched-off EQ cost nothing (WING's 0 dB PEQ is a -0.001 dB peak; treated as
+//! identity). `prepare` is the only call that may allocate (it does not, currently).
 
-use core::f64::consts::PI;
-use wing_dsp::biquad::{butterworth, linkwitz_riley, CutKind, Sections};
+use crate::wingcoef::{self, Bq, Ctx};
+use wing_dsp::biquad::Sections;
 use wing_dsp::{Coeffs, Complex, LinearRamp, OnePoleSmoother};
 
 /// Coefficient redesign interval while a parameter glides (samples).
 pub const SUB_BLOCK: usize = 16;
-/// Tilt pivot frequency (assumption, see module doc).
-pub const TILT_PIVOT_HZ: f64 = 1000.0;
+/// Tilt pivot at |tilt| = 3 dB (the pivot moves with the amount, see [`tilt_pivot_hz`]).
+pub const TILT_PIVOT_HZ: f64 = 780.0;
 /// Maximum number of peaking bands (bus/main/mtx).
 pub const MAX_PEAK_BANDS: usize = 6;
 
@@ -61,6 +64,13 @@ const PARAM_TAU_S: f64 = 0.02;
 const WET_TAU_S: f64 = 0.005;
 const XFADE_S: f64 = 0.01;
 const MAX_SECTIONS: usize = 4;
+/// Biquads in WING-Edit's bus EQ layout (L, L2, bands 1..6, H, tilt).
+pub const BUS_SECTIONS: usize = 10;
+
+/// Tilt shelf pivot (Hz) for a tilt amount (dB), as WING-Edit computes it.
+pub fn tilt_pivot_hz(tilt_db: f32) -> f32 {
+    wingcoef::tilt_pivot_hz(tilt_db)
+}
 
 /// Which EQ table the strip uses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -105,7 +115,7 @@ pub enum BandType {
     /// Shelf (factory default).
     #[default]
     Shv,
-    /// Resonant 12 dB/oct cut using the band Q.
+    /// 12 dB/oct Butterworth cut (aux, bus high band) or LR24 (bus low band); Q is ignored.
     Cut,
     Bw6,
     Bw12,
@@ -164,9 +174,17 @@ impl BandType {
         matches!(self, BandType::Peq | BandType::Shv)
     }
 
-    /// PEQ, SHV and CUT use Q; fixed-slope filters ignore it.
+    /// Only PEQ uses Q: WING's shelves (fixed 0.707 / table) and cuts ignore it (T03C, `eq_parchg_xseries`).
     pub fn uses_q(self) -> bool {
-        matches!(self, BandType::Peq | BandType::Shv | BandType::Cut)
+        matches!(self, BandType::Peq)
+    }
+
+    /// `Cxover48` type index (1 = BW6 .. 10 = LR48), 0 for PEQ/SHV/CUT.
+    fn xover_index(self) -> u8 {
+        match self {
+            BandType::Peq | BandType::Shv | BandType::Cut => 0,
+            t => BandType::ALL.iter().position(|&x| x == t).unwrap_or(2) as u8 - 2,
+        }
     }
 }
 
@@ -202,7 +220,7 @@ const DEF_Q: f32 = 0.997_970_2;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EqParams {
     pub on: bool,
-    /// 0 .. 125 %.
+    /// 0 .. 125 %: scales every PEQ/SHV band gain (see module doc).
     pub mix: f32,
     pub low_type: BandType,
     pub low: BandParams,
@@ -320,78 +338,178 @@ enum Role {
     Tilt,
 }
 
-fn single(c: Coeffs) -> Sections {
-    let mut coeffs = [Coeffs::IDENTITY; MAX_SECTIONS];
-    coeffs[0] = c;
-    Sections { coeffs, len: 1 }
-}
-
-/// Bessel (-3.01 dB at fc) pole-pair (frequency factor relative to fc, Q) for orders 2 and 4.
-const BESSEL2: [(f64, f64); 1] = [(1.272_019_649_514_069, 0.577_350_269_189_625_8)];
-const BESSEL4: [(f64, f64); 2] = [
-    (1.430_171_559_993_991_5, 0.521_934_581_668_980_1),
-    (1.603_357_516_216_973, 0.805_538_281_841_664_9),
-];
-
-/// Bessel cut built with a common pre-warp at `fc` (exact bilinear transform of the analog prototype).
-fn bessel(kind: CutKind, fs: f64, fc: f64, poles: &[(f64, f64)]) -> Sections {
-    let k = (PI * fc.clamp(1e-3, fs * 0.4999) / fs).tan();
-    let mut coeffs = [Coeffs::IDENTITY; MAX_SECTIONS];
-    for (i, &(w, q)) in poles.iter().enumerate() {
-        let wa = match kind {
-            CutKind::Lowpass => k * w,
-            CutKind::Highpass => k / w,
-        };
-        let f = fs / PI * wa.atan();
-        coeffs[i] = match kind {
-            CutKind::Lowpass => Coeffs::lowpass(fs, f, q),
-            CutKind::Highpass => Coeffs::highpass(fs, f, q),
-        };
-    }
-    Sections {
-        coeffs,
-        len: poles.len(),
-    }
-}
-
-/// First-order tilt around `pivot`: `r` at Nyquist, `1/r` at DC, 1 at the pivot.
-fn tilt(fs: f64, pivot: f64, tilt_db: f64) -> Coeffs {
-    let r = 10f64.powf(tilt_db / 40.0);
-    let k = (PI * pivot / fs).tan();
-    Coeffs::from_raw(r + k, k - r, 0.0, 1.0 + k * r, k * r - 1.0, 0.0)
-}
-
-fn design(role: Role, ty: BandType, fs: f64, f: f64, q: f64, g: f64) -> Sections {
-    let (cut, shelf_low) = match role {
-        Role::Peak => return single(Coeffs::peak(fs, f, q, g)),
-        Role::Tilt => return single(tilt(fs, TILT_PIVOT_HZ, g)),
-        Role::Low => (CutKind::Highpass, true),
-        Role::High => (CutKind::Lowpass, false),
+/// WING sections of one band: `f`, `q`, `g` exactly as `eq_parchg_xseries[_bus]` passes them (gain already
+/// scaled by mix). `bus` selects the bus low CUT (two `hqhp12`) instead of the aux one (bilinear HP).
+fn wing_band(
+    c: &Ctx,
+    bus: bool,
+    role: Role,
+    ty: BandType,
+    f: f32,
+    q: f32,
+    g: f32,
+) -> ([Bq; 4], usize) {
+    let one = |b: Bq| {
+        let mut s = [wingcoef::IDENTITY; 4];
+        s[0] = b;
+        (s, 1)
     };
-    match ty {
-        BandType::Peq => single(Coeffs::peak(fs, f, q, g)),
-        BandType::Shv if shelf_low => single(Coeffs::low_shelf(fs, f, q, g)),
-        BandType::Shv => single(Coeffs::high_shelf(fs, f, q, g)),
-        BandType::Cut => single(match cut {
-            CutKind::Highpass => Coeffs::highpass(fs, f, q),
-            CutKind::Lowpass => Coeffs::lowpass(fs, f, q),
-        }),
-        BandType::Bw6 => butterworth(cut, fs, f, 1),
-        BandType::Bw12 => butterworth(cut, fs, f, 2),
-        BandType::Bw18 => butterworth(cut, fs, f, 3),
-        BandType::Bw24 => butterworth(cut, fs, f, 4),
-        BandType::Bw48 => butterworth(cut, fs, f, 8),
-        BandType::Lr12 => linkwitz_riley(cut, fs, f, 2),
-        BandType::Lr24 => linkwitz_riley(cut, fs, f, 4),
-        BandType::Lr48 => linkwitz_riley(cut, fs, f, 8),
-        BandType::Bs12 => bessel(cut, fs, f, &BESSEL2),
-        BandType::Bs24 => bessel(cut, fs, f, &BESSEL4),
+    match role {
+        Role::Peak => one(wingcoef::peq(c, f, g, q)),
+        Role::Tilt => one(wingcoef::tilt(c, g)),
+        Role::Low => match ty {
+            BandType::Peq => one(wingcoef::peq(c, f, g, q)),
+            BandType::Shv => {
+                let f = if f > 8000.0 { 8000.0 } else { f.trunc() };
+                one(wingcoef::ls12(c, f, g, core::f32::consts::FRAC_1_SQRT_2))
+            }
+            BandType::Cut if bus => {
+                let mut s = [wingcoef::IDENTITY; 4];
+                s[0] = wingcoef::hp12(c, f);
+                s[1] = s[0];
+                (s, 2)
+            }
+            BandType::Cut => one(wingcoef::hp12_bilinear(
+                c,
+                f,
+                core::f32::consts::FRAC_1_SQRT_2,
+            )),
+            t => wingcoef::xover(c, t.xover_index(), false, f),
+        },
+        Role::High => match ty {
+            BandType::Peq => one(wingcoef::peq(c, f, g, q)),
+            BandType::Shv => {
+                let f = if f < 50.0 { 50.0 } else { f.trunc() };
+                one(wingcoef::hqhs12(c, f, g))
+            }
+            BandType::Cut => one(wingcoef::lp12(c, f, core::f32::consts::FRAC_1_SQRT_2)),
+            t => wingcoef::xover(c, t.xover_index(), true, f),
+        },
     }
 }
 
-/// Analytic complex response of one band (for UI curves and tests).
-fn band_response(role: Role, ty: BandType, fs: f64, p: BandParams, f: f64) -> Complex {
-    design(role, ty, fs, p.freq as f64, p.q as f64, p.gain_db as f64).response(fs, f)
+/// Number of WING sections a low/high band type occupies (bus layout).
+fn section_count(role: Role, ty: BandType, bus: bool) -> usize {
+    match ty {
+        BandType::Peq | BandType::Shv => 1,
+        BandType::Cut => {
+            if bus && role == Role::Low {
+                2
+            } else {
+                1
+            }
+        }
+        BandType::Bw6 | BandType::Bw12 | BandType::Bs12 => 1,
+        BandType::Lr12 | BandType::Bw18 | BandType::Bw24 | BandType::Bs24 | BandType::Lr24 => 2,
+        BandType::Bw48 | BandType::Lr48 => 4,
+    }
+}
+
+fn to_coeffs(b: &Bq) -> Coeffs {
+    Coeffs {
+        b0: b[0] as f64,
+        b1: b[1] as f64,
+        b2: b[2] as f64,
+        a1: b[3] as f64,
+        a2: b[4] as f64,
+    }
+}
+
+fn to_sections((s, n): ([Bq; 4], usize)) -> Sections {
+    let mut coeffs = [Coeffs::IDENTITY; MAX_SECTIONS];
+    for (c, b) in coeffs.iter_mut().zip(&s[..n]) {
+        *c = to_coeffs(b);
+    }
+    Sections { coeffs, len: n }
+}
+
+/// Band design for the runtime (f64 smoothed values rounded to the f32 WING inputs).
+fn design(c: &Ctx, bus: bool, role: Role, ty: BandType, f: f32, q: f32, g: f32) -> Sections {
+    to_sections(wing_band(c, bus, role, ty, f, q, g))
+}
+
+/// One band of the effective strip: what is actually designed after mix scaling and bus section take-over.
+#[derive(Clone, Copy, Debug)]
+struct Eff {
+    role: Role,
+    ty: BandType,
+    p: BandParams,
+    /// Displaced by a multi-section cut (bus): forced to 0 dB.
+    displaced: bool,
+}
+
+/// Effective band list (L, 1..n, H[, tilt]) for clamped params.
+fn effective(variant: EqVariant, p: &EqParams) -> ([Eff; 9], usize) {
+    let n = variant.peak_bands();
+    let bus = variant == EqVariant::Bus;
+    let scale = p.mix / 100.0;
+    let scaled = |b: BandParams, ty: BandType| {
+        if ty.uses_gain() {
+            BandParams::new(b.gain_db * scale, b.freq, b.q)
+        } else {
+            b
+        }
+    };
+    let blank = Eff {
+        role: Role::Peak,
+        ty: BandType::Peq,
+        p: BandParams::new(0.0, 1000.0, 1.0),
+        displaced: false,
+    };
+    let mut e = [blank; 9];
+    e[0] = Eff {
+        role: Role::Low,
+        ty: p.low_type,
+        p: scaled(p.low, p.low_type),
+        displaced: false,
+    };
+    for i in 0..n {
+        e[i + 1] = Eff {
+            role: Role::Peak,
+            ty: BandType::Peq,
+            p: scaled(p.bands[i], BandType::Peq),
+            displaced: false,
+        };
+    }
+    e[n + 1] = Eff {
+        role: Role::High,
+        ty: p.high_type,
+        p: scaled(p.high, p.high_type),
+        displaced: false,
+    };
+    let mut count = n + 2;
+    if bus {
+        let nl = section_count(Role::Low, p.low_type, true);
+        for b in e[1..].iter_mut().take(nl.saturating_sub(2)) {
+            b.displaced = true;
+        }
+        let nh = section_count(Role::High, p.high_type, true);
+        for b in e[n + 1 - (nh - 1)..=n].iter_mut() {
+            b.displaced = true;
+        }
+        e[n + 2] = Eff {
+            role: Role::Tilt,
+            ty: BandType::Peq,
+            p: BandParams::new(p.tilt_db, 1000.0, 1.0),
+            displaced: false,
+        };
+        count += 1;
+    }
+    for b in &mut e[..count] {
+        if b.displaced {
+            b.p.gain_db = 0.0;
+        }
+    }
+    (e, count)
+}
+
+/// Analytic complex response of one effective band (identity when it would be bypassed at runtime).
+fn band_response(c: &Ctx, bus: bool, b: &Eff, f: f64) -> Complex {
+    if b.ty.uses_gain() && b.p.gain_db == 0.0 {
+        return Complex::new(1.0, 0.0);
+    }
+    let (s, n) = wing_band(c, bus, b.role, b.ty, b.p.freq, b.p.q, b.p.gain_db);
+    wingcoef::response(c.fs, &s[..n], f)
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -504,7 +622,11 @@ impl Chain {
 #[derive(Clone, Copy, Debug)]
 struct Band {
     role: Role,
+    /// Bus layout (bus low CUT design).
+    bus: bool,
     ty: BandType,
+    /// Exact (unsmoothed) target parameters: designs use them once the smoothers settle.
+    tgt: BandParams,
     gain: OnePoleSmoother,
     log2f: OnePoleSmoother,
     log2q: OnePoleSmoother,
@@ -518,9 +640,11 @@ struct Band {
 }
 
 impl Band {
-    fn new(role: Role) -> Self {
+    fn new(role: Role, bus: bool) -> Self {
         Self {
             role,
+            bus,
+            tgt: BandParams::new(0.0, 1000.0, 1.0),
             ty: if role == Role::Peak || role == Role::Tilt {
                 BandType::Peq
             } else {
@@ -551,14 +675,21 @@ impl Band {
     }
 
     fn current_design(&self, fs: f64) -> Sections {
-        design(
-            self.role,
-            self.ty,
-            fs,
-            2f64.powf(self.log2f.value() as f64),
-            2f64.powf(self.log2q.value() as f64),
-            self.gain.value() as f64,
-        )
+        let c = Ctx::new(fs);
+        if self.gliding() {
+            design(
+                &c,
+                self.bus,
+                self.role,
+                self.ty,
+                2f64.powf(self.log2f.value() as f64) as f32,
+                2f64.powf(self.log2q.value() as f64) as f32,
+                self.gain.value(),
+            )
+        } else {
+            let t = self.tgt;
+            design(&c, self.bus, self.role, self.ty, t.freq, t.q, t.gain_db)
+        }
     }
 
     fn start_fade(&mut self, from_identity: bool) {
@@ -569,6 +700,7 @@ impl Band {
     }
 
     fn set(&mut self, ty: BandType, p: BandParams, fs: f64) {
+        self.tgt = p;
         self.gain.set_target(p.gain_db);
         self.log2f.set_target(p.freq.log2());
         self.log2q.set_target(p.q.log2());
@@ -669,7 +801,7 @@ impl Band {
     }
 }
 
-/// Shared engine: ordered bands + wet (on * mix) smoother.
+/// Shared engine: ordered bands + wet (`on`) smoother.
 #[derive(Clone, Copy, Debug)]
 struct Core<const N: usize> {
     bands: [Band; N],
@@ -680,10 +812,10 @@ struct Core<const N: usize> {
 }
 
 impl<const N: usize> Core<N> {
-    fn new(roles: &[Role]) -> Self {
-        let mut bands = [Band::new(Role::Peak); N];
+    fn new(roles: &[Role], bus: bool) -> Self {
+        let mut bands = [Band::new(Role::Peak, bus); N];
         for (b, &r) in bands.iter_mut().zip(roles) {
-            *b = Band::new(r);
+            *b = Band::new(r, bus);
         }
         Self {
             bands,
@@ -788,7 +920,7 @@ impl StdEq {
         let mut s = Self {
             variant,
             params: EqParams::defaults(variant),
-            core: Core::new(&roles[..count]),
+            core: Core::new(&roles[..count], variant == EqVariant::Bus),
         };
         let p = s.params;
         s.set_params(&p);
@@ -822,21 +954,64 @@ impl StdEq {
         let p = p.clamped(self.variant);
         self.params = p;
         let fs = self.core.fs;
+        let (eff, count) = effective(self.variant, &p);
+        for (band, e) in self.core.bands.iter_mut().zip(&eff[..count]) {
+            band.set(e.ty, e.p, fs);
+        }
+        self.core.set_wet(if p.on { 1.0 } else { 0.0 });
+    }
+
+    /// The biquads WING-Edit computes for the current parameters, in its memory layout (channel/aux: L, 1..4,
+    /// H; bus/main/mtx: L, L2, 1..6, H, tilt with multi-section cuts overwriting bands), as
+    /// `[b0, b1, b2, a1, a2]` f32. Unlike the runtime this includes WING's near-identity 0 dB sections (a 0 dB
+    /// PEQ is designed at -0.001 dB). `on` is ignored.
+    pub fn wing_sections(&self) -> ([Bq; BUS_SECTIONS], usize) {
+        let p = &self.params;
+        let c = Ctx::new(self.core.fs);
+        let bus = self.variant == EqVariant::Bus;
         let n = self.variant.peak_bands();
-        let bands = &mut self.core.bands;
-        bands[0].set(p.low_type, p.low, fs);
-        for i in 0..n {
-            bands[i + 1].set(BandType::Peq, p.bands[i], fs);
+        let scale = p.mix / 100.0;
+        let mut out = [wingcoef::IDENTITY; BUS_SECTIONS];
+        let gain = |b: &BandParams, ty: BandType| {
+            if ty.uses_gain() {
+                b.gain_db * scale
+            } else {
+                0.0
+            }
+        };
+        let off = usize::from(bus);
+        for (i, b) in p.bands[..n].iter().enumerate() {
+            out[off + 1 + i] = wingcoef::peq(&c, b.freq, b.gain_db * scale, b.q);
         }
-        bands[n + 1].set(p.high_type, p.high, fs);
-        if self.variant.has_tilt() {
-            bands[n + 2].set(
-                BandType::Peq,
-                BandParams::new(p.tilt_db, TILT_PIVOT_HZ as f32, 1.0),
-                fs,
-            );
+        let (ls, ln) = wing_band(
+            &c,
+            bus,
+            Role::Low,
+            p.low_type,
+            p.low.freq,
+            p.low.q,
+            gain(&p.low, p.low_type),
+        );
+        out[..ln].copy_from_slice(&ls[..ln]);
+        let hi = off + 1 + n;
+        let (hs, hn) = wing_band(
+            &c,
+            bus,
+            Role::High,
+            p.high_type,
+            p.high.freq,
+            p.high.q,
+            gain(&p.high, p.high_type),
+        );
+        for (k, s) in hs[..hn].iter().enumerate() {
+            out[hi - k] = *s;
         }
-        self.core.set_wet(if p.on { p.mix / 100.0 } else { 0.0 });
+        if bus {
+            out[hi + 1] = wingcoef::tilt(&c, p.tilt_db);
+            (out, BUS_SECTIONS)
+        } else {
+            (out, n + 2)
+        }
     }
 
     /// Process one stereo block in place.
@@ -844,25 +1019,20 @@ impl StdEq {
         self.core.process(left, right);
     }
 
-    /// Analytic complex response at `f` Hz for the target parameters (incl. on/mix).
+    /// Analytic complex response at `f` Hz for the target parameters (incl. on/mix), as processed.
     pub fn response(&self, f: f64) -> Complex {
         let p = &self.params;
-        let one = Complex::new(1.0, 0.0);
+        let mut h = Complex::new(1.0, 0.0);
         if !p.on {
-            return one;
+            return h;
         }
-        let fs = self.core.fs;
-        let n = self.variant.peak_bands();
-        let mut h = band_response(Role::Low, p.low_type, fs, p.low, f)
-            * band_response(Role::High, p.high_type, fs, p.high, f);
-        for b in &p.bands[..n] {
-            h = h * band_response(Role::Peak, BandType::Peq, fs, *b, f);
+        let c = Ctx::new(self.core.fs);
+        let bus = self.variant == EqVariant::Bus;
+        let (eff, count) = effective(self.variant, p);
+        for e in &eff[..count] {
+            h = h * band_response(&c, bus, e, f);
         }
-        if self.variant.has_tilt() {
-            h = h * tilt(fs, TILT_PIVOT_HZ, p.tilt_db as f64).response(fs, f);
-        }
-        let m = p.mix as f64 / 100.0;
-        one + (h - one) * m
+        h
     }
 
     /// Analytic magnitude (dB) at `f` Hz for the target parameters.
@@ -888,7 +1058,7 @@ impl PreEq {
     pub fn new() -> Self {
         let mut s = Self {
             params: PreEqParams::default(),
-            core: Core::new(&[Role::Peak; 3]),
+            core: Core::new(&[Role::Peak; 3], false),
         };
         let p = s.params;
         s.set_params(&p);
@@ -931,8 +1101,15 @@ impl PreEq {
     pub fn response(&self, f: f64) -> Complex {
         let mut h = Complex::new(1.0, 0.0);
         if self.params.on {
+            let c = Ctx::new(self.core.fs);
             for b in &self.params.bands {
-                h = h * band_response(Role::Peak, BandType::Peq, self.core.fs, *b, f);
+                let e = Eff {
+                    role: Role::Peak,
+                    ty: BandType::Peq,
+                    p: *b,
+                    displaced: false,
+                };
+                h = h * band_response(&c, false, &e, f);
             }
         }
         h
@@ -946,23 +1123,14 @@ impl PreEq {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::f64::consts::PI;
+    use wing_dsp::biquad::CutKind;
     use wing_dsp::{dtft, BiquadF64};
 
     const FS: f64 = 48_000.0;
 
     fn freqs() -> impl Iterator<Item = f64> {
         (0..64).map(|i| 20.0 * 1000f64.powf(i as f64 / 63.0)) // 20 Hz .. 20 kHz
-    }
-
-    /// Analog prototype at the bilinear-warped normalised frequency.
-    fn s_at(f: f64, f0: f64) -> Complex {
-        Complex::new(0.0, (PI * f / FS).tan() / (PI * f0 / FS).tan())
-    }
-
-    fn poly(s: Complex, c: &[f64]) -> Complex {
-        c.iter().fold(Complex::new(0.0, 0.0), |acc, &k| {
-            acc * s + Complex::new(k, 0.0)
-        })
     }
 
     fn on(variant: EqVariant) -> EqParams {
@@ -1003,135 +1171,115 @@ mod tests {
     }
 
     #[test]
-    fn band_designs_match_analog_prototypes() {
-        let one = Complex::new(1.0, 0.0);
-        for &f0 in &[20.0, 80.0, 1000.0, 9000.0] {
-            for &q in &[0.442, 0.7, 1.41, 4.0, 10.0] {
-                for &g in &[-15.0, -6.0, 3.0, 15.0] {
-                    let a: f64 = 10f64.powf(g / 40.0);
-                    let sa = a.sqrt() / q;
-                    for f in freqs() {
-                        let s = s_at(f, f0);
-                        let cases = [
-                            (
-                                design(Role::Peak, BandType::Peq, FS, f0, q, g),
-                                poly(s, &[1.0, a / q, 1.0]) / poly(s, &[1.0, 1.0 / (a * q), 1.0]),
-                            ),
-                            (
-                                design(Role::Low, BandType::Shv, FS, f0, q, g),
-                                poly(s, &[a, sa * a, a * a]) / poly(s, &[a, sa, 1.0]),
-                            ),
-                            (
-                                design(Role::High, BandType::Shv, FS, f0, q, g),
-                                poly(s, &[a * a, sa * a, a]) / poly(s, &[1.0, sa, a]),
-                            ),
-                            (
-                                design(Role::Low, BandType::Cut, FS, f0, q, g),
-                                s * s / poly(s, &[1.0, 1.0 / q, 1.0]),
-                            ),
-                            (
-                                design(Role::High, BandType::Cut, FS, f0, q, g),
-                                one / poly(s, &[1.0, 1.0 / q, 1.0]),
-                            ),
-                        ];
-                        for (i, (d, ha)) in cases.iter().enumerate() {
-                            let err = (d.response(FS, f).db() - ha.db()).abs();
-                            assert!(err < 0.01, "case {i} f0={f0} q={q} g={g} f={f}: {err}");
-                        }
-                    }
-                }
+    fn wing_design_landmarks() {
+        let c = Ctx::new(FS);
+        let db = |s: &[Bq], f: f64| wingcoef::response(FS, s, f).db();
+        // PEQ: exact gain at f0; boost and cut are exact inverses.
+        for &(f0, q, g) in &[
+            (100.0f32, 0.7f32, 12.0f32),
+            (1000.0, 2.0, -9.0),
+            (8000.0, 4.0, 15.0),
+        ] {
+            let b = wingcoef::peq(&c, f0, g, q);
+            assert!(
+                (db(&[b], f0 as f64) - g as f64).abs() < 0.01,
+                "peq {f0} {g}"
+            );
+            let inv = wingcoef::peq(&c, f0, -g, q);
+            for f in freqs() {
+                // f32 coefficients: ~0.01 dB rounding residue near 20 Hz.
+                assert!(db(&[b, inv], f).abs() < 0.02, "boost*cut flat at {f}");
             }
         }
-    }
-
-    #[test]
-    fn cut_slopes_match_closed_forms() {
-        // Bessel analog prototypes normalised to -3.01 dB at w = 1.
-        let w2 = 1.361_654_128_716_130_8;
-        let w4 = 2.113_917_674_904_215_4;
-        for &fc in &[30.0, 500.0, 8000.0] {
-            for (role, lp) in [(Role::Low, false), (Role::High, true)] {
-                for f in freqs() {
-                    let w = (PI * f / FS).tan() / (PI * fc / FS).tan();
-                    let wn = if lp { w } else { 1.0 / w };
-                    let bw = |n: i32| -10.0 * (1.0 + wn.powi(2 * n)).log10();
-                    let s = Complex::new(0.0, wn);
-                    let bs2 = (Complex::new(3.0, 0.0) / poly(s * w2, &[1.0, 3.0, 3.0])).db();
-                    let bs4 = (Complex::new(105.0, 0.0)
-                        / poly(s * w4, &[1.0, 10.0, 45.0, 105.0, 105.0]))
-                    .db();
-                    let want = [
-                        (BandType::Bw6, bw(1)),
-                        (BandType::Bw12, bw(2)),
-                        (BandType::Bw18, bw(3)),
-                        (BandType::Bw24, bw(4)),
-                        (BandType::Bw48, bw(8)),
-                        (BandType::Lr12, 2.0 * bw(1)),
-                        (BandType::Lr24, 2.0 * bw(2)),
-                        (BandType::Lr48, 2.0 * bw(4)),
-                        (BandType::Bs12, bs2),
-                        (BandType::Bs24, bs4),
-                    ];
-                    for (ty, want) in want {
-                        if want < -150.0 {
-                            continue;
-                        }
-                        let got = design(role, ty, FS, fc, 1.0, 9.0).response(FS, f).db();
-                        assert!(
-                            (got - want).abs() < 0.01,
-                            "{ty:?} lp={lp} fc={fc} f={f}: {got} vs {want}"
-                        );
-                    }
-                }
-                // Landmarks at the band frequency.
-                let at = |ty| design(role, ty, FS, fc, 1.0, 0.0).response(FS, fc).db();
-                for ty in [
-                    BandType::Bw6,
-                    BandType::Bw12,
-                    BandType::Bw24,
-                    BandType::Bw48,
-                ] {
-                    assert!((at(ty) + 3.0103).abs() < 1e-3, "{ty:?}");
-                }
-                for ty in [BandType::Bs12, BandType::Bs24] {
-                    assert!((at(ty) + 3.0103).abs() < 1e-3, "{ty:?} {}", at(ty));
-                }
-                for ty in [BandType::Lr12, BandType::Lr24, BandType::Lr48] {
-                    assert!((at(ty) + 6.0206).abs() < 1e-3, "{ty:?}");
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn landmarks_and_q_convention() {
-        // Peak: exact gain at f0; shelves: half gain at f0; CUT: |H(f0)| = Q.
-        let d = |r, t, q, g| design(r, t, FS, 1000.0, q, g).response(FS, 1000.0).db();
-        assert!((d(Role::Peak, BandType::Peq, 2.0, 12.0) - 12.0).abs() < 1e-9);
-        assert!((d(Role::Low, BandType::Shv, 0.707, -10.0) + 5.0).abs() < 1e-9);
-        assert!((d(Role::High, BandType::Shv, 1.0, 8.0) - 4.0).abs() < 1e-9);
-        assert!((d(Role::Low, BandType::Cut, 4.0, 0.0) - 20.0 * 4f64.log10()).abs() < 1e-9);
-        // Q 1.414 (RBJ bandwidth Q) = 1 octave between the half-gain (dB) points of a peak.
-        let c = design(Role::Peak, BandType::Peq, FS, 1000.0, 2f64.sqrt(), 12.0);
-        let edge = |mut lo: f64, mut hi: f64| {
-            let below = c.response(FS, lo).db() < 6.0;
-            for _ in 0..100 {
-                let mid = (lo * hi).sqrt();
-                if (c.response(FS, mid).db() < 6.0) == below {
-                    lo = mid;
-                } else {
-                    hi = mid;
-                }
-            }
-            lo
+        // Shelves: corner on the unity side (full gain far below, partial at f).
+        let ls = wingcoef::ls12(&c, 100.0, 6.0, core::f32::consts::FRAC_1_SQRT_2);
+        assert!((db(&[ls], 10.0) - 6.0).abs() < 0.1);
+        let at_f = db(&[ls], 100.0);
+        assert!(at_f > 1.0 && at_f < 4.5, "{at_f}");
+        assert!(db(&[ls], 2000.0).abs() < 0.05);
+        let hs = wingcoef::hqhs12(&c, 1000.0, -12.0);
+        assert!((db(&[hs], 20_000.0) + 12.0).abs() < 0.3);
+        assert!(db(&[hs], 50.0).abs() < 0.05);
+        // Cuts: BW -3.01 dB at fc, LR -6.02 dB, bus CUT low = LR24.
+        let at = |role, ty, fc: f32| {
+            let (s, n) = wing_band(&c, true, role, ty, fc, 1.0, 0.0);
+            db(&s[..n], fc as f64)
         };
-        let oct = (edge(1000.0, 20_000.0) / edge(20.0, 1000.0)).log2();
-        assert!((oct - 1.0).abs() < 0.01, "bandwidth {oct} oct");
-        // Tilt: 0 dB at the pivot, -T/2 at DC, +T/2 at Nyquist.
-        let t = tilt(FS, TILT_PIVOT_HZ, 6.0);
-        assert!(t.response(FS, TILT_PIVOT_HZ).db().abs() < 1e-9);
-        assert!((t.response_w(0.0).db() + 3.0).abs() < 1e-9);
-        assert!((t.response_w(PI).db() - 3.0).abs() < 1e-9);
+        for fc in [40.0f32, 500.0, 2000.0] {
+            for ty in [
+                BandType::Bw6,
+                BandType::Bw12,
+                BandType::Bw24,
+                BandType::Bw48,
+            ] {
+                assert!((at(Role::Low, ty, fc) + 3.01).abs() < 0.1, "{ty:?} {fc}");
+                assert!((at(Role::High, ty, fc) + 3.01).abs() < 0.1, "{ty:?} {fc}");
+            }
+            for ty in [
+                BandType::Lr12,
+                BandType::Lr24,
+                BandType::Lr48,
+                BandType::Cut,
+            ] {
+                assert!((at(Role::Low, ty, fc) + 6.02).abs() < 0.1, "{ty:?} {fc}");
+            }
+        }
+        // Bessel is not -3 dB-normalised: BS12 = Q 0.577 at f (-4.77 dB).
+        assert!((at(Role::High, BandType::Bs12, 1000.0) + 4.77).abs() < 0.05);
+        // Tilt: +T raises the lows by T and lowers the top by T; pivot moves 650..925 Hz.
+        let t = wingcoef::tilt(&c, 6.0);
+        assert!((db(&[t], 20.0) - 6.0).abs() < 0.2);
+        assert!((db(&[t], 22_000.0) + 6.0).abs() < 0.2);
+        assert!(db(&[t], 650.0).abs() < 0.05, "crosses 0 dB near the pivot");
+        assert_eq!(tilt_pivot_hz(0.0), 650.0);
+        assert_eq!(tilt_pivot_hz(-3.0), 780.0);
+        assert_eq!(tilt_pivot_hz(6.0), 925.0);
+    }
+
+    #[test]
+    fn mix_scales_band_gains_and_bus_cuts_take_over_bands() {
+        let mut p = on(EqVariant::Bus);
+        p.bands[0] = BandParams::new(12.0, 1000.0, 1.0);
+        p.low_type = BandType::Lr12;
+        p.low = BandParams::new(0.0, 30.0, 1.0);
+        let mut eq = StdEq::new(EqVariant::Bus);
+        p.mix = 50.0;
+        eq.set_params(&p);
+        assert!(
+            (eq.magnitude_db(1000.0) - 6.0).abs() < 0.01,
+            "50 % = half the dB"
+        );
+        p.mix = 125.0;
+        eq.set_params(&p);
+        assert!(
+            (eq.magnitude_db(1000.0) - 15.0).abs() < 0.01,
+            "125 % exaggerates"
+        );
+        // The low cut is not scaled by mix.
+        let mut cut = p;
+        cut.bands[0].gain_db = 0.0;
+        cut.mix = 50.0;
+        eq.set_params(&cut);
+        assert!((eq.magnitude_db(30.0) + 6.02).abs() < 0.05);
+        // LR48 low takes the sections of bands 1 and 2: band 1 goes silent.
+        p.mix = 100.0;
+        p.low_type = BandType::Lr48;
+        eq.set_params(&p);
+        assert!(eq.magnitude_db(1000.0).abs() < 0.05, "band 1 displaced");
+        // BW24 high takes band 6.
+        let mut q = on(EqVariant::Bus);
+        q.bands[5] = BandParams::new(9.0, 3000.0, 1.0);
+        q.high_type = BandType::Bw24;
+        q.high = BandParams::new(0.0, 18_000.0, 1.0);
+        eq.set_params(&q);
+        assert!(eq.magnitude_db(3000.0).abs() < 0.05, "band 6 displaced");
+        q.high_type = BandType::Bw12;
+        eq.set_params(&q);
+        assert!((eq.magnitude_db(3000.0) - 9.0).abs() < 0.05);
+        // wing_sections mirrors the layout.
+        let (s, n) = eq.wing_sections();
+        assert_eq!(n, BUS_SECTIONS);
+        assert!((wingcoef::response(FS, &s[7..8], 3000.0).db() - 9.0).abs() < 0.01);
     }
 
     #[test]
@@ -1219,9 +1367,8 @@ mod tests {
         let mut t = on(EqVariant::Bus);
         t.tilt_db = 6.0;
         bus.set_params(&t);
-        assert!(bus.magnitude_db(TILT_PIVOT_HZ).abs() < 1e-9);
-        assert!((bus.magnitude_db(20.0) + 3.0).abs() < 0.05);
-        assert!((bus.magnitude_db(20_000.0) - 3.0).abs() < 0.2);
+        assert!((bus.magnitude_db(20.0) - 6.0).abs() < 0.2);
+        assert!((bus.magnitude_db(20_000.0) + 6.0).abs() < 0.2);
         // Clamping.
         p.bands[0] = BandParams::new(40.0, 5.0, 100.0);
         p.mix = 300.0;
