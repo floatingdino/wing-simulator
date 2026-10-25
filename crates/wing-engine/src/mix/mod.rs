@@ -51,10 +51,14 @@
 //! * **Inserts / FX rack** (T050/T044, [`crate::fx`]): every strip's Ins1/Ins2 run their FX slot inline
 //!   through the rack handle the builder installs; the rack node after the matrices publishes the FX
 //!   SEND legs and sums the automix groups.
+//! * **Side-chain keys** (T080, [`keys`]): every gate/dynamics slot's `src`/`tap` is resolved through a
+//!   shared key bank (one block late, any strip may key any other, cycles included); key listen
+//!   (`gatesc`/`dynsc` `$solo`) plays the slot's key on the solo bus.
 //! * Mix outputs (BUS/MAIN/MTX legs), strip taps (user signals PRE FADER / POST PROCESSING) feed
 //!   the USB output router directly and the channel sources (re-inputs) one block late
 //!   ([`crate::routing::feedback`]).
 
+pub mod keys;
 pub mod law;
 pub mod logic;
 pub mod monitor;

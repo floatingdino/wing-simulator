@@ -33,7 +33,8 @@
 //! code (`wingcoef::xover`) is a single-corner filter whose LP and HP halves are different designs (Massberg
 //! analog-matched LP vs plain bilinear HP), so the pair does not sum flat and is not used. Each band runs the
 //! standard COMP engine (RMS, log, no AUTO, global `knee` 0..25 dB rounded to the engine's 7.22 dB steps)
-//! followed by the band gain `g` (+-15 dB, smoothed). External key is ignored. Latency 0.
+//! followed by the band gain `g` (+-15 dB, smoothed). An external key (`dynsc.src` != SELF, T080) is split by
+//! a second LR4 crossover at the same corners and each band compressor detects on its key band. Latency 0.
 //!
 //! Real-time: `prepare` allocates the band scratch; everything else is allocation-free. Bench:
 //! `benches/comp_multi.rs`.
@@ -277,9 +278,13 @@ pub struct ThreeBandComp {
     hp2: Lr4,
     ap_lp: Lr4,
     ap_hp: Lr4,
+    /// External-key crossover (LP/HP @ lmf, LP/HP @ mhf): the key is split like the programme so each band
+    /// detects on its own key band (T080).
+    key_xo: [Lr4; 4],
     comps: [Dynamics; BANDS],
     gains: [OnePoleSmoother; BANDS],
     buf: [[Vec<f32>; 2]; BANDS],
+    kbuf: [[Vec<f32>; 2]; BANDS],
 }
 
 impl Default for ThreeBandComp {
@@ -304,6 +309,7 @@ impl ThreeBandComp {
             hp2: Lr4::default(),
             ap_lp: Lr4::default(),
             ap_hp: Lr4::default(),
+            key_xo: Default::default(),
             comps: [
                 Dynamics::new(DynParams::comp()),
                 Dynamics::new(DynParams::comp()),
@@ -311,6 +317,7 @@ impl ThreeBandComp {
             ],
             gains: [OnePoleSmoother::new(1.0, 0.01, 48_000.0); BANDS],
             buf: Default::default(),
+            kbuf: Default::default(),
         };
         m.prepare(48_000.0, 64);
         m
@@ -334,6 +341,10 @@ impl ThreeBandComp {
             self.hp2.set(CutKind::Highpass, fs, mhf);
             self.ap_lp.set(CutKind::Lowpass, fs, mhf);
             self.ap_hp.set(CutKind::Highpass, fs, mhf);
+            self.key_xo[0].set(CutKind::Lowpass, fs, lmf);
+            self.key_xo[1].set(CutKind::Highpass, fs, lmf);
+            self.key_xo[2].set(CutKind::Lowpass, fs, mhf);
+            self.key_xo[3].set(CutKind::Highpass, fs, mhf);
         }
         if self.dirty {
             self.dirty = false;
@@ -379,7 +390,7 @@ impl Model for ThreeBandComp {
         for g in &mut self.gains {
             g.set_time(0.01, sample_rate);
         }
-        for b in &mut self.buf {
+        for b in self.buf.iter_mut().chain(self.kbuf.iter_mut()) {
             for ch in b {
                 ch.clear();
                 ch.resize(max_block.max(1), 0.0);
@@ -395,10 +406,26 @@ impl Model for ThreeBandComp {
         &mut self,
         left: &mut [f32],
         right: &mut [f32],
-        _sidechain: Option<(&[f32], &[f32])>,
+        sidechain: Option<(&[f32], &[f32])>,
     ) {
         self.apply();
         let n = left.len().min(right.len()).min(self.buf[0][0].len());
+        if let Some((kl, kr)) = sidechain {
+            // external key: split at the same corners (key samples beyond a short slice read as 0)
+            let [xl, xh, yl, yh] = &mut self.key_xo;
+            for i in 0..n {
+                for (ch, k) in [(0usize, kl), (1, kr)] {
+                    let s = k.get(i).copied().unwrap_or(0.0);
+                    let hi = xh.tick(ch, s);
+                    self.kbuf[0][ch][i] = xl.tick(ch, s);
+                    self.kbuf[1][ch][i] = yl.tick(ch, hi);
+                    self.kbuf[2][ch][i] = yh.tick(ch, hi);
+                }
+            }
+            for f in self.key_xo.iter_mut() {
+                f.flush();
+            }
+        }
         for i in 0..n {
             for (ch, s) in [(0usize, left[i]), (1, right[i])] {
                 let lo = self.lp1.tick(ch, s);
@@ -412,7 +439,12 @@ impl Model for ThreeBandComp {
         for b in 0..BANDS {
             let [bl, br] = &mut self.buf[b];
             let mut io = [&mut bl[..n], &mut br[..n]];
-            self.comps[b].process(&mut io, None);
+            if sidechain.is_some() {
+                let [kl, kr] = &self.kbuf[b];
+                self.comps[b].process(&mut io, Some(&[&kl[..n], &kr[..n]]));
+            } else {
+                self.comps[b].process(&mut io, None);
+            }
         }
         for i in 0..n {
             let mut sl = 0.0;
@@ -447,6 +479,9 @@ impl Model for ThreeBandComp {
             &mut self.ap_lp,
             &mut self.ap_hp,
         ] {
+            f.reset();
+        }
+        for f in self.key_xo.iter_mut() {
             f.reset();
         }
         for c in &mut self.comps {

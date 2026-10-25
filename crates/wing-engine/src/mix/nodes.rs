@@ -10,6 +10,7 @@ use crate::graph::{NodeIo, ProcessCtx, Processor};
 use crate::params::{ParamMsg, TelemetryWriter};
 use crate::routing::Strip;
 
+use super::keys::{key_route, slot as key_slot, KeyBank, KeyFamily, KeyIn, KeyOut};
 use super::law::{self, Matrix, PanLaw, Ramp, IDENTITY, ZERO};
 use super::logic::{flag, MixShared};
 use super::{block, param, MixConfig, SRC_COUNT};
@@ -203,6 +204,14 @@ pub struct InputStripNode {
     fx: Box<dyn InsertHost + Send>,
     /// Insert state last forwarded to `fx`.
     ins_seen: (InsertPoint, InsertPoint),
+    /// External gate / dynamics keys (T080, [`super::keys`]) and the AFL/POST key taps.
+    keys: Option<InputKeys>,
+}
+
+struct InputKeys {
+    gate: KeyIn,
+    dyn_: KeyIn,
+    out: KeyOut,
 }
 
 impl InputStripNode {
@@ -229,9 +238,47 @@ impl InputStripNode {
             logic: None,
             fx: Box::new(NoInserts),
             ins_seen: Default::default(),
+            keys: None,
         };
         s.update_targets();
         s
+    }
+
+    /// Route the strip's side-chain keys through `bank` as strip index `idx` ([`Strip::index`]): its
+    /// gate/dyn slots key from their `src`/`tap`, its taps feed other strips' keys. Off the RT thread.
+    pub fn with_keys(mut self, bank: KeyBank, idx: usize) -> Self {
+        let out = KeyOut::new(bank.clone(), idx);
+        self.strip.set_key_out(Some(out.clone()));
+        self.keys = Some(InputKeys {
+            gate: KeyIn::new(bank.clone()),
+            dyn_: KeyIn::new(bank),
+            out,
+        });
+        self.sync_keys();
+        self
+    }
+
+    /// Follow the strip's `gatesc`/`dynsc` `src`/`tap` (between cycles).
+    fn sync_keys(&mut self) {
+        let Some(k) = self.keys.as_mut() else {
+            return;
+        };
+        // aux strips use the bus-style enums and have no gate
+        let fam = match self.strip.kind() {
+            crate::channel::StripKind::Channel => KeyFamily::Channel,
+            crate::channel::StripKind::Aux => KeyFamily::Mix,
+        };
+        let g = self.strip.gate_sc();
+        let gate = if fam == KeyFamily::Channel {
+            key_route(fam, g.src, g.tap)
+        } else {
+            None
+        };
+        let d = self.strip.dyn_sc();
+        k.gate.route(gate);
+        k.dyn_.route(key_route(fam, d.src, d.tap));
+        k.gate.sync();
+        k.dyn_.sync();
     }
 
     /// Use `fx` for the strip's inserts (the FX rack handle, [`crate::fx::FxRack::host`]). The current
@@ -320,6 +367,7 @@ impl InputStripNode {
                 self.strip.apply(msg);
                 sync_inserts(&mut *self.fx, &mut self.ins_seen, self.strip.inserts());
                 self.fx.set_own_latency(self.strip.own_latency());
+                self.sync_keys();
                 if self.dirty {
                     self.update_targets();
                 }
@@ -329,7 +377,7 @@ impl InputStripNode {
 }
 
 impl Processor for InputStripNode {
-    fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
+    fn process(&mut self, ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
         if LogicLink::poll(&mut self.logic, &mut self.fader) {
             self.update_targets();
         }
@@ -351,14 +399,25 @@ impl Processor for InputStripNode {
                 pfl_r.copy_from_slice(ins.get(1));
             }
         }
-        self.strip
-            .process_with(pfl_l, pfl_r, StripKeys::default(), &mut *self.fx);
+        self.strip.set_cycle(ctx.cycle);
+        let keys = match self.keys.as_mut() {
+            Some(k) => StripKeys {
+                gate: k.gate.fetch(ctx.cycle, b),
+                dyn_: k.dyn_.fetch(ctx.cycle, b),
+            },
+            None => StripKeys::default(),
+        };
+        self.strip.process_with(pfl_l, pfl_r, keys, &mut *self.fx);
 
         let (g0, g1) = self.fdr.step();
         law::gain_write(afl_l, pfl_l, g0[0], g1[0]);
         law::gain_write(afl_r, pfl_r, g0[0], g1[0]);
         let (m0, m1) = self.post.step();
         law::matrix_write(post_l, post_r, afl_l, afl_r, m0, m1);
+        if let Some(k) = &self.keys {
+            k.out.tap(key_slot::AFL, afl_l, afl_r);
+            k.out.tap(key_slot::POST, post_l, post_r);
+        }
 
         let (p0, p1) = self.pre.step();
         let (q0, q1) = self.prep.step();
@@ -419,6 +478,11 @@ pub trait StripHook: Send {
     fn latency(&self) -> usize {
         0
     }
+    /// Route the strip's side-chain key through `bank` as strip index `idx` (T080, [`super::keys`]).
+    /// Off the RT thread. Default: the hook has no keyed slot and publishes no taps.
+    fn set_keys(&mut self, _bank: KeyBank, _idx: usize) {}
+    /// Cycle of the block about to be processed (key bank). RT-safe. Default: nothing.
+    fn begin_cycle(&mut self, _cycle: u64) {}
 }
 
 /// No strip processing (T036 behaviour; the standard hook is [`super::MixStrip`]).
@@ -541,6 +605,8 @@ pub struct MixStripNode {
     send_law: PanLaw,
     grp_level: bool,
     logic: Option<LogicLink>,
+    /// AFL key tap (T080); the hook publishes the others.
+    keys: Option<KeyOut>,
 }
 
 impl MixStripNode {
@@ -592,9 +658,20 @@ impl MixStripNode {
             send_law: cfg.send_pan,
             grp_level: cfg.grp_uses_level,
             logic: None,
+            keys: None,
         };
         n.update_targets();
         n
+    }
+
+    /// Route side-chain keys through `bank` (T080): the hook's keyed slot and taps, and the node's AFL
+    /// tap. Off the RT thread.
+    pub fn with_keys(mut self, bank: KeyBank) -> Self {
+        if let Some(idx) = self.strip.index() {
+            self.hook.set_keys(bank.clone(), idx);
+            self.keys = Some(KeyOut::new(bank, idx));
+        }
+        self
     }
 
     /// Follow the DCA / mute-group / SIP state of strip index `idx` ([`Strip::index`]).
@@ -781,7 +858,7 @@ impl MixStripNode {
 }
 
 impl Processor for MixStripNode {
-    fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
+    fn process(&mut self, ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
         if self.poll_logic() {
             self.apply(&ParamMsg::Commit);
         }
@@ -806,12 +883,18 @@ impl Processor for MixStripNode {
                 }
             }
         }
+        self.hook.begin_cycle(ctx.cycle);
         self.hook.process(pfl_l, pfl_r);
         let (g0, g1) = self.pre.step();
         law::gain_write(pre_l, pfl_l, g0[0], g1[0]);
         law::gain_write(pre_r, pfl_r, g0[0], g1[0]);
         let (m0, m1) = self.post.step();
         law::matrix_write(post_l, post_r, pfl_l, pfl_r, m0, m1);
+        if let Some(k) = self.keys.as_mut() {
+            // post fader (and pan), before the output delay [I]
+            k.set_cycle(ctx.cycle);
+            k.tap(key_slot::MIX_AFL, post_l, post_r);
+        }
         self.hook.process_post(post_l, post_r);
     }
 

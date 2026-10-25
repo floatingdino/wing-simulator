@@ -91,6 +91,10 @@ pub mod flag {
     /// The strip's main sends are muted (DCA mute with `cfg/dcamgrp` off, T03F); applied by the
     /// main nodes to the sends they receive.
     pub const MAIN_MUTE: u32 = 16;
+    /// Key listen of the gate slot (`ch/N/gatesc/$solo`, T080): the solo signal is the gate key.
+    pub const KEY_GATE: u32 = 32;
+    /// Key listen of the dynamics slot (`*/dynsc/$solo`): the solo signal is the dynamics key.
+    pub const KEY_DYN: u32 = 64;
 }
 
 /// Per-strip state shared with the RT nodes (indexed by [`Strip::index`]).
@@ -155,6 +159,8 @@ struct StripIds {
     solo: ParamId,
     sololed: ParamId,
     solosafe: Option<ParamId>,
+    /// Key listen `gatesc/$solo` (channels only), `dynsc/$solo`.
+    key_listen: [Option<ParamId>; 2],
 }
 
 struct Ids {
@@ -201,6 +207,10 @@ impl Ids {
                     solo: id(&format!("{p}/$solo")),
                     sololed: id(&format!("{p}/$sololed")),
                     solosafe: store.lookup(&format!("{p}/solosafe")),
+                    key_listen: [
+                        store.lookup(&format!("{p}/gatesc/$solo")),
+                        store.lookup(&format!("{p}/dynsc/$solo")),
+                    ],
                 }
             })
             .collect();
@@ -233,6 +243,7 @@ impl Ids {
         for s in &self.strips {
             v.extend([s.tags, s.solo, s.mute]);
             v.extend(s.solosafe);
+            v.extend(s.key_listen.iter().flatten());
         }
         v.extend(self.dca_fdr);
         v.extend(self.dca_mute);
@@ -500,12 +511,31 @@ impl MixLogic {
                 0
             };
         }
-        let any_solo = soloed.iter().any(|&s| s != 0);
+        // key listen (T080): the strip's key goes to the solo bus (no indicator, no SIP muting)
+        let key: [u32; STRIP_COUNT] = std::array::from_fn(|i| {
+            let [g, d] = ids.strips[i].key_listen;
+            if g.is_some_and(on) {
+                flag::KEY_GATE
+            } else if d.is_some_and(on) {
+                flag::KEY_DYN
+            } else {
+                0
+            }
+        });
+        let any_solo = soloed.iter().any(|&s| s != 0) || key.iter().any(|&k| k != 0);
         let input_solo = soloed[..48].iter().any(|&s| s != 0);
         let bus_solo = soloed[48..64].iter().any(|&s| s != 0);
         let dest = solo_dest(solo_mon, self.listen);
         for (i, s) in ids.strips.iter().enumerate() {
-            if soloed[i] != 0 {
+            if key[i] != 0 {
+                flags[i] |= key[i];
+                if dest & 1 != 0 {
+                    flags[i] |= flag::SOLO_MON1;
+                }
+                if dest & 2 != 0 {
+                    flags[i] |= flag::SOLO_MON2;
+                }
+            } else if soloed[i] != 0 {
                 let m = dest;
                 if m & 1 != 0 {
                     flags[i] |= flag::SOLO_MON1;

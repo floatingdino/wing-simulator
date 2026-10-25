@@ -15,6 +15,7 @@ use crate::routing::{
     NO_TAPS, USB_CHANNELS,
 };
 
+use super::keys::KeyBank;
 use super::logic::MixShared;
 use super::monitor::{
     bind_monitor_params, monitor_inputs, MonitorNode, MONITOR_CHANNELS, MONITOR_OUTPUTS,
@@ -426,6 +427,8 @@ pub fn build_mix_graph(
     }
     let mut g = GraphBuilder::new(bs, cfg.sample_rate, USB_CHANNELS as u32);
     let fb = TapFeedback::new(bs);
+    // side-chain keys (T080): every strip publishes/reads keys here, one block late
+    let keys = KeyBank::new(bs);
     let io = add_input_stage_with_feedback(&mut g, routing, fb.clone())?;
 
     let mut inputs = [NodeId(0); INPUT_STRIPS];
@@ -452,7 +455,8 @@ pub fn build_mix_graph(
         };
         let node = InputStripNode::new(strip, &cfg)
             .with_logic(logic.clone(), i)
-            .with_inserts(rack.host(s));
+            .with_inserts(rack.host(s))
+            .with_keys(keys.clone(), i);
         *id = g.add_node(name, INPUT_OUTPUTS, &src, node)?;
     }
     // ports of an Input slot: Pre, PreLinked, Afl, Post (output channels 2..10)
@@ -491,7 +495,9 @@ pub fn build_mix_graph(
         };
         hook.set_insert_host(rack.host(strip));
         let idx = strip.index().expect("mix strip");
-        let node = MixStripNode::new(strip, &specs, hook, &cfg).with_logic(logic.clone(), idx);
+        let node = MixStripNode::new(strip, &specs, hook, &cfg)
+            .with_logic(logic.clone(), idx)
+            .with_keys(keys.clone());
         debug_assert_eq!(node.num_inputs(), ports.len());
         let name = match strip {
             Strip::Bus(n) => format!("bus{n}"),
@@ -553,7 +559,7 @@ pub fn build_mix_graph(
         "monitor",
         MONITOR_CHANNELS,
         &monitor_inputs(strip_node),
-        MonitorNode::new(logic.clone(), &cfg),
+        MonitorNode::new(logic.clone(), &cfg).with_keys(keys.clone()),
     )?;
 
     // After the matrices (the last strip level): every slot has run when its SEND capture is read.
