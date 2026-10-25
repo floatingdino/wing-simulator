@@ -2,7 +2,7 @@
 id: T063
 title: Scene diff report
 stage: S6
-status: review
+status: done
 owner: agent-T063
 depends: [T011]
 branch: task/T063
