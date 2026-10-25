@@ -2,7 +2,7 @@
 id: T036
 title: Pan, fader, mute, sends, busses, mains, matrices
 stage: S3
-status: review
+status: done
 owner: engineer-T036
 depends: [T035]
 branch: task/T036
