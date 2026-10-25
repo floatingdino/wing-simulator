@@ -2,7 +2,7 @@
 id: T045
 title: Model framework + fidelity test harness
 stage: S4
-status: review
+status: done
 owner: agent-T045-T035
 depends: [T030, T010]
 branch: task/T045-T035

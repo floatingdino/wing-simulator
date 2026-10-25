@@ -2,7 +2,7 @@
 id: T035
 title: Channel strip assembly + process order
 stage: S3
-status: review
+status: done
 owner: agent-T045-T035
 depends: [T031, T032, T033, T034]
 branch: task/T045-T035
