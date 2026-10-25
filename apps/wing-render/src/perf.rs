@@ -196,6 +196,10 @@ pub fn everything_on(store: &ParamStore) -> Result<(), String> {
     Ok(())
 }
 
+/// Longest-processing-time-first claim order in consoles built by [`console`] (the engine's
+/// default; `--no-lpt` turns it off for comparisons).
+pub static LPT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
 /// Build the console exactly as the daemon does (meters on), warmed up.
 pub fn console(
     store: &mut ParamStore,
@@ -220,6 +224,8 @@ pub fn console(
         Vec::new(),
         Arc::new(AudioStats::default()),
     )?;
+    c.engine_mut()
+        .set_load_balancing(LPT.load(std::sync::atomic::Ordering::Relaxed));
     c.warm_up(SESSION_WARM_UP_CYCLES);
     Ok(c)
 }
@@ -469,7 +475,7 @@ pub fn model_survey(
 
 /// Usage of `wing-render --bench`.
 pub const BENCH_USAGE: &str = "usage: wing-render --bench [--scene public,everything] [--block 64,128] \
-[--workers 0-12 | 0,3,7] [--cycles N] [--paced N] [--paced-workers 7,8,10] [--profile] [--models [--model ID,..] [--model-blocks N]] [--digest N]";
+[--workers 0-12 | 0,3,7] [--cycles N] [--paced N] [--paced-workers 7,8,10] [--profile] [--models [--model ID,..] [--model-blocks N]] [--digest N] [--no-lpt]";
 
 /// Options of `wing-render --bench`.
 #[derive(Debug, Clone)]
@@ -536,6 +542,7 @@ pub fn parse_bench_args(mut it: impl Iterator<Item = String>) -> Result<BenchArg
             "--paced-workers" => a.paced_workers = parse_list(&val()?)?,
             "--profile" => a.profile = true,
             "--models" => a.models = true,
+            "--no-lpt" => LPT.store(false, std::sync::atomic::Ordering::Relaxed),
             "--model" => a.model_filter = Some(val()?),
             "--model-blocks" => {
                 a.model_blocks = val()?.parse().map_err(|e| format!("--model-blocks: {e}"))?

@@ -42,6 +42,52 @@ pub fn dot_acc8(a: &[f32], b: &[f32]) -> f32 {
     }
 }
 
+/// [`dot_acc8`]`(a, window(m))` for `m in 0..n` (`out(m, value)`), with `a.len() == 8 * C + R`
+/// fixed at compile time so the taps stay in registers across the windows (FIR filters run one
+/// dot per output; T070). Bit-identical to calling [`dot_acc8`] per window. Panics if
+/// `a.len() != 8 * C + R` or a window is shorter than `a`.
+#[inline(always)]
+pub fn dot_acc8_each<'w, const C: usize, const R: usize>(
+    a: &[f32],
+    n: usize,
+    mut window: impl FnMut(usize) -> &'w [f32],
+    mut out: impl FnMut(usize, f32),
+) {
+    assert_eq!(a.len(), 8 * C + R);
+    #[cfg(target_arch = "aarch64")]
+    // SAFETY: NEON is mandatory on aarch64; tap loads are within `a` (8 * C + R), window loads
+    // within the asserted window length.
+    unsafe {
+        use core::arch::aarch64::*;
+        let pa = a.as_ptr();
+        let lo: [float32x4_t; C] = core::array::from_fn(|c| vld1q_f32(pa.add(8 * c)));
+        let hi: [float32x4_t; C] = core::array::from_fn(|c| vld1q_f32(pa.add(8 * c + 4)));
+        let tail: [f32; R] = core::array::from_fn(|i| a[8 * C + i]);
+        for m in 0..n {
+            let w = window(m);
+            assert!(w.len() >= a.len());
+            let pb = w.as_ptr();
+            let mut sl = vdupq_n_f32(0.0);
+            let mut sh = vdupq_n_f32(0.0);
+            for c in 0..C {
+                sl = vaddq_f32(sl, vmulq_f32(lo[c], vld1q_f32(pb.add(8 * c))));
+                sh = vaddq_f32(sh, vmulq_f32(hi[c], vld1q_f32(pb.add(8 * c + 4))));
+            }
+            let s4 = vaddq_f32(sl, sh);
+            let p = vpaddq_f32(s4, s4);
+            let mut s = vgetq_lane_f32::<0>(p) + vgetq_lane_f32::<1>(p);
+            for (i, t) in tail.iter().enumerate() {
+                s += *t * *pb.add(8 * C + i);
+            }
+            out(m, s);
+        }
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    for m in 0..n {
+        out(m, dot_acc8_scalar(a, window(m)));
+    }
+}
+
 /// The scalar definition of [`dot_acc8`].
 #[inline(always)]
 pub fn dot_acc8_scalar(a: &[f32], b: &[f32]) -> f32 {

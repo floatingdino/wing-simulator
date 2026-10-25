@@ -19,6 +19,12 @@
 //! a futex). Wakers only make the wake syscall if a sleeper counter says someone is asleep. The
 //! driver never sleeps: it spins (then yields) at level barriers.
 //!
+//! Load balancing (T070): a claim index maps to a node through the graph's per-level claim order.
+//! Every node run is timed (one monotonic-clock pair, no syscall) into a smoothed cost, and every
+//! [`REBALANCE_CYCLES`] cycles the driver re-sorts each level longest-first before publishing the
+//! epoch (LPT list scheduling: a long node never starts last). Outputs are independent of the order
+//! ([`Engine::set_load_balancing`] turns it off).
+//!
 //! Nothing on this path allocates or takes locks.
 
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering::*};
@@ -121,6 +127,10 @@ struct Shared {
 
 const TAG_MASK: u64 = !0xffff_ffff;
 
+/// Cycles between claim-order rebalances (longest-processing-time first, from measured node
+/// costs). Sorting is a few hundred compares; costs drift slowly (model / scene changes).
+const REBALANCE_CYCLES: u64 = 64;
+
 #[inline]
 fn tag(epoch: u64) -> u64 {
     (epoch & 0xffff_ffff) << 32
@@ -209,7 +219,10 @@ impl Shared {
                 }
                 // SAFETY: we hold the unique claim on this position for this epoch, and the
                 // previous level's barrier (acquire on `done`) completed before we got here.
-                unsafe { self.graph.run_node(range.start + idx as usize, &ctx) };
+                unsafe {
+                    let pos = self.graph.claim_pos(range.start + idx as usize);
+                    self.graph.run_node_timed(pos, &ctx)
+                };
                 if done.fetch_add(1, SeqCst) + 1 == target && self.level_sleepers.load(SeqCst) > 0 {
                     futex::wake_all(done);
                 }
@@ -278,6 +291,8 @@ pub struct Engine {
     handles: Vec<JoinHandle<()>>,
     stats: Arc<Stats>,
     epoch: u64,
+    /// Longest-processing-time-first claim order (see `Engine::set_load_balancing`).
+    balance: bool,
 }
 
 impl Engine {
@@ -322,6 +337,7 @@ impl Engine {
             handles,
             stats,
             epoch: 0,
+            balance: true,
         }
     }
 
@@ -397,6 +413,11 @@ impl Engine {
         self.epoch += 1;
         let ep = self.epoch;
         let s = &*self.shared;
+        if self.balance && ep.is_multiple_of(REBALANCE_CYCLES) {
+            // Previous cycle complete and its claims exhausted: nobody reads the claim order until
+            // the epoch below is published (see `Graph::rebalance`).
+            s.graph.rebalance();
+        }
         let t = tag(ep);
         for (c, d) in s.claim.iter().zip(s.done.iter()) {
             c.store(t, Relaxed);
@@ -441,6 +462,15 @@ impl Engine {
 
     pub(crate) fn stats_inner(&self) -> &Stats {
         &self.stats
+    }
+
+    /// Hand out each level's nodes longest-measured-first (default on; T070), or in schedule
+    /// (insertion) order. Outputs are identical either way; only the load balance changes.
+    pub fn set_load_balancing(&mut self, on: bool) {
+        self.balance = on;
+        if !on {
+            self.shared.graph.reset_claim_order();
+        }
     }
 
     /// Cycles run so far (parallel and serial).

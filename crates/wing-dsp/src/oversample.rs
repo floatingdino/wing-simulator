@@ -169,6 +169,36 @@ impl HalfbandStage {
     /// output `2m + 1` the centre tap `x[m - K + 1]`.
     #[inline]
     fn upsample(&mut self, input: &[f32], out: &mut [f32]) {
+        // the two stage designs get their tap count at compile time (taps held in registers)
+        match self.k {
+            K_A => self.upsample_n::<{ 2 * K_A / 8 }, { 2 * K_A % 8 }>(input, out),
+            K_B => self.upsample_n::<{ 2 * K_B / 8 }, { 2 * K_B % 8 }>(input, out),
+            _ => self.upsample_generic(input, out),
+        }
+    }
+
+    #[inline(always)]
+    fn upsample_n<const C: usize, const R: usize>(&mut self, input: &[f32], out: &mut [f32]) {
+        debug_assert_eq!(out.len(), 2 * input.len());
+        let k = self.k;
+        for (x, o) in input.chunks(BATCH).zip(out.chunks_mut(2 * BATCH)) {
+            let n = x.len();
+            self.up.load(n, |i| x[i]);
+            let up = &self.up;
+            crate::simd::dot_acc8_each::<C, R>(
+                &self.he_up,
+                n,
+                |m| up.window(m),
+                |m, v| {
+                    o[2 * m] = v;
+                    o[2 * m + 1] = up.window(m)[k - 1];
+                },
+            );
+            self.up.commit(n);
+        }
+    }
+
+    fn upsample_generic(&mut self, input: &[f32], out: &mut [f32]) {
         debug_assert_eq!(out.len(), 2 * input.len());
         let k = self.k;
         for (x, o) in input.chunks(BATCH).zip(out.chunks_mut(2 * BATCH)) {
@@ -186,6 +216,34 @@ impl HalfbandStage {
     /// `input.len() == 2 * out.len()`.
     #[inline]
     fn downsample(&mut self, input: &[f32], out: &mut [f32]) {
+        match self.k {
+            K_A => self.downsample_n::<{ 2 * K_A / 8 }, { 2 * K_A % 8 }>(input, out),
+            K_B => self.downsample_n::<{ 2 * K_B / 8 }, { 2 * K_B % 8 }>(input, out),
+            _ => self.downsample_generic(input, out),
+        }
+    }
+
+    #[inline(always)]
+    fn downsample_n<const C: usize, const R: usize>(&mut self, input: &[f32], out: &mut [f32]) {
+        debug_assert_eq!(input.len(), 2 * out.len());
+        let k = self.k;
+        for (x, o) in input.chunks(2 * BATCH).zip(out.chunks_mut(BATCH)) {
+            let n = o.len();
+            self.down_even.load(n, |i| x[2 * i]);
+            self.down_odd.load(n, |i| x[2 * i + 1]);
+            let (ev, od) = (&self.down_even, &self.down_odd);
+            crate::simd::dot_acc8_each::<C, R>(
+                &self.he,
+                n,
+                |m| ev.window(m),
+                |m, v| o[m] = v + 0.5 * od.window(m)[k],
+            );
+            self.down_even.commit(n);
+            self.down_odd.commit(n);
+        }
+    }
+
+    fn downsample_generic(&mut self, input: &[f32], out: &mut [f32]) {
         debug_assert_eq!(input.len(), 2 * out.len());
         let k = self.k;
         for (x, o) in input.chunks(2 * BATCH).zip(out.chunks_mut(BATCH)) {
@@ -391,7 +449,7 @@ mod tests {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             (seed >> 8) as f32 / (1u32 << 24) as f32 - 0.5
         };
-        for k in [K_A, K_B] {
+        for k in [K_A, K_B, 5] {
             let (mut a, mut r) = (HalfbandStage::new(k), RefStage::new(k));
             // chunk sizes below, at and above the batch, incl. 1 (history-only windows)
             for &n in [1usize, 3, 64, 17, 200, 64, 5, 130, 1, 64]

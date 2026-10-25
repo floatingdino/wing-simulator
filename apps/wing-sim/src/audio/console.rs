@@ -239,6 +239,11 @@ impl Console {
         &self.engine
     }
 
+    /// Mutable engine access between cycles (scheduler settings).
+    pub fn engine_mut(&mut self) -> &mut Engine {
+        &mut self.engine
+    }
+
     pub fn pipeline(&self) -> &ParamPipeline {
         &self.pipeline
     }
