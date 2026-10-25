@@ -30,3 +30,7 @@ harness = false
 [[bench]]
 name = "filter_tool"
 harness = false
+
+[[bench]]
+name = "dyn_eq"
+harness = false

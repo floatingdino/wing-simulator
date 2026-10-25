@@ -22,6 +22,7 @@
 
 use crate::eq::EqVariant;
 use crate::models::comp_vca::{VcaComp, VcaKind};
+use crate::models::dyn_eq::{DeEsser902, DynEq};
 use crate::models::filter_tool::FilterToolModel;
 use crate::std_models::{DynModel, GateModel, StdEqModel};
 
@@ -292,6 +293,9 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
     match (kind, id) {
         (BlockKind::Dynamics, "GATE") => Box::new(GateModel::gate()),
         (BlockKind::Dynamics, "DUCK") => Box::new(GateModel::duck()),
+        (BlockKind::Dynamics, "DS902") => Box::new(DeEsser902::new()),
+        (BlockKind::Dynamics, "DEQ") => Box::new(DynEq::single()),
+        (BlockKind::Dynamics, "DEQ2") => Box::new(DynEq::dual()),
         (BlockKind::Dynamics, "COMP") => Box::new(DynModel::comp()),
         (BlockKind::Dynamics, "EXP") => Box::new(DynModel::exp()),
         (BlockKind::Dynamics, "B160") => Box::new(VcaComp::new(VcaKind::B160)),
@@ -426,7 +430,8 @@ mod tests {
     #[test]
     fn catalogs_create_and_stub_flags() {
         let implemented = [
-            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS",
+            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS", "DS902",
+            "DEQ", "DEQ2",
         ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);
