@@ -2,7 +2,7 @@
 id: T062
 title: A/B scenes + save back to console-compatible .snap
 stage: S6
-status: review
+status: done
 owner: agent-T062
 depends: [T011, T026]
 branch: task/T062
