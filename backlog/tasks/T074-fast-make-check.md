@@ -2,7 +2,7 @@
 id: T074
 title: Fast `make check` (< 5 min) + `make check-full`
 stage: S7
-status: review
+status: done
 owner: T074 agent
 depends: []
 branch: task/T074
