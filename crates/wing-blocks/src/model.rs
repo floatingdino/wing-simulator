@@ -369,6 +369,11 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "ROTARY") => Box::new(crate::models::fx_mod::Rotary::new()),
         (BlockKind::Fx, "PANNER") => Box::new(crate::models::fx_mod::Panner::new()),
         (BlockKind::Fx, "MOOD") => Box::new(crate::models::fx_mod::MoodFilter::new()),
+        (BlockKind::Fx, "PITCH") => Box::new(crate::models::fx_pitch::StereoPitch::new()),
+        (BlockKind::Fx, "D-PITCH") => Box::new(crate::models::fx_pitch::DualPitch::new()),
+        (BlockKind::Fx, "DOUBLE") => Box::new(crate::models::fx_pitch::DoubleVocal::new()),
+        (BlockKind::Fx, "PCORR") => Box::new(crate::models::fx_pitch::PitchFix::new()),
+        (BlockKind::Fx, "SUB") => Box::new(crate::models::fx_pitch::SubOctaver::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -528,6 +533,7 @@ mod tests {
             "ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL",
             "ST-DL",
             "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
+            "PITCH", "D-PITCH", "DOUBLE", "PCORR", "SUB",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);

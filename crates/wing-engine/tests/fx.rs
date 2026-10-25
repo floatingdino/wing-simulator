@@ -95,6 +95,19 @@ fn mix_latency(s: Strip) -> usize {
     MixStrip::new(s, 48_000.0, BLOCK).latency()
 }
 
+/// Constant latency of an input strip whose insert claims a slot of latency `ins` (T05T: every slot
+/// hosts PCORR, so FX inserts are no longer zero-latency).
+fn input_latency_ins(ins: usize) -> usize {
+    let ch = ChannelStrip::channel(48_000.0, BLOCK);
+    ch.align().natural().max(ch.align().own() + ins)
+}
+
+/// As [`input_latency_ins`] for a bus/main/matrix strip.
+fn mix_latency_ins(s: Strip, ins: usize) -> usize {
+    let m = MixStrip::new(s, 48_000.0, BLOCK);
+    m.align().natural().max(m.align().own() + ins)
+}
+
 fn peak(x: &[f32]) -> f32 {
     x.iter().fold(0.0f32, |a, v| a.max(v.abs()))
 }
@@ -118,7 +131,7 @@ fn channel_insert_runs_slot_with_fxmix() {
         InsertStat::Ok
     );
     assert_eq!(r.fx.owner(2), None);
-    let d = input_latency();
+    let d = input_latency_ins(r.fx.slot_latency(1));
     let (mut hl, mut hr) = (Hist::default(), Hist::default());
     for k in 0..40 {
         r.cycle(&[1]);
@@ -175,28 +188,37 @@ fn channel_insert_runs_slot_with_fxmix() {
     }
 
     // insert off: crossfades to dry over the 5 ms slot ramp (no click); the SEND leg stops
+    // The ramp runs at the slot output, i.e. `lat` (slot latency) samples after the slot input, so it
+    // blends input samples from `lat` before the switch on: keep dry/wet histories in input time.
+    let lat = r.fx.slot_latency(1);
     setf(&store, "fx/1/fxmix", 100.0);
+    let (mut xd, mut xw) = (vec![0.0f32; hl.0.len()], hl.0.clone());
     for _ in 0..10 {
         let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
         r.cycle(&[1]);
         let (mut wl, mut wr) = (x.clone(), x.clone());
         model.process(&mut wl, &mut wr, None);
         hl.push(&wl);
+        xd.extend_from_slice(&x);
+        xw.extend_from_slice(&wl);
     }
     seti(&store, "ch/1/preins/on", 0);
     let ramp = 240.0f32;
-    for k in 0..8 {
+    let t_sw = hl.0.len();
+    assert!(lat <= 10 * BLOCK);
+    for _ in 0..8 {
         let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
         r.cycle(&[1]);
         let (mut wl, mut wr) = (x.clone(), x.clone());
         model.process(&mut wl, &mut wr, None);
-        let expect: Vec<f32> = (0..BLOCK)
-            .map(|i| {
-                let w = (1.0 - (k * BLOCK + i + 1) as f32 / ramp).max(0.0);
-                x[i] + w * (wl[i] - x[i])
-            })
-            .collect();
-        hl.push(&expect);
+        hl.push(&wl);
+        xd.extend_from_slice(&x);
+        xw.extend_from_slice(&wl);
+        for s in t_sw - lat..hl.0.len() {
+            let u = s + lat; // slot output time
+            let w = (1.0 - (u - t_sw + 1) as f32 / ramp).max(0.0);
+            hl.0[s] = xd[s] + w * (xw[s] - xd[s]);
+        }
         assert_close(
             &r.input(0, I::Pfl, Side::L),
             &hl.delayed(d),
@@ -239,12 +261,14 @@ fn bus_insert_send_fx_returns_to_main_and_aux() {
     let mut r = rig(&store, MixConfig::default(), 3);
     assert_eq!(r.fx.owner(2), Some((Strip::Bus(1), InsertPos::Pre)));
     let (db, dm, da) = (
-        mix_latency(Strip::Bus(1)),
+        mix_latency_ins(Strip::Bus(1), r.fx.slot_latency(2)),
         mix_latency(Strip::Main(1)),
         BLOCK + input_latency(),
     );
     let (mut hl, mut hr, mut hp) = (Hist::default(), Hist::default(), Hist::default());
-    for k in 0..40 {
+    // past the NONE -> ST-DL crossfade and the strips' latencies (FX slots: T05T PCORR)
+    let settle = (db + dm + da) / BLOCK + 8;
+    for k in 0..settle + 32 {
         r.cycle(&[1]);
         let (sl, sr) = (send_leg(&r, 3), send_leg(&r, 4));
         let (mut wl, mut wr) = (sl.clone(), sr.clone());
@@ -253,7 +277,7 @@ fn bus_insert_send_fx_returns_to_main_and_aux() {
         hr.push(&wr);
         let post = r.mix(Strip::Bus(1), M::Post, Side::L);
         hp.push(&post);
-        if k >= 8 {
+        if k >= settle {
             assert!(peak(&sl) > 0.01);
             assert_close(
                 &r.mix(Strip::Bus(1), M::Pfl, Side::L),
