@@ -4,7 +4,8 @@
 #   apps/WingSimMenu/build.sh            # release build
 #   CONFIG=debug apps/WingSimMenu/build.sh
 #
-# target/release/wing-sim and wing-diff are copied into Contents/Resources/bin when they exist
+# `make dist` sets WINGSIM_REPO_ROOT="" so a distributed app never points at the build checkout.
+# target/release/wing-sim, wing-render and wing-diff are copied into Contents/Resources/bin when they exist
 # (`make build` or `cargo build --release -p wing-sim -p wing-diff`); the app falls back to
 # <repo>/target/release (Info.plist WingSimRepoRoot) and $WINGSIM_BIN_DIR.
 set -eu
@@ -21,9 +22,9 @@ APP="$HERE/build/WingSimMenu.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
 cp "$BIN/WingSimMenu" "$APP/Contents/MacOS/WingSimMenu"
-sed -e "s|@REPO_ROOT@|$ROOT|" -e "s|@VERSION@|${VERSION:-0.1.0}|" "$HERE/Info.plist.in" \
+sed -e "s|@REPO_ROOT@|${WINGSIM_REPO_ROOT-$ROOT}|" -e "s|@VERSION@|${VERSION:-0.1.0}|" "$HERE/Info.plist.in" \
     > "$APP/Contents/Info.plist"
-for tool in wing-sim wing-diff; do
+for tool in wing-sim wing-render wing-diff; do
     if [ -x "$ROOT/target/release/$tool" ]; then
         cp "$ROOT/target/release/$tool" "$APP/Contents/Resources/bin/$tool"
     else
