@@ -3,3 +3,4 @@
 
 pub mod comp_vca;
 pub mod filter_tool;
+pub mod gate_vintage;

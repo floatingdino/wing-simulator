@@ -23,6 +23,7 @@
 use crate::eq::EqVariant;
 use crate::models::comp_vca::{VcaComp, VcaKind};
 use crate::models::filter_tool::FilterToolModel;
+use crate::models::gate_vintage::{VintageGate, VintageGateKind};
 use crate::std_models::{DynModel, GateModel, StdEqModel};
 
 /// A parameter value in engineering units (see module doc for the encoding).
@@ -292,6 +293,9 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
     match (kind, id) {
         (BlockKind::Dynamics, "GATE") => Box::new(GateModel::gate()),
         (BlockKind::Dynamics, "DUCK") => Box::new(GateModel::duck()),
+        (BlockKind::Dynamics, "E88") => Box::new(VintageGate::new(VintageGateKind::E88)),
+        (BlockKind::Dynamics, "9000G") => Box::new(VintageGate::new(VintageGateKind::Ssl9000)),
+        (BlockKind::Dynamics, "D241G") => Box::new(VintageGate::new(VintageGateKind::D241)),
         (BlockKind::Dynamics, "COMP") => Box::new(DynModel::comp()),
         (BlockKind::Dynamics, "EXP") => Box::new(DynModel::exp()),
         (BlockKind::Dynamics, "B160") => Box::new(VcaComp::new(VcaKind::B160)),
@@ -426,7 +430,8 @@ mod tests {
     #[test]
     fn catalogs_create_and_stub_flags() {
         let implemented = [
-            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS",
+            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS", "E88",
+            "9000G", "D241G",
         ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);
