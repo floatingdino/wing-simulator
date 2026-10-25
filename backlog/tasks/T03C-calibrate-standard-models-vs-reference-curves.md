@@ -18,3 +18,4 @@ Validate and correct the standard models (filter, GATE/DUCK, STD EQ, COMP/EXP) a
 
 ## Log
 - 2026-10-25 coordinator: created from T034 follow-ups.
+- 2026-10-25 coordinator: also from T031/T032 — gate ACCENT (guessed 0–10 dB hysteresis), Butterworth cut shape, input balance law and gate detector timing are unverified assumptions.
