@@ -2,7 +2,7 @@
 id: T082
 title: BUG: metering for FX blocks and non-default dynamics models doesn't work
 stage: S4
-status: review
+status: done
 owner: agent-T082
 depends: []
 branch: task/T082
