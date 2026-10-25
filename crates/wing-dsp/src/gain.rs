@@ -84,10 +84,12 @@ pub fn fast_log2(x: f32) -> f32 {
     let t = (m - 1.0) / (m + 1.0);
     let t2 = t * t;
     // 2/ln2 * (t + t^3/3 + t^5/5 + t^7/7)
-    const K: f32 = 2.885_39;
     let s = t * (1.0 + t2 * (1.0 / 3.0 + t2 * (0.2 + t2 * (1.0 / 7.0))));
-    e as f32 + K * s
+    e as f32 + FAST_LOG2_K * s
 }
+
+/// `2 / ln 2` as used by [`fast_log2`].
+const FAST_LOG2_K: f32 = 2.885_39;
 
 /// Fast dB -> linear (see module docs for error bound).
 #[inline]
@@ -102,6 +104,52 @@ pub fn lin_to_db_fast(lin: f32) -> f32 {
         return MIN_DB;
     }
     (fast_log2(lin) * DB_PER_LOG2).max(MIN_DB)
+}
+
+/// [`lin_to_db_fast`] of four values, branch-free (NEON on aarch64): bit-identical to the scalar
+/// function lane by lane (same IEEE operations in the same order, selects instead of branches; T070).
+#[inline(always)]
+pub fn lin_to_db_fast4(x: [f32; 4]) -> [f32; 4] {
+    #[cfg(target_arch = "aarch64")]
+    // SAFETY: NEON is mandatory on aarch64; loads/stores are on 4-element arrays.
+    unsafe {
+        use core::arch::aarch64::*;
+        let v = vld1q_f32(x.as_ptr());
+        let bits = vreinterpretq_u32_f32(v);
+        let e = vsubq_s32(
+            vreinterpretq_s32_u32(vandq_u32(vshrq_n_u32::<23>(bits), vdupq_n_u32(0xff))),
+            vdupq_n_s32(127),
+        );
+        let m = vreinterpretq_f32_u32(vorrq_u32(
+            vandq_u32(bits, vdupq_n_u32(0x007f_ffff)),
+            vdupq_n_u32(0x3f80_0000),
+        ));
+        let big = vcgtq_f32(m, vdupq_n_f32(core::f32::consts::SQRT_2));
+        let m = vbslq_f32(big, vmulq_f32(m, vdupq_n_f32(0.5)), m);
+        let e = vsubq_s32(e, vreinterpretq_s32_u32(big)); // all-ones = -1: e + 1
+        let one = vdupq_n_f32(1.0);
+        let t = vdivq_f32(vsubq_f32(m, one), vaddq_f32(m, one));
+        let t2 = vmulq_f32(t, t);
+        let a = vaddq_f32(vdupq_n_f32(0.2), vmulq_f32(t2, vdupq_n_f32(1.0 / 7.0)));
+        let a = vaddq_f32(vdupq_n_f32(1.0 / 3.0), vmulq_f32(t2, a));
+        let a = vaddq_f32(one, vmulq_f32(t2, a));
+        let s = vmulq_f32(t, a);
+        let r = vaddq_f32(vcvtq_f32_s32(e), vmulq_f32(vdupq_n_f32(FAST_LOG2_K), s));
+        let r = vbslq_f32(
+            vcltq_f32(v, vdupq_n_f32(f32::MIN_POSITIVE)),
+            vdupq_n_f32(-126.0),
+            r,
+        );
+        let db = vmaxnmq_f32(vmulq_f32(r, vdupq_n_f32(DB_PER_LOG2)), vdupq_n_f32(MIN_DB));
+        let db = vbslq_f32(vcleq_f32(v, vdupq_n_f32(0.0)), vdupq_n_f32(MIN_DB), db);
+        let mut out = [0.0f32; 4];
+        vst1q_f32(out.as_mut_ptr(), db);
+        out
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        x.map(lin_to_db_fast)
+    }
 }
 
 /// Fixed-size dB -> linear lookup table over `[min_db, max_db]` with linear interpolation between entries.
@@ -152,6 +200,41 @@ impl FaderGainTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lin_to_db_fast4_is_bit_exact() {
+        let mut seed = 0x1234_5678u32;
+        let mut special = [
+            0.0,
+            -0.0,
+            -1.0,
+            1e-40,
+            f32::MIN_POSITIVE,
+            1.0,
+            core::f32::consts::SQRT_2,
+            f32::from_bits(core::f32::consts::SQRT_2.to_bits() + 1),
+            1e30,
+            1e-12,
+        ]
+        .into_iter();
+        for _ in 0..200_000 {
+            let mut x = [0.0f32; 4];
+            for v in &mut x {
+                *v = special.next().unwrap_or_else(|| {
+                    seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                    // log-uniform over ~1e-15..1e3 plus the odd negative
+                    let u = (seed >> 8) as f32 / (1u32 << 24) as f32;
+                    let s = if seed & 0xff == 0 { -1.0 } else { 1.0 };
+                    s * 10f32.powf(u * 18.0 - 15.0)
+                });
+            }
+            let want = x.map(lin_to_db_fast);
+            let got = lin_to_db_fast4(x);
+            for i in 0..4 {
+                assert_eq!(got[i].to_bits(), want[i].to_bits(), "x = {}", x[i]);
+            }
+        }
+    }
 
     #[test]
     fn exact_roundtrip() {

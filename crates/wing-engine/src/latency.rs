@@ -66,18 +66,28 @@ impl TapLine {
     /// Append a block (`len <= max_block`).
     #[inline]
     pub fn push(&mut self, x: &[f32]) {
-        for &v in x {
-            self.buf[self.w] = v;
-            self.w = (self.w + 1) & self.mask;
+        // at most two contiguous segments (wrap-around), copied as slices (T070)
+        let size = self.buf.len();
+        let mut src = x;
+        while !src.is_empty() {
+            let n = src.len().min(size - self.w);
+            self.buf[self.w..self.w + n].copy_from_slice(&src[..n]);
+            self.w = (self.w + n) & self.mask;
+            src = &src[n..];
         }
     }
 
     /// The last pushed block (`out.len()` samples) delayed by `d` samples: `out[i] = x[t_i - d]`.
     #[inline]
     pub fn read(&self, out: &mut [f32], d: usize) {
-        let start = self.w.wrapping_sub(out.len() + d);
-        for (i, o) in out.iter_mut().enumerate() {
-            *o = self.buf[start.wrapping_add(i) & self.mask];
+        let size = self.buf.len();
+        let mut r = self.w.wrapping_sub(out.len() + d) & self.mask;
+        let mut dst = out;
+        while !dst.is_empty() {
+            let n = dst.len().min(size - r);
+            dst[..n].copy_from_slice(&self.buf[r..r + n]);
+            r = (r + n) & self.mask;
+            dst = &mut dst[n..];
         }
     }
 }

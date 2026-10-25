@@ -417,22 +417,35 @@ pub fn model_cost(kind: BlockKind, id: &'static str, block: usize, blocks: usize
             h = (h ^ s.to_bits() as u64).wrapping_mul(0x0100_0000_01b3);
         }
     }
-    let mut total = Duration::ZERO;
-    for _ in 0..blocks {
-        noise.fill(&mut l);
-        noise.fill(&mut r);
-        let t = Instant::now();
-        m.process(&mut l, &mut r, None);
-        total += t.elapsed();
-        std::hint::black_box(&l);
-    }
-    (total.as_nanos() as f64 / blocks as f64, h)
+    // mean per-block time without the slowest 1 % (preemption by other processes; models with
+    // periodic heavy blocks, e.g. FFT frames, still count them when they are more frequent)
+    let mut t_ns: Vec<u64> = (0..blocks)
+        .map(|_| {
+            noise.fill(&mut l);
+            noise.fill(&mut r);
+            let t = Instant::now();
+            m.process(&mut l, &mut r, None);
+            let d = t.elapsed().as_nanos() as u64;
+            std::hint::black_box(&l);
+            d
+        })
+        .collect();
+    t_ns.sort_unstable();
+    let keep = &t_ns[..(blocks - blocks / 100).max(1).min(t_ns.len())];
+    (
+        keep.iter().sum::<u64>() as f64 / keep.len().max(1) as f64,
+        h,
+    )
 }
 
 /// Cost survey of every model of every block family (`(family, id, (ns per block, digest))`,
 /// heaviest first within a family).
 #[allow(clippy::type_complexity)]
-pub fn model_survey(block: usize, blocks: usize) -> Vec<(&'static str, &'static str, (f64, u64))> {
+pub fn model_survey(
+    block: usize,
+    blocks: usize,
+    only: Option<&str>,
+) -> Vec<(&'static str, &'static str, (f64, u64))> {
     let fams: [(&'static str, BlockKind); 4] = [
         ("flt", BlockKind::FilterTool),
         ("dyn", BlockKind::Dynamics),
@@ -443,6 +456,7 @@ pub fn model_survey(block: usize, blocks: usize) -> Vec<(&'static str, &'static 
     for (name, kind) in fams {
         let mut v: Vec<_> = catalog(kind)
             .iter()
+            .filter(|id| only.is_none_or(|o| o.split(',').any(|o| o == **id)))
             .map(|&id| (name, id, model_cost(kind, id, block, blocks)))
             .collect();
         v.sort_by(|a, b| b.2 .0.total_cmp(&a.2 .0));
@@ -455,7 +469,7 @@ pub fn model_survey(block: usize, blocks: usize) -> Vec<(&'static str, &'static 
 
 /// Usage of `wing-render --bench`.
 pub const BENCH_USAGE: &str = "usage: wing-render --bench [--scene public,everything] [--block 64,128] \
-[--workers 0-12 | 0,3,7] [--cycles N] [--paced N] [--paced-workers 7,8,10] [--profile] [--models] [--digest N]";
+[--workers 0-12 | 0,3,7] [--cycles N] [--paced N] [--paced-workers 7,8,10] [--profile] [--models [--model ID,..] [--model-blocks N]] [--digest N]";
 
 /// Options of `wing-render --bench`.
 #[derive(Debug, Clone)]
@@ -470,6 +484,10 @@ pub struct BenchArgs {
     pub paced_workers: Vec<usize>,
     pub profile: bool,
     pub models: bool,
+    /// Only these model ids (comma-separated) in the model survey.
+    pub model_filter: Option<String>,
+    /// Timed blocks per model.
+    pub model_blocks: usize,
     /// Cycles of the output digest (0 = none), printed at 0 and 7 workers.
     pub digest: usize,
 }
@@ -497,6 +515,8 @@ pub fn parse_bench_args(mut it: impl Iterator<Item = String>) -> Result<BenchArg
         paced_workers: vec![7, 8, 10],
         profile: false,
         models: false,
+        model_filter: None,
+        model_blocks: 2000,
         digest: 0,
     };
     while let Some(flag) = it.next() {
@@ -505,6 +525,7 @@ pub fn parse_bench_args(mut it: impl Iterator<Item = String>) -> Result<BenchArg
             "--scene" => {
                 a.scenes = val()?
                     .split(',')
+                    .filter(|s| *s != "none")
                     .map(|s| Scene::parse(s).ok_or(format!("unknown scene {s}")))
                     .collect::<Result<_, _>>()?
             }
@@ -515,6 +536,10 @@ pub fn parse_bench_args(mut it: impl Iterator<Item = String>) -> Result<BenchArg
             "--paced-workers" => a.paced_workers = parse_list(&val()?)?,
             "--profile" => a.profile = true,
             "--models" => a.models = true,
+            "--model" => a.model_filter = Some(val()?),
+            "--model-blocks" => {
+                a.model_blocks = val()?.parse().map_err(|e| format!("--model-blocks: {e}"))?
+            }
             "--digest" => a.digest = val()?.parse().map_err(|e| format!("--digest: {e}"))?,
             "-h" | "--help" => return Err(BENCH_USAGE.into()),
             other => return Err(format!("unknown argument {other}\n{BENCH_USAGE}")),
@@ -558,8 +583,10 @@ pub fn bench_main(a: &BenchArgs) -> Result<(), String> {
         std::thread::available_parallelism().map_or(0, |n| n.get())
     );
     if a.models {
-        println!("\n== model cost (ns per stereo 64-sample block, default params) ==");
-        for (fam, id, (ns, digest)) in model_survey(64, 2000) {
+        println!(
+            "\n== model cost (ns per stereo 64-sample block, mean of the fastest 99 %, default params; output digest) =="
+        );
+        for (fam, id, (ns, digest)) in model_survey(64, a.model_blocks, a.model_filter.as_deref()) {
             println!("{fam:<4} {id:<10} {ns:9.0}   {digest:016x}");
         }
     }
