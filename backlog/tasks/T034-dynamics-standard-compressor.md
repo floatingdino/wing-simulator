@@ -2,7 +2,7 @@
 id: T034
 title: Dynamics standard compressor
 stage: S3
-status: review
+status: done
 owner: agent-T034
 depends: [T030, T004]
 branch: task/T034
