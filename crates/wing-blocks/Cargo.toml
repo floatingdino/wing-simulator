@@ -79,3 +79,7 @@ harness = false
 [[bench]]
 name = "fx_enhance"
 harness = false
+
+[[bench]]
+name = "fx_reverb"
+harness = false

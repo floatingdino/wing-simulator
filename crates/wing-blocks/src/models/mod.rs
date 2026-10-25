@@ -13,5 +13,6 @@ pub mod filter_tool;
 pub mod fx_delay;
 pub mod fx_enhance;
 pub mod fx_mod;
+pub mod fx_reverb;
 pub mod gate_vintage;
 pub mod pse;

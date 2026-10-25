@@ -375,6 +375,11 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "SUB-M") => Box::new(crate::models::fx_enhance::SubMonster::new()),
         (BlockKind::Fx, "V-IMG") => Box::new(crate::models::fx_enhance::VelvetImager::new()),
         (BlockKind::Fx, "TAPE") => Box::new(crate::models::fx_enhance::TapeMachine::new()),
+        (BlockKind::Fx, "HALL") => Box::new(crate::models::fx_reverb::hall()),
+        (BlockKind::Fx, "ROOM") => Box::new(crate::models::fx_reverb::room()),
+        (BlockKind::Fx, "CHAMBER") => Box::new(crate::models::fx_reverb::chamber()),
+        (BlockKind::Fx, "CONCERT") => Box::new(crate::models::fx_reverb::concert()),
+        (BlockKind::Fx, "AMBI") => Box::new(crate::models::fx_reverb::ambi()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -535,6 +540,7 @@ mod tests {
             "ST-DL",
             "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
             "ENHANCE", "EXCITER", "P-BASS", "SUB-M", "V-IMG", "TAPE",
+            "HALL", "ROOM", "CHAMBER", "CONCERT", "AMBI",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);
@@ -547,7 +553,7 @@ mod tests {
     #[test]
     fn stub_is_passthrough() {
         // Every dynamics model is implemented now; FX models are still stubs (T05x).
-        let mut m = create_model(BlockKind::Fx, "HALL");
+        let mut m = create_model(BlockKind::Fx, "V-REV");
         m.prepare(48_000.0, 64);
         m.set_param(1, ParamValue::Float(12.0));
         let mut l: Vec<f32> = (0..64).map(|i| (i as f32 * 0.1).sin()).collect();
