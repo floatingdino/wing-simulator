@@ -10,9 +10,9 @@
 use wing_blocks::filter::{FilterBlock, FilterParams, HcSlope, LcSlope};
 use wing_blocks::gate::ScFilter;
 use wing_blocks::input::{DelayMode, InputParams, InputStage, SourceMode};
+use wing_blocks::sidechain::{DynXover, KeyFilter, XoverParams};
 use wing_dsp::gain::db_to_lin;
 use wing_dsp::smooth::{LinearRamp, OnePoleSmoother};
-use wing_dsp::svf::{Svf, SvfMode};
 use wing_model::{Schema, FADER_MIN_DB};
 
 use super::map::{BindError, BlockLayout, ParamMapBuilder, TARGET_BASE};
@@ -194,6 +194,8 @@ pub trait RtModel: Send {
     }
     /// Apply accumulated parameter changes (block rate, at most once per cycle).
     fn commit(&mut self);
+    /// EQ `mix` forwarded as a band-gain scale (see `wing_blocks::model::Model::set_gain_scale`).
+    fn set_gain_scale(&mut self, _mix_pct: f32) {}
     /// Clear signal state (detectors, filters, delay lines) before the model is faded in.
     fn reset(&mut self);
     /// Process a stereo block in place (`l.len() == r.len() <= max_block` given at construction).
@@ -223,7 +225,7 @@ const MAX_MODELS: usize = 64;
 /// (`out = dry * (1 - w) + w * gain * model(dry)`, `w = on * mix`). With `w = gain = 1` settled and no
 /// swap running, the model output passes untouched (bit-exact with the bare block).
 ///
-/// Side-chain (T035): an optional key filter (`gatesc`/`dynsc` `type f q`, TPT SVF) shapes the key the
+/// Side-chain (T035; exact WING biquads since T03C): an optional key filter (`gatesc`/`dynsc` `type f q`) shapes the key the
 /// model detects on: the external key passed to [`ModelSlot::process_keyed`] or, for SELF, a copy of
 /// the input. The filtered key is kept for key-listen ([`ModelSlot::key_signal`]).
 ///
@@ -262,7 +264,11 @@ pub struct ModelSlot {
     key_type: ScFilter,
     key_freq: f32,
     key_q: f32,
-    key_filt: [Svf; 2],
+    key_filt: KeyFilter,
+    /// `dynxo` (T03C): the model's change is routed through the crossover biquad.
+    xo: DynXover,
+    /// EQ slots: `mix` scales the model's band gains instead of blending (WING EQ mix law).
+    mix_in_model: bool,
     key_l: Vec<f32>,
     key_r: Vec<f32>,
     key_len: usize,
@@ -324,7 +330,9 @@ impl ModelSlot {
             key_type: ScFilter::Off,
             key_freq: 1000.0,
             key_q: 0.707,
-            key_filt: [Svf::default(); 2],
+            key_filt: KeyFilter::default(),
+            xo: DynXover::default(),
+            mix_in_model: false,
             key_l: vec![0.0; n],
             key_r: vec![0.0; n],
             key_len: 0,
@@ -341,16 +349,24 @@ impl ModelSlot {
         self.key_type = kind;
         self.key_freq = freq.clamp(20.0, 20_000.0);
         self.key_q = q.clamp(0.44, 10.0);
-        let mode = match kind {
-            ScFilter::Off => return,
-            ScFilter::Lp12 => SvfMode::Lowpass,
-            ScFilter::Hp12 => SvfMode::Highpass,
-            ScFilter::Bp => SvfMode::Bandpass,
-            ScFilter::Notch => SvfMode::Notch,
-        };
-        for f in &mut self.key_filt {
-            f.set(mode, self.fs, self.key_freq as f64, self.key_q as f64, 0.0);
-        }
+        self.key_filt
+            .set(kind.kind(), self.key_freq, self.key_q, self.fs);
+    }
+
+    /// Dynamics crossover `dynxo` (RT-safe, block rate).
+    pub fn set_xover(&mut self, p: &XoverParams) {
+        self.xo.set(p, self.fs);
+    }
+
+    /// Current `dynxo` parameters.
+    pub fn xover(&self) -> &XoverParams {
+        self.xo.params()
+    }
+
+    /// EQ slots: forward `mix` to the models as a band-gain scale (WING's EQ mix law) instead of blending.
+    pub fn set_mix_in_model(&mut self, on: bool) {
+        self.mix_in_model = on;
+        self.wrapper_dirty = true;
     }
 
     /// `(type, f, q)` of the key filter.
@@ -376,9 +392,8 @@ impl ModelSlot {
             self.cur = self.logical;
         }
         self.reset_instance(self.cur);
-        for f in &mut self.key_filt {
-            f.reset();
-        }
+        self.key_filt.reset();
+        self.xo.reset();
         self.idle = self.wet.value() == 0.0;
     }
 
@@ -449,6 +464,9 @@ impl ModelSlot {
         self.logical = k;
         if k != BYPASS {
             self.instances[k as usize].load_defaults();
+            if self.mix_in_model {
+                self.instances[k as usize].set_gain_scale(self.mix_pct);
+            }
             self.dirty |= 1 << k;
         }
         if self.fading {
@@ -505,7 +523,18 @@ impl ModelSlot {
     pub fn commit(&mut self) {
         if self.wrapper_dirty {
             self.wrapper_dirty = false;
-            let w = if self.on { self.mix_pct * 0.01 } else { 0.0 };
+            let w = match (self.on, self.mix_in_model) {
+                (false, _) => 0.0,
+                (true, true) => 1.0,
+                (true, false) => self.mix_pct * 0.01,
+            };
+            if self.mix_in_model {
+                let mix = self.mix_pct;
+                for (k, m) in self.instances.iter_mut().enumerate() {
+                    m.set_gain_scale(mix);
+                    self.dirty |= 1 << k;
+                }
+            }
             if self.idle && w > 0.0 {
                 // waking up: start from a clean state and fade in from dry
                 self.reset_instance(self.cur);
@@ -561,12 +590,12 @@ impl ModelSlot {
             return;
         }
         if self.idle {
-            for f in &mut self.key_filt {
-                f.reset();
-            }
+            self.key_filt.reset();
+            self.xo.reset();
         }
         self.idle = false;
-        let full = !self.fading
+        let full = !self.xo.is_on()
+            && !self.fading
             && !self.wet.is_ramping()
             && self.wet.value() == 1.0
             && !self.makeup.is_ramping()
@@ -591,8 +620,9 @@ impl ModelSlot {
                 }
             }
             if filt {
-                self.key_filt[0].process_block(kl);
-                self.key_filt[1].process_block(kr);
+                self.key_filt.process_block(0, kl);
+                self.key_filt.process_block(1, kr);
+                self.key_filt.flush_denormals();
             }
         }
         self.key_len = if use_key { n } else { 0 };
@@ -621,6 +651,11 @@ impl ModelSlot {
                     self.start_fade(self.logical);
                 }
             }
+        }
+        if self.xo.is_on() {
+            self.xo.apply(0, &self.dry_l[..n], l);
+            self.xo.apply(1, &self.dry_r[..n], r);
+            self.xo.flush_denormals();
         }
         if !full {
             for i in 0..n {

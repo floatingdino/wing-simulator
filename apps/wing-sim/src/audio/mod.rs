@@ -1,6 +1,6 @@
 //! Realtime audio path of the daemon (T026): HAL driver shm ↔ engine ↔ USB outs + host bridges.
 //!
-//! * [`console`]: the processing graph (routing → 40 ch + 8 aux strips → provisional main 1 →
+//! * [`console`]: the processing graph (routing → 40 ch + 8 aux strips → busses, mains, matrices (T036) →
 //!   output patch) bound to the `ParamStore` through the T03A pipeline, and [`Console`], which
 //!   runs one engine block per call.
 //! * [`driver`]: [`AudioService`]: attach/reattach to the driver, the RT driver thread, rate

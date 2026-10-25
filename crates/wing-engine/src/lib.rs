@@ -8,11 +8,15 @@
 //! * [`sched`]: the [`Engine`]: one driver thread (the caller) plus `N` workers that claim nodes
 //!   per level with epoch-tagged atomic counters and meet at spin-then-park level barriers. No
 //!   rayon, locks or allocation on the audio path.
+//! * [`mix`]: faders, pans, sends, busses, mains, matrices and the complete engine graph
+//!   ([`mix::build_mix_graph`]).
 //! * [`routing`]: WING I/O routing (sources, USB/alt inputs, output patching) resolved from the
 //!   parameter store into atomically swapped tables.
 //! * [`params`]: control -> RT parameter pipeline (bounded drain of wing-model's change queue,
 //!   dispatch tables, model-ordering, click-free model swaps via the [`params::strip::RtModel`]
 //!   trait) and RT -> control telemetry.
+//! * [`meters`]: lock-free per-block peak metering (strip taps, gain reduction, sources,
+//!   outputs) for the WING meter transport (T039).
 //! * [`rt`]: macOS time-constraint policy and `os_workgroup` membership.
 //! * [`clock`]: [`LiveClock`] (external callback) and [`OfflineClock`] (free-running).
 //! * [`stats`]: per-cycle duration, load and xrun counters, readable lock-free.
@@ -21,6 +25,8 @@ pub mod channel;
 pub mod clock;
 pub mod dummy;
 pub mod graph;
+pub mod meters;
+pub mod mix;
 pub mod params;
 pub mod routing;
 pub mod rt;
