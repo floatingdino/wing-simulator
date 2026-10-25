@@ -95,6 +95,19 @@ fn mix_latency(s: Strip) -> usize {
     MixStrip::new(s, 48_000.0, BLOCK).latency()
 }
 
+/// Strip latency once an insert whose slot has latency `ins` is engaged. `ins` is always taken from
+/// `FxRack::slot_latency` (the max latency over the models the slot hosts, e.g. T05E oversamplers, the T05Q
+/// LIMITER look-ahead), never hard-coded; the strip's alignment pad absorbs it up to `natural`.
+fn input_latency_ins(ins: usize) -> usize {
+    let mut s = ChannelStrip::channel(48_000.0, BLOCK);
+    s.set_insert_latency(ins)
+}
+
+fn mix_latency_ins(st: Strip, ins: usize) -> usize {
+    let mut s = MixStrip::new(st, 48_000.0, BLOCK);
+    s.set_insert_latency(ins)
+}
+
 fn peak(x: &[f32]) -> f32 {
     x.iter().fold(0.0f32, |a, v| a.max(v.abs()))
 }
@@ -118,9 +131,7 @@ fn channel_insert_runs_slot_with_fxmix() {
         InsertStat::Ok
     );
     assert_eq!(r.fx.owner(2), None);
-    // the slot's constant latency (max over its models, T03E: the VINTAGE/BUS channel strips of T05C carry
-    // 57 / 39 samples) exceeds the strips' alignment pad (gate + dyn slots already fill it)
-    let d = input_latency() + r.fx.slot_latency(1);
+    let d = input_latency_ins(r.fx.slot_latency(1));
     let (mut hl, mut hr) = (Hist::default(), Hist::default());
     for k in 0..40 {
         r.cycle(&[1]);
@@ -176,40 +187,40 @@ fn channel_insert_runs_slot_with_fxmix() {
         }
     }
 
-    // insert off: crossfades to dry over the 5 ms slot ramp (no click); the SEND leg stops. The ramp runs at
-    // the slot output, i.e. on the dry / wet signals delayed by the slot latency; the strip adds `base`.
+    // insert off: crossfades to dry over the 5 ms slot ramp (no click); the SEND leg stops. The ramp runs on the
+    // slot output (wet and dry are both aligned to the slot latency), so it starts at the switch in output time.
     setf(&store, "fx/1/fxmix", 100.0);
-    let (slot_lat, base) = (r.fx.slot_latency(1), input_latency());
-    let (mut hx, mut hw, mut he) = (Hist::default(), Hist::default(), Hist::default());
+    let mut hx = Hist::default();
     for _ in 0..10 {
         let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
         r.cycle(&[1]);
         let (mut wl, mut wr) = (x.clone(), x.clone());
         model.process(&mut wl, &mut wr, None);
+        hl.push(&wl);
         hx.push(&x);
-        hw.push(&wl);
-        he.push(&hw.delayed(slot_lat));
     }
     seti(&store, "ch/1/preins/on", 0);
     let ramp = 240.0f32;
+    // the ramp runs at the slot output: it reaches the strip output after the strip's alignment pad
+    let pad = d - r.fx.slot_latency(1);
     for k in 0..8 {
         let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
         r.cycle(&[1]);
         let (mut wl, mut wr) = (x.clone(), x.clone());
         model.process(&mut wl, &mut wr, None);
+        hl.push(&wl);
         hx.push(&x);
-        hw.push(&wl);
-        let (xd, wd) = (hx.delayed(slot_lat), hw.delayed(slot_lat));
+        let (wd, xd) = (hl.delayed(d), hx.delayed(d));
         let expect: Vec<f32> = (0..BLOCK)
             .map(|i| {
-                let w = (1.0 - (k * BLOCK + i + 1) as f32 / ramp).max(0.0);
+                let n = (k * BLOCK + i + 1).saturating_sub(pad) as f32;
+                let w = (1.0 - n / ramp).max(0.0);
                 xd[i] + w * (wd[i] - xd[i])
             })
             .collect();
-        he.push(&expect);
         assert_close(
             &r.input(0, I::Pfl, Side::L),
-            &he.delayed(base),
+            &expect,
             1e-5,
             "switch-off crossfade",
         );
@@ -249,7 +260,7 @@ fn bus_insert_send_fx_returns_to_main_and_aux() {
     let mut r = rig(&store, MixConfig::default(), 3);
     assert_eq!(r.fx.owner(2), Some((Strip::Bus(1), InsertPos::Pre)));
     let (db, dm, da) = (
-        mix_latency(Strip::Bus(1)) + r.fx.slot_latency(2),
+        mix_latency_ins(Strip::Bus(1), r.fx.slot_latency(2)),
         mix_latency(Strip::Main(1)),
         BLOCK + input_latency(),
     );

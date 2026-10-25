@@ -175,9 +175,8 @@ use a log-shaped mapping, WAVE is constant 1, and WARM is 0.
 - **No static curve exists in WING-Edit** for the 28 vintage, character and dynamic-EQ dyn models (stub respf).
   Their behaviour must come from T04x research. DEQ/DEQ2 dynamic-EQ graphs are drawn by
   `gui_modules::DynEqGraph::setDynDeq*` and were not driven (follow-up).
-- **FX:** no FX model has a respf. FX EQs (SOUL/E88/E84/F110/PULSAR/MACH4 as FX, DEQ3 via `DynEqGraph::set3DEQFx`,
-  SPKMAN via `setSpkPro`) and GEQ/PIA FX were not driven. They probably reuse `eq_parchg_*` through `f_table_all`
-  (0x1050890a0), but this is unverified.
+- **FX:** no FX model has a respf, but every FX model has an `ae::fx_parchg_<model>` that computes the DSP
+  parameter block and posts it to the engine; see §5b (T05Q drove the EQ-type ones).
 - Grids are one-factor-at-a-time for the alternate EQs. Interactions between bands are trivially a product of
   sections for cascaded models, but they are **not** a product for MACH4 (parallel sum). `biquads` let consumers
   evaluate any frequency.
@@ -199,9 +198,34 @@ with `s0 = mix / 100.0f` for usages 0, 1 and 3 (0x1000327b4, 0x100032c48, 0x1000
 alternate model; each parchg multiplies its knob gains by it (STD: PEQ/SHV band gains, not cuts or tilt). Nothing
 blends dry and wet. The engine's `ModelSlot` therefore forwards `mix` (0..125 %) to every `*/eq` model.
 
+## 5b. FX-rack coefficient blocks (T05Q)
+
+`data/reference-curves/fx-eqdyn.json` (about 200 kB), produced by `tools/curve-extract/fx_eqdyn.py`: the fx slot
+model is selected with the app's own `Cpar::set`, parameters are set without update, then the block's
+`update(0xffff)` runs `ae::fx_parchg_<model>(idx, Cpar**, mask, float* a, float* b, uint* c)`; a code hook on the
+dummy engine's post method (`_AEDRV` vtable+8: `(this, dsp_word_addr, n, 1, float* src, flag)`) records every
+posted block. `_AEDRV+0xc` (sample period) is set to 1/fs first, so time constants come out non-degenerate.
+(`update_direct` must not be called after setting values: it re-runs the model's `init`, i.e. its defaults.)
+
+| model | posted block | recorded as |
+|---|---|---|
+| GEQ (`fx_parchg_geq`) | 31 biquads (155 floats, memory order) | 32 cases STD/TRU |
+| SOUL/E88/E84/PULSAR (`fx_parchg_{ssl_g,neve88rs,neve84,pultec_duo}`) | calls the channel `eq_parchg_*` with `s0 = mix/100`, 10 biquads | 12 cases each |
+| F110/MACH4/PIA (`fx_parchg_{isa110,maag4,api560}`) | the same code inlined (MACH4: 6 parallel sections) | 12 cases each |
+| SPKMAN (`fx_parchg_spkpro`) | HP `Cxover48` x4, LP x4, tilt `hqhs12q25`, phase all-pass (stereo-interleaved), delays as int words `2*samples` | 36 cases (linear part) |
+
+Findings: FX EQs are bit-for-bit the channel EQ designs with `mix` as the gain scale (checked by
+`fx_eqdyn::tests`); GEQ = `hqpeq` per band with `Q = 4.32*10^(|g|/40)` (TRU: neighbour-compensated gains,
+`Q = 2.069*10^(|g'|/40)`); C5-CMB crossovers are fixed at `20k/10^(0.6 m)` Hz (LR24/LR48, matched bilinear
+LP/HP); DEQ3 posts the channel `dyneq` band layout three times; LIMITER posts `10^((gin-18)/20)`,
+`10^((gout+18)/20)`, attack/release as `T*1000/ms`. Detector/gain-computer code of the dynamics FX is SHARC
+firmware and not in WING-Edit.
+
 ## 6. Proposed follow-ups
 
 - Drive `DynEqGraph::setDynDeq/setDynDeq2/set3DEQFx/setSpkPro` for the DEQ, DEQ2, DEQ3 and SPKMAN graphs.
+- `fx_eqdyn.py`'s post hook works for **every** `fx_parchg_*` (reverbs, delays, modulation, amps): the other
+  FX tasks can record their models' exact parameter mappings the same way.
 - Hook `CdummyAudioEngine` vtable+8 with T set to 1/fs to capture every model's posted DSP parameter block per
   parchg (time constants for all 32 dyn models, and FX coefficients).
 - ~~Repeat at fs = 44.1 kHz~~ done for filter/EQ (§5a, T04J); sidechain/crossover not yet.

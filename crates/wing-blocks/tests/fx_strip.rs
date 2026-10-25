@@ -255,6 +255,9 @@ fn bus_equals_chain() {
 
 #[test]
 fn master_equals_chain() {
+    for id in ["TAPE", "ENHANCE", "LIMITER"] {
+        assert!(!fx(id).is_stub(), "{id} is a real model");
+    }
     compare(
         StripKind::Master,
         &[
