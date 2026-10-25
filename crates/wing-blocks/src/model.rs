@@ -380,6 +380,10 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "CHAMBER") => Box::new(crate::models::fx_reverb::chamber()),
         (BlockKind::Fx, "CONCERT") => Box::new(crate::models::fx_reverb::concert()),
         (BlockKind::Fx, "AMBI") => Box::new(crate::models::fx_reverb::ambi()),
+        (BlockKind::Fx, "PLATE") => Box::new(crate::models::fx_reverb::plate()),
+        (BlockKind::Fx, "V-PLATE") => Box::new(crate::models::fx_reverb::vplate()),
+        (BlockKind::Fx, "BPLATE") => Box::new(crate::models::fx_reverb::bplate()),
+        (BlockKind::Fx, "SPRING") => Box::new(crate::models::fx_reverb::spring()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -541,6 +545,7 @@ mod tests {
             "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
             "ENHANCE", "EXCITER", "P-BASS", "SUB-M", "V-IMG", "TAPE",
             "HALL", "ROOM", "CHAMBER", "CONCERT", "AMBI",
+            "PLATE", "V-PLATE", "BPLATE", "SPRING",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);

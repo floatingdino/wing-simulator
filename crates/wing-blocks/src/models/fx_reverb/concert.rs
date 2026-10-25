@@ -89,6 +89,7 @@ fn map(r: &[f32; MAX_PARAMS]) -> CoreParams {
         er_level: 0.3,
         tail_level: 1.0,
         echo_to_tail: 0.5,
+        ..CoreParams::default()
     }
 }
 

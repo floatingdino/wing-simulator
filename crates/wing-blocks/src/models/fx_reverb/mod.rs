@@ -13,6 +13,10 @@
 //! | `CHAMBER` | [`chamber`] | 8 | Lexicon-style chamber with echo taps + levels |
 //! | `CONCERT` | [`concert`] | 16 | Lexicon-style concert hall with reflections, depth, chorus |
 //! | `AMBI` | [`ambi`] | 8 | TC/Lexicon-style ambience (ER-dominant, short) |
+//! | `PLATE` | [`plate`] | 16 | Lexicon-style plate with pre-echoes (T05P) |
+//! | `V-PLATE` | [`plate`] | 16 | EMT 140 steel plate (T05P) |
+//! | `BPLATE` | [`plate`] | 16 | "Blue Plate": modern modulated plate, own design (T05P) |
+//! | `SPRING` | [`spring`] | own | dispersive spring tank, 4 springs per side (T05P; not on the FDN core) |
 //!
 //! Common mappings ([I] = inferred, no console measurement yet): `dcy` = mid-band T60 (s); `mult` = LF T60
 //! multiplier below the model's crossover; `damp` = frequency above which the T60 falls to the model's
@@ -26,7 +30,9 @@ pub mod chamber;
 pub mod concert;
 pub mod core;
 pub mod hall;
+pub mod plate;
 pub mod room;
+pub mod spring;
 
 use self::core::{Character, CoreParams, ReverbCore};
 use crate::model::{Model, ParamValue};
@@ -139,6 +145,23 @@ pub fn ambi() -> Reverb<8> {
     Reverb::new(&ambi::SPEC)
 }
 
+/// `PLATE` (16 lines).
+pub fn plate() -> Reverb<16> {
+    Reverb::new(&plate::PLATE_SPEC)
+}
+/// `V-PLATE` (16 lines).
+pub fn vplate() -> Reverb<16> {
+    Reverb::new(&plate::VPLATE_SPEC)
+}
+/// `BPLATE` (16 lines).
+pub fn bplate() -> Reverb<16> {
+    Reverb::new(&plate::BPLATE_SPEC)
+}
+/// `SPRING`.
+pub fn spring() -> spring::Spring {
+    spring::Spring::new()
+}
+
 /// Factory for the FX catalog (`None` for ids that are not reverbs of this family).
 pub fn create(id: &str) -> Option<Box<dyn Model>> {
     Some(match id {
@@ -147,6 +170,10 @@ pub fn create(id: &str) -> Option<Box<dyn Model>> {
         "CHAMBER" => Box::new(chamber()),
         "CONCERT" => Box::new(concert()),
         "AMBI" => Box::new(ambi()),
+        "PLATE" => Box::new(plate()),
+        "V-PLATE" => Box::new(vplate()),
+        "BPLATE" => Box::new(bplate()),
+        "SPRING" => Box::new(spring()),
         _ => return None,
     })
 }
@@ -210,3 +237,5 @@ impl<const N: usize> Model for Reverb<N> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_t05p;
