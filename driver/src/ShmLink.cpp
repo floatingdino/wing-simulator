@@ -1,6 +1,10 @@
 #include "ShmLink.hpp"
 
 #include <mach/mach_time.h>
+#if __has_include(<os/os_sync_wait_on_address.h>)
+#include <os/os_sync_wait_on_address.h>
+#define WINGSIM_HAVE_OS_SYNC 1
+#endif
 
 #include <cerrno>
 #include <cstdlib>
@@ -16,7 +20,20 @@ namespace {
 
 // Frames at the old end of a ring that we refuse to read, so a producer that
 // advances while we copy cannot overwrite what we are reading.
-constexpr int64_t kRingGuardFrames = WING_SHM_RING_FRAMES / 4;
+constexpr int64_t kRingGuardFrames = WING_SHM_RING_GUARD_FRAMES;
+
+// Wake a daemon blocked in os_sync_wait_on_address(&cycle_seq, ..SHARED..).
+// One syscall, only issued while the daemon has announced it is waiting.
+void WakeDaemon(uint32_t* addr)
+{
+#ifdef WINGSIM_HAVE_OS_SYNC
+    if (__builtin_available(macOS 14.4, *)) {
+        os_sync_wake_by_address_all(addr, sizeof(uint32_t), OS_SYNC_WAKE_BY_ADDRESS_SHARED);
+    }
+#else
+    (void)addr;
+#endif
+}
 
 uint64_t NsToTicks(uint64_t ns)
 {
@@ -57,7 +74,14 @@ bool ShmLink::Open(uint32_t sampleRate, const char* name)
             void* p = mmap(nullptr, total, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
             if (p != MAP_FAILED) {
                 auto* h = static_cast<wing_shm_header*>(p);
-                if (wing_shm_validate_header(h, st.st_size) == 0) {
+                int rc = wing_shm_validate_header(h, st.st_size);
+                // magic == 0: a daemon may be creating it right now; give it
+                // up to ~100 ms to publish the header before replacing it.
+                for (int i = 0; i < 100 && rc == -2 && WING_LOAD_ACQ(&h->magic) == 0; i++) {
+                    usleep(1000);
+                    rc = wing_shm_validate_header(h, st.st_size);
+                }
+                if (rc == 0) {
                     close(fd);
                     base_ = p;
                     hdr_ = h;
@@ -91,7 +115,8 @@ bool ShmLink::Open(uint32_t sampleRate, const char* name)
                 hdr_ = static_cast<wing_shm_header*>(p);
                 mappedBytes_ = total;
                 shared_ = true;
-                wing_shm_init_header(hdr_, sampleRate);
+                wing_shm_init_header(hdr_, sampleRate, mach_absolute_time(),
+                    static_cast<uint64_t>(getpid()));
                 WING_STORE_REL(&hdr_->driver_pid, static_cast<uint64_t>(getpid()));
                 BeginEpoch(sampleRate);
                 return true;
@@ -116,7 +141,7 @@ bool ShmLink::Open(uint32_t sampleRate, const char* name)
     hdr_ = static_cast<wing_shm_header*>(p);
     mappedBytes_ = total;
     shared_ = false;
-    wing_shm_init_header(hdr_, sampleRate);
+    wing_shm_init_header(hdr_, sampleRate, mach_absolute_time(), static_cast<uint64_t>(getpid()));
     BeginEpoch(sampleRate);
     return true;
 }
@@ -142,9 +167,24 @@ void ShmLink::BeginEpoch(uint32_t sampleRate)
     // so a daemon that observes the new epoch also observes write_time == 0.
     WING_STORE_RLX(&hdr_->sample_rate, sampleRate);
     WING_STORE_RLX(&hdr_->to_daemon.write_time, int64_t{0});
+    WING_STORE_RLX(&hdr_->input_time, int64_t{0});
     const uint32_t next = WING_LOAD_RLX(&hdr_->io_epoch) + 1u;
     WING_STORE_REL(&hdr_->to_daemon.epoch, next);
     WING_STORE_REL(&hdr_->io_epoch, next);
+    Signal();
+}
+
+void ShmLink::Signal()
+{
+    if (!hdr_ || !shared_) {
+        return;
+    }
+    // seq_cst pairs with the daemon's (daemon_waiting++, re-check cycle_seq):
+    // either it sees the new cycle_seq or we see daemon_waiting != 0.
+    WING_INC_SEQ(&hdr_->cycle_seq);
+    if (WING_LOAD_SEQ(&hdr_->daemon_waiting) != 0) {
+        WakeDaemon(&hdr_->cycle_seq);
+    }
 }
 
 void ShmLink::SetRunning(bool running)
@@ -193,6 +233,7 @@ void ShmLink::WriteOutput(int64_t t,
         WING_STORE_REL(&hdr_->to_daemon.write_time, end);
     }
     WING_STORE_RLX(&hdr_->driver_heartbeat, mach_absolute_time());
+    Signal();
 }
 
 bool ShmLink::CopyFromRing(const float* ring,
@@ -235,6 +276,9 @@ void ShmLink::ReadInput(int64_t t, float* interleaved, uint32_t frames, uint32_t
     }
     const int64_t src = t - static_cast<int64_t>(hdr_->input_delay_frames);
     const uint32_t epoch = WING_LOAD_ACQ(&hdr_->io_epoch);
+    const int64_t end = t + static_cast<int64_t>(frames);
+    WING_STORE_RLX(&hdr_->input_frames, frames);
+    WING_STORE_REL(&hdr_->input_time, end);
 
     if (DaemonAlive()) {
         WING_STORE_RLX(&hdr_->loopback_active, 0u);
@@ -250,6 +294,11 @@ void ShmLink::ReadInput(int64_t t, float* interleaved, uint32_t frames, uint32_t
             }
         }
         WING_STORE_RLX(&hdr_->from_daemon.read_time, src + static_cast<int64_t>(frames));
+        // Record-only (no output IO feeding to_daemon): our reads are the
+        // daemon's clock, so wake it.
+        if (WING_LOAD_RLX(&hdr_->to_daemon.write_time) < end) {
+            Signal();
+        }
     } else {
         WING_STORE_RLX(&hdr_->loopback_active, 1u);
         const float* ring = wing_shm_ring(base_, hdr_->to_daemon_offset);

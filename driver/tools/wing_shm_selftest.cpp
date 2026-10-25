@@ -6,9 +6,14 @@
 //   1. loopback:   no daemon        -> input(T) == output(T - delay)
 //   2. daemon:     wing_shm_client  -> input(T) == gain * output(T - delay)
 //   3. new epoch:  IO restart (sample time back to 0) is followed by the daemon
+//   3b. (--record-only) input IO without output IO: the daemon clocks from
+//       input_time and keeps from_daemon ahead (no underruns, silence in)
 //   4. detach:     client exits     -> back to loopback
 //
-//   wing_shm_selftest --client path/to/wing_shm_client
+//   wing_shm_selftest --client path/to/client [--record-only]
+//
+// The client is the C++ wing_shm_client (ctest) or the Rust wing-shm daemon
+// side (crates/wing-shm/tests/cpp_selftest.rs, which passes --record-only).
 #include "ShmLink.hpp"
 
 #include <cmath>
@@ -114,8 +119,10 @@ void Print(const char* label, const Stats& s)
 int main(int argc, char** argv)
 {
     std::string client;
+    bool recordOnly = false;
     for (int i = 1; i < argc; i++) {
         if (std::string(argv[i]) == "--client" && i + 1 < argc) client = argv[++i];
+        else if (std::string(argv[i]) == "--record-only") recordOnly = true;
     }
     if (client.empty()) {
         std::fprintf(stderr, "usage: wing_shm_selftest --client PATH\n");
@@ -180,6 +187,31 @@ int main(int argc, char** argv)
         Print("after restart", s);
         Check(s.checked > 0 && s.mismatched <= s.checked / 100,
             "daemon follows new epoch after IO restart");
+    }
+
+    // 3b. Record-only: ReadInput without WriteOutput. to_daemon.write_time
+    //     stays at 0; the daemon must clock from input_time.
+    if (recordOnly) {
+        link.BeginEpoch(kRate);
+        usleep(20000);
+        std::vector<float> in(kBuf * kCh);
+        const int kWarmup = 10, kCycles = 300;
+        uint32_t underAtWarmup = 0;
+        long nonZero = 0;
+        for (int k = 0; k < kCycles; k++) {
+            if (k == kWarmup) {
+                underAtWarmup = WING_LOAD_RLX(&link.Header()->from_daemon.underruns);
+            }
+            link.ReadInput((int64_t)k * kBuf, in.data(), kBuf, kCh);
+            for (float v : in) nonZero += v != 0.0f;
+            std::this_thread::sleep_for(std::chrono::microseconds(1000000 * kBuf / kRate));
+        }
+        const uint32_t under =
+            WING_LOAD_RLX(&link.Header()->from_daemon.underruns) - underAtWarmup;
+        std::printf("      record-only: %d cycles, underruns after warmup %u, non-zero %ld\n",
+            kCycles - kWarmup, under, nonZero);
+        Check(under <= (kCycles - kWarmup) / 100 && nonZero == 0,
+            "record-only: daemon clocks from input_time (<=1% underruns, silence)");
     }
 
     // 4. Detach -> loopback.

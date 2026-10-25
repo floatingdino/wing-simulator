@@ -21,8 +21,9 @@ installing needs root. A human has to run the install (see "Install" below).
 
 Files:
 
-- `driver/include/wing_shm.h`: versioned C layout and atomic helpers, shared with the future Rust `wing-shm` crate (T020).
-- `driver/src/ShmLink.{hpp,cpp}`: driver-side ring logic. It has no CoreAudio dependency and is safe to call from the real-time thread: no allocation, no locks, no syscalls except `mach_absolute_time`.
+- `driver/include/wing_shm.h`: versioned C layout and atomic helpers, mirrored by the Rust `wing-shm` crate (T020).
+- `driver/src/ShmLink.{hpp,cpp}`: driver-side ring logic. It has no CoreAudio dependency and is safe to call from the real-time thread: no allocation, no locks, and no syscalls except `mach_absolute_time` and, since T020, an `os_sync` wake while the daemon is blocked (section 4.1).
+- `crates/wing-shm`: the daemon side in Rust (T020): `Segment`, the `DaemonLink` RT API, and the `gain_client` and `wake_latency` examples.
 - `driver/src/Driver.cpp`: the libASPL device, channel names, sample-rate plumbing and IO handler.
 - `driver/tools/wing_shm_client.cpp`: a test "daemon". It attaches to the shm and applies a gain (default −1, which inverts polarity).
 - `driver/tools/wing_shm_selftest.cpp`: drives `ShmLink` with simulated HAL cycles against a real `wing_shm_client` process.
@@ -96,19 +97,31 @@ Remaining risk: the driver-host helper could in principle apply a stricter profi
 install. If shm turns out to be blocked, the fallback is a Mach service through
 `AudioServerPlugIn_MachServices`, which would carry a shm handle or memory entry.
 
-## 3. Shared-memory layout (v1, `wing_shm.h`)
+## 3. Shared-memory layout (v2, `wing_shm.h`; T020)
 
 - A 4096-byte header, followed by two planar float32 rings of `48 × 8192` frames each:
   - `to_daemon`: the DAW playback mix.
   - `from_daemon`: what the DAW records.
 - Each ring is indexed by **absolute device sample time**: `ring[c][t & 8191]`.
 - Each ring has one producer, which publishes `write_time` (the exclusive end) with a release store.
-- Header fields:
-  - `io_epoch`, `sample_rate`, `io_running`, `loopback_active`: written by the driver.
-  - `driver_heartbeat`, `daemon_heartbeat`: `mach_absolute_time` values.
-  - Per-ring `epoch`, `read_time`, `overruns`, `underruns`.
+- The header is split into 128-byte lines (Apple silicon cache line) by writer, so the driver and the
+  daemon never write the same line:
+  - `[0,128)` immutable: magic (release-published last), version, geometry, offsets, `segment_id`
+    (unique per creation), `creator_pid`.
+  - `[128,256)` driver: `io_epoch`, `sample_rate`, `io_running`, `loopback_active`, `cycle_seq` (wake
+    word), `input_frames`, `driver_heartbeat`, `driver_pid`, `input_time`.
+  - `[256,384)` daemon: `daemon_heartbeat`, `daemon_pid`, `daemon_waiting`.
+  - Two 256-byte ring control blocks, each a producer line (`write_time`, `epoch`) and a consumer line
+    (`read_time`, `overruns`, `underruns`).
 - Atomics use `__atomic_*` builtins on plain fields, so the header is valid C, C++ and Rust (`AtomicU64` on the same addresses).
-- `static_assert`s pin the offsets.
+- Static asserts pin the offsets in C/C++ and const asserts mirror them in Rust
+  (`crates/wing-shm/src/layout.rs`). `crates/wing-shm/tests/layout.rs` compiles the header as C11 and
+  C++17 and compares every field offset, size and constant with Rust.
+- Version 1 → 2: the name stays `/wingsim.audio.v1`; the driver unlinks and recreates a segment whose
+  version differs. A daemon refuses an incompatible segment unless `replace_incompatible` is set, and
+  `Segment::is_current()` detects that the name now points at a recreated segment.
+- Creation race: the creator publishes `magic` last; an attacher that sees a zero-sized segment or
+  `magic == 0` waits up to 100 ms (driver and Rust) before treating it as incompatible.
 
 ## 4. Timing contract
 
@@ -124,6 +137,53 @@ install. If shm turns out to be blocked, the fallback is a Mach service through
 - Frames that are missing or late are delivered as zeros, and `from_daemon.underruns` is incremented.
 - The daemon counts as alive if `daemon_heartbeat` is less than 100 ms old. When it exits it sets the
   heartbeat to 0, which switches the driver back to loopback immediately.
+- Record-only clients (input IO without output IO, so `to_daemon.write_time` stays put): every
+  ReadInput publishes `input_time` (end device time) and `input_frames`. When `input_time >
+  to_daemon.write_time` the daemon treats input as silence and produces `from_daemon` up to
+  `input_time − 256 + 2·input_frames`. Verified by the `--record-only` selftest phase (0 underruns).
+  Caveat: if a client starts output mid-epoch, the frames the daemon already produced from silence
+  are not redone (one short glitch at output start).
+- New-epoch resync: the daemon keeps at most 512 frames of what the driver already wrote in the new
+  epoch. If it falls more than 4096 frames behind it skips ahead and increments `to_daemon.overruns`.
+
+### 4.1 Daemon wake-up (T020)
+
+The coreaudiod sandbox denies `sem_open`, and Mach services need launchd registration (section 2).
+Candidates measured with `cargo run --release -p wing-shm --example wake_latency` (2026-10-25,
+M-series, macOS 26.6.2, 1500 cycles of 128 frames at 48 kHz, both threads normal priority, so these
+are upper bounds; latency = daemon wake time − driver signal time):
+
+| Mode | p50 | p90 | p99 | max | CPU |
+|---|---|---|---|---|---|
+| `os_sync_wait_on_address` (SHARED) | 16 µs | 32 µs | 195 µs | 688 µs | 1.8 % |
+| os_sync + 50 µs spin | 18 µs | 28 µs | 118 µs | 3.0 ms | 3.8 % |
+| poll `nanosleep` 100 µs | 82 µs | 123 µs | 128 µs | 139 µs | 3.2 % |
+| poll `nanosleep` 250 µs | 206 µs | 308 µs | 314 µs | 319 µs | 1.3 % |
+| poll `nanosleep` 1 ms | 698 µs | 1.24 ms | 1.25 ms | 1.25 ms | 0.6 % |
+
+Choice: **`os_sync_wait_on_address` / `os_sync_wake_by_address_all` with the SHARED flags** on the
+header's `cycle_seq` (the public API over `__ulock_wait2`, macOS 14.4+). It is not a sandbox operation
+and works on any shm address. Mach semaphores would need a port transfer, which again needs a Mach
+service, so they were not pursued.
+
+- Driver (`ShmLink::Signal`): `cycle_seq += 1` (seq_cst) after WriteOutput, after ReadInput in
+  record-only mode, and on every new epoch. Then `if daemon_waiting != 0` it calls
+  `os_sync_wake_by_address_all`. That is one syscall per cycle on the driver's IO thread, made only
+  while the daemon is blocked. This is the same cost class as `semaphore_signal`, which real-time
+  audio code uses routinely. It is guarded with `__builtin_available(macOS 14.4)` because the
+  deployment target is 13.0.
+- Daemon (`DaemonLink::wait`): `daemon_waiting += 1`, re-check `cycle_seq`, then
+  `os_sync_wait_on_address_with_timeout`, then `daemon_waiting −= 1` (all seq_cst, Dekker-style; the
+  kernel compares the value atomically before sleeping, so no wake is lost). Symbols are resolved via
+  `dlsym`. If they are absent, it polls with `nanosleep(100 µs)`.
+- Safety net: if three consecutive os_sync waits run to their timeout although `cycle_seq` did
+  change (wakes not delivered, for example if the installed driver host turns out to block them), the
+  daemon switches to 100 µs polling by itself. It costs about 3 % CPU and has ≤ 140 µs latency, which
+  still fits the ≥ 5.3 ms window.
+- Cross-process wakes are proven by the selftest: the Rust daemon waits with a 10 ms timeout, so
+  undelivered wakes would show up as underruns. There were 0. **Not yet verified inside the real
+  coreaudiod sandbox** (needs install). After install, check `gain_client` against the real driver: it
+  should run at ~1–2 % CPU, and `--status` should show `from_daemon underruns` not increasing.
 
 ## 5. Install (human, needs sudo)
 
@@ -155,7 +215,8 @@ locally (BlackHole is distributed the same way when built from source).
 log stream --predicate 'subsystem == "com.wingsimulator.driver"' &   # expect "shm /wingsim.audio.v1 attached"
 driver/build/wing_hal_probe --info            # PASS 48x48, rates 44100 48000, names USB In/Out n
 driver/build/wing_hal_probe                   # loopback: PASS gain 1.0 on all 48 channels
-driver/build/wing_shm_client &                # daemon stand-in, gain -1
+driver/build/wing_shm_client &                # daemon stand-in, gain -1 (or the Rust one:
+                                              #   cargo run --release -p wing-shm --example gain_client &)
 driver/build/wing_shm_client --status         # epoch, heartbeats, write_time advancing, underruns
 driver/build/wing_hal_probe --expect-gain -1  # PASS: audio went driver -> shm -> client -> shm -> driver
 kill %2                                       # client detaches -> loopback again
@@ -214,10 +275,9 @@ Recommendations for using this project with the simulator:
 
 ## 8. Known limitations / proposed follow-ups
 
-- The daemon is woken by polling. T020/T022 should use `os_sync_wait_on_address` (shared) or a
-  driver-published zero timestamp to clock the engine, and join the device's `os_workgroup`.
-- If a client only records (no output IO), `to_daemon.write_time` does not advance. The daemon must then
-  clock from `driver_heartbeat` / sample time instead (T020).
+- Done in T020: the daemon is woken through `os_sync_wait_on_address` (section 4.1), and record-only
+  clients are clocked from `input_time` (section 4). Still open for T022: run the daemon loop on a
+  time-constraint thread and join the device's `os_workgroup`.
 - Underrun accounting is per ReadInput call and per client, so it is counted once per input client.
 - No volume/mute controls are exposed, on purpose: the device behaves like a USB interface.
 - The shm is mode 0666. Revisit in T021 (for example, verify the daemon uid via a handshake).

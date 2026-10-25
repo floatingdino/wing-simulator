@@ -4,3 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+description = "Daemon side of the Wing Simulator driver<->daemon shared-memory transport"
+
+[dependencies]
+libc.workspace = true
+
+# Own main(): re-executes itself as the daemon client for the C++ selftest.
+[[test]]
+name = "cpp_selftest"
+harness = false
