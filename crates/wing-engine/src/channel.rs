@@ -384,7 +384,11 @@ fn sc_filter(i: u32) -> ScFilter {
 /// Key level of a dynamics slot after processing: the filtered key when the slot formed one, else the
 /// external key when one is selected, else the level of the slot input (`input_peak`).
 #[inline]
-fn slot_key_peak(slot: &ModelSlot, ext: Option<(&[f32], &[f32])>, input_peak: f32) -> f32 {
+pub(crate) fn slot_key_peak(
+    slot: &ModelSlot,
+    ext: Option<(&[f32], &[f32])>,
+    input_peak: f32,
+) -> f32 {
     let (kl, kr) = slot.key_signal();
     match ext {
         _ if !kl.is_empty() => abs_max(kl).max(abs_max(kr)),

@@ -24,10 +24,10 @@
 //!   ([`SourceAddr::index`]) and [`OUTPUT_COUNT`] output legs ([`OutAddr::index`]).
 //!
 //! Mix graph (T036): [`PortMeters::for_mix`] meters every strip output, bus/main/matrix in/out
-//! and the mix-output source legs from the graph's ports. Hook for T037 (bus/main/matrix
-//! processing): the [`crate::mix::StripHook`] holds a [`StripMeter`] for its strip
-//! (`StripMeter::new(bank, Strip::Bus(n))`) and writes `GATE_*`/`DYN_*` (and, if it wants the
-//! pre-processing sum, `IN_*`) per block. Cells nobody writes read as silence.
+//! and the mix-output source legs from the graph's ports. Bus/main/matrix processing (T037): the
+//! [`crate::mix::MixStrip`] hook holds a [`StripMeter`] for its strip and writes `IN_*` (sum after
+//! trim) and `DYN_KEY`/`DYN_GR` per block (no gate on these strips). Cells nobody writes read as
+//! silence.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::Relaxed};
 use std::sync::Arc;
@@ -269,8 +269,9 @@ impl PortMeters {
     /// * outputs: USB Out 1..48 (the only rendered output group);
     /// * ch/aux OUT = AFL (post mute and fader, before width/pan: a centred mono channel reads
     ///   its fader level, not the pan law's -3 dB) [choice];
-    /// * bus/main/matrix IN = PRE-word = PFL (the sum after the T037 strip hook; until T037 the
-    ///   plain sum), OUT = POST.
+    /// * bus/main/matrix PRE = PFL (after the T037 strip processing), OUT = POST. Their IN word
+    ///   (sum after trim) and dynamics key/GR are written by the [`crate::mix::MixStrip`] hook's
+    ///   [`StripMeter`] (`MixConfig::meters`).
     ///
     /// The input strips' own words (IN, PFL, keys, GR) come from their [`StripMeter`]
     /// ([`crate::mix::MixConfig::meters`]). Allocates.
@@ -310,7 +311,6 @@ impl PortMeters {
             };
             for (side, k) in sides {
                 if let Some(p) = nodes.mix_port(strip, MixSignal::Pfl, side) {
-                    e.push((p, strip_cell(si, word::IN_L + k)));
                     e.push((p, strip_cell(si, word::PRE_L + k)));
                 }
                 if let Some(p) = nodes.mix_port(strip, MixSignal::Post, side) {

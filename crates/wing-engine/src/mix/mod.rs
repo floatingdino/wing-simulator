@@ -9,7 +9,8 @@
 //!          PRE' = PRE through the channel pan                       PRE sends w/ pan link, main `pre`
 //!          AFL                                                      POST sends without pan link
 //!          POST                                                     main sends, GRP, POST w/ pan link
-//! bus/main/mtx: sum of sends -> StripHook (T037) -PFL-> mute*fader, width, pan, busmono -POST->
+//! bus/main/mtx: sum of sends -> StripHook (T037 [`MixStrip`]: trim, Ins1, EQ, dyn, Ins2) -PFL->
+//!          mute*fader, width, pan, busmono -> StripHook::process_post (output delay) -POST->
 //!          PRE  = PFL * mute                                        sends with `pre`
 //!          POST                                                     sends without `pre`, outputs
 //! ```
@@ -50,6 +51,7 @@ pub mod law;
 mod nodes;
 
 mod build;
+pub mod strip;
 
 pub use build::{bind_mix_params, build_mix_graph, bus_tiers, MixError, MixGraph, MixNodes};
 pub use law::PanLaw;
@@ -57,6 +59,7 @@ pub use nodes::{
     InputSignal, InputStripNode, MixSignal, MixStripNode, NoProcessing, SendMode, SendParams,
     SlotKind, SlotSpec, StripHook, INPUT_OUTPUTS, MIX_OUTPUTS,
 };
+pub use strip::{bind_mix_strip, MixStrip, MixStripTelemetry, MixTap};
 
 use crate::routing::Strip;
 
@@ -122,6 +125,11 @@ pub enum BusOrder {
 /// Factory for bus/main/matrix strip processing (T037).
 pub type HookFactory = Box<dyn FnMut(Strip) -> Box<dyn StripHook>>;
 
+/// Hook factory without strip processing (every bus/main/matrix sums straight into its fader).
+pub fn no_processing() -> HookFactory {
+    Box::new(|_| Box::new(NoProcessing) as Box<dyn StripHook>)
+}
+
 /// Mix/graph configuration.
 pub struct MixConfig {
     pub block_size: usize,
@@ -135,7 +143,8 @@ pub struct MixConfig {
     /// Apply the send level to GRP sends (default false, see [`SendMode::Grp`]).
     pub grp_uses_level: bool,
     pub bus_order: BusOrder,
-    /// Strip processing for busses/mains/matrices (default: none).
+    /// Strip processing for busses/mains/matrices (`None` = the standard [`MixStrip`]; see
+    /// [`no_processing`] for the bare T036 mix).
     pub hooks: Option<HookFactory>,
     /// Level bank the input strips meter into (T039; IN/PFL/keys/GR). The mix-level meters
     /// (strip outs, bus/main/matrix in/out, mix-output sources) are port meters:
