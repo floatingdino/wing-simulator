@@ -2,7 +2,7 @@
 id: T05D
 title: Delays: ST-DL, TAP-DL, TAPE-DL, OILCAN, BBD-DL
 stage: S5
-status: review
+status: done
 owner: claude-T05D
 depends: [T050]
 branch: task/T05D
