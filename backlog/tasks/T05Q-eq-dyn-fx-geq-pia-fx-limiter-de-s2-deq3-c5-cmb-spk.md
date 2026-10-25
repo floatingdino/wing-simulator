@@ -2,7 +2,7 @@
 id: T05Q
 title: EQ/dyn FX: GEQ, PIA(FX), LIMITER, DE-S2, DEQ3, C5-CMB, SPKMAN + FX-rack EQ models
 stage: S5
-status: review
+status: done
 owner: agent-T05Q
 depends: [T050, T04H, T04F]
 branch: task/T05Q
