@@ -487,8 +487,9 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "libc",
-<<<<<<< HEAD
  "serde_json",
+ "wing-blocks",
+ "wing-dsp",
  "wing-model",
 ]
 
@@ -500,11 +501,6 @@ dependencies = [
  "serde",
  "toml",
  "wing-engine",
-=======
- "wing-blocks",
- "wing-dsp",
- "wing-model",
->>>>>>> task/T03A
 ]
 
 [[package]]

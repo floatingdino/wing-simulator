@@ -9,6 +9,9 @@ pub mod input;
 
 pub mod dynamics;
 pub mod eq;
+pub mod fidelity;
+pub mod model;
+pub mod std_models;
 
 #[cfg(test)]
 mod tests {
