@@ -14,3 +14,7 @@ criterion.workspace = true
 [[bench]]
 name = "dynamics"
 harness = false
+
+[[bench]]
+name = "input_filter_gate"
+harness = false
