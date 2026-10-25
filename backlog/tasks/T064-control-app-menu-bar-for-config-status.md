@@ -2,7 +2,7 @@
 id: T064
 title: Control app (menu bar) for config/status
 stage: S6
-status: review
+status: done
 owner: claude-T064
 depends: [T023, T025]
 branch: task/T064
