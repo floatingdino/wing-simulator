@@ -52,9 +52,27 @@ Per models.md §3.1.
   - Results: `make check` passes. Bench (`cargo bench -p wing-blocks --bench dyn_eq`, Apple M1, stereo 64-sample
     block, gain moving): DEQ 0.89 µs, DEQ2 1.82 µs, DS902 1.07 µs, DS902 FULL 0.80 µs.
   - Proposed follow-ups:
-    - (T03C) `eq.rs` STD PEQ uses RBJ with Q applied directly, but WING uses Q_rbj = q·min(A, 1/A). This is a
-      large bandwidth error at high gains. The STD shelf should ignore Q and clamp the high-shelf corner at
-      about 50 Hz. Port the WING high-frequency de-cramping to both STD and DEQ.
     - Drive `DynEqGraph::setDynDeq*` in WING-Edit (reference-curves.md §6) to confirm the DEQ shapes, the LP6/HP6
       laws and whether DEQ applies the 50 Hz clamp.
     - FX `DEQ3` (T050/T051) can reuse `DeqBand` directly (three bands in series).
+- 2026-10-25 agent-T048 (coordinator request): merged main into task/T048. The T03C `wingcoef` is now on main
+  and resolves the STD EQ follow-up above. I resolved the `model.rs` and `Cargo.toml` conflicts per the
+  model-family convention: one `create_model` line per model, my own line in the implemented list, and a
+  separate `[[bench]] dyn_eq`.
+  - The DEQ, DEQ2 and DS902 sections now come from `crate::wingcoef`, called as `eq.rs::wing_band` calls it:
+    - BP uses `peq`;
+    - LP12 uses `ls12` at Q 0.707, with f truncated and capped at 8 kHz;
+    - HP12 uses `hqhs12`, with f truncated and floored at 50 Hz;
+    - LP6 and HP6 use `hqls6` and `hqhs6`;
+    - the side-chain uses `bp`, `lp12`, `lp6`, `hp12` and `hp6`;
+    - the DS902 detector uses `hp12` and the DS902 HF mode uses `hqhs12`.
+  - Runtime: the TPT SVF is replaced by an f64 DF1 biquad, so the WING coefficients are used as they are. The
+    8-sample recompute and the per-sample linear coefficient blend are kept. A band within 0.001 dB of 0 dB is
+    the identity section.
+  - Fidelity: against `eq-std-ch.json`, 476 cases (mid PEQ, low SHV, high SHV) over 20 Hz–20 kHz have a max
+    error of 0.00605 dB. The gain ±1 ulp read-back convention follows T03C. The old fit had errors of 1 dB at
+    1 kHz and several dB at 3–10 kHz.
+  - New test `deq_runtime_settles_on_the_wing_section`: the running band's impulse response at full dynamic
+    gain matches the section within 0.01 dB. The stability, zipper and timing tests still pass on DF1.
+  - Results: `make check` passes. Bench: DEQ 1.56 µs, DEQ2 3.25 µs, DS902 0.68 µs, DS902 FULL 1.2 µs (noisy),
+    per stereo 64-sample block.

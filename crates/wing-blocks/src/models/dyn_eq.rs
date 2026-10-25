@@ -5,65 +5,58 @@
 //! # DEQ / DEQ2
 //! One (DEQ) or two series (DEQ2) dynamic bands. Each band:
 //! ```text
-//! key -> side-chain band filter (same shape/f/Q as the band) -> mean-square detector -> level dB
+//! key -> side-chain filter (WING key-filter shapes at f/Q) -> mean-square detector -> level dB
 //!     -> gain computer (thr, ratio, mode above/below, |g| = maximum dynamic gain) -> attack/release (dB)
-//!     -> dynamic gain G -> band realisation at gain G (coefficients interpolated per sample) -> out
+//!     -> dynamic gain -> exact WING band section at that gain (recomputed every 8 samples,
+//!        coefficients blended per sample) -> out
 //! ```
-//! - **Band shapes** (`filt`): `BP` = WING peaking band, `LP12`/`HP12` = WING low/high shelf, `LP6`/`HP6` =
-//!   first-order shelves, `OFF` = wide band (the gain applies to the whole signal, detector unfiltered).
-//!   The 2nd-order laws are the **WING STD EQ band laws recovered from the WING-Edit reference biquads**
-//!   (`data/reference-curves/eq-std-ch.json`, T00A; pole/zero analysis in the T048 Log):
-//!   - peak boost `H = (s^2 + s*G/q + 1)/(s^2 + s/q + 1)`, peak cut = the inverse of the boost of `1/G`
-//!     (`(s^2 + s/q + 1)/(s^2 + s/(q*G) + 1)`), i.e. the band Q always belongs to the polynomial at the
-//!     0 dB side; `G = 10^(g/20)`.
-//!   - shelf boost `H = (s^2 + sqrt(2G) s + G)/(s^2 + sqrt(2) s + 1)` (low; high: `s -> 1/s`), cut = inverse
-//!     of the boost (Zoelzer-style mirrored shelves). The STD shelf **ignores Q** (Butterworth poles, verified
-//!     for q 0.442..10), and so do `LP12`/`HP12` here (assumption: DEQ bands share the STD code).
-//!   - `LP6`/`HP6`: the first-order versions of the same mirrored law (`(s + G)/(s + 1)` and its inverse).
-//!     Assumption (no reference data).
+//! - **Band sections** (`filt`) come from [`crate::wingcoef`], the float32 port of WING-Edit's own coefficient
+//!   code (T03C), called exactly as the STD EQ calls it (`eq.rs::wing_band`); DEQ is assumed to share it:
+//!   - `BP` = [`wingcoef::peq`] (`hqpeq`, Orfanidis peak, Q on the un-boosted side, >1 kHz behaviour incl.);
+//!   - `LP12` = [`wingcoef::ls12`] at Q 0.707 with the STD low-shelf frequency handling (`trunc`, <= 8 kHz);
+//!   - `HP12` = [`wingcoef::hqhs12`] with the STD high-shelf handling (`trunc`, >= 50 Hz);
+//!   - `LP6` / `HP6` = [`wingcoef::hqls6`] / [`wingcoef::hqhs6`] (WING's first-order shelves; their use in
+//!     DEQ is an assumption);
+//!   - `OFF` = wide band (gain on the whole signal, detector unfiltered).
 //!
-//!   All laws are realised with the bilinear transform pre-warped at the band frequency; the moved corner of
-//!   a cut is scaled in the warped (`tan`) domain, as in the reference (so a digital cut is the exact inverse
-//!   of the digital boost). From 50 to 300 Hz this matches WING's coefficients within 0.1 dB; above, WING
-//!   "de-cramps" low-Q peaks (its response stays closer to the analog prototype towards Nyquist: 1 dB at
-//!   1 kHz / Q 0.44 / -15 dB, several dB at 3-10 kHz), which is not reproduced (T03C follow-up, shared with
-//!   the STD EQ, whose `eq.rs` uses RBJ peaks with Q applied directly and does not match either).
+//!   A band within [`IDENTITY_DB`] of 0 dB is bypassed (identity section), like the STD EQ's 0 dB bands.
+//! - **Side-chain filter**: `BP` -> [`wingcoef::bp`] (`hqbp`, unity-peak band-pass at f/Q), `LP12` ->
+//!   [`wingcoef::lp12`] (Q 0.707), `LP6` -> [`wingcoef::lp6`], `HP12` -> [`wingcoef::hp12`], `HP6` ->
+//!   [`wingcoef::hp6`]. Assumption: the band listens where it acts.
 //! - **Gain computer** (assumption; WING-Edit has no static curve for DEQ, reference-curves.md §5):
 //!   `over = level - thr` (mode `high`) or `thr - level` (mode `low`), dynamic gain magnitude
 //!   `min(|g|, max(0, over) * (1 - 1/ratio))` with the sign of `g`. So `g < 0, high` is a band compressor,
 //!   `g > 0, low` an upward band compressor, `g > 0, high` an upward expander, `g < 0, low` a band expander.
 //!   `g = 0` (the default) is transparent.
-//! - **Detector**: stereo-linked (louder channel) mean-square of the band-filtered key, one-pole
+//! - **Detector**: stereo-linked (louder channel) mean-square of the filtered key, one-pole
 //!   [`DEQ_DET_TAU_S`]; the threshold compares to the RMS level (a sine of peak 0 dBFS reads -3 dB).
 //! - **Ballistics**: dB-domain one-poles at the control rate, `tau = att` while the gain moves away from 0 dB
 //!   and `tau = rel` while it returns (WING COMP convention `att_c = 8T*1000/att`, reference-curves.md §4).
-//! - **Control rate**: gain computer, parameter smoothing and coefficient design run every [`CTRL_BLOCK`] = 8
-//!   samples (the WING dynamics control path runs once per 8 samples, reference-curves.md §4); the band
+//! - **Control rate**: gain computer, parameter glides and the WING section design run every [`CTRL_BLOCK`] = 8
+//!   samples (the WING dynamics control path runs once per 8 samples, reference-curves.md §4); the five
 //!   coefficients are interpolated linearly per sample in between.
-//! - **Structure**: topology-preserving trapezoidal SVF (Zavalishin / Simper) for 2nd-order shapes and a TPT
-//!   one-pole for 1st-order shapes, both with output mixing. Every shape at every gain is the same filter with
-//!   different `(g, k, c_hp, c_bp, c_lp)`; for cuts the pole frequency moves (shelves) or the damping grows
-//!   (peak). The TPT SVF stays stable for any time-varying positive `g`, `k` (unlike a direct-form biquad with
-//!   interpolated coefficients), so per-sample gain modulation is click- and zipper-free.
+//! - **Structure**: f64 direct form I. DF1 keeps only input/output history, so a coefficient change never
+//!   reinterprets internal state, and a linear blend of two stable sections stays inside the (convex)
+//!   stability triangle, so per-sample gain modulation is click-, zipper- and blow-up-free (tested).
 //! - **Listen** ([`DynEq::set_listen`], not a schema parameter; WING solos the key via the console): the
-//!   output is the band-filtered side-chain signal of the chosen band.
+//!   output is the filtered side-chain signal of the chosen band.
 //!
 //! # DS902 (dbx 902 de-esser)
 //! ```text
-//! key -> HF detector (12 dB/oct Butterworth HP at f) and wide-band detector -> HF/total energy ratio (dB)
+//! key -> HF detector (WING hp12 at f) and wide-band detector -> HF/total energy ratio (dB)
 //!     -> reduction = clamp((ratio_db - DS902_ONSET_DB) * DS902_SLOPE, 0, range) -> attack/release (dB)
-//!     -> FULL: wide-band gain | HF: dynamic high shelf at f (the WING HP12 law above, cut mirrored)
+//!     -> FULL: wide-band gain | HF: dynamic WING high shelf (hqhs12) at f
 //! ```
-//! Both audio paths are the same TPT SVF with per-sample interpolated coefficients (identity at 0 dB).
 //! The dbx 902 compares the HF content with the total programme level, so de-essing depends on the spectral
 //! balance, not on the absolute level (no threshold control; "range" caps the reduction). Onset, slope and
 //! times are assumptions (dbx publishes none for the detector law).
 //!
 //! Real-time: no allocation; `set_param` stages values, `commit`/`process`/`reset` apply them. Per control
-//! block: two `tan`, a few `log`/`exp`; per sample: one division (SVF `a1` from interpolated `g`, `k`).
+//! block: one or two `wingcoef` designs (a few `exp`/`tan`); per sample: two DF1 biquads per channel.
 
 use crate::model::{Model, ModelTelemetry, ParamValue};
-use core::f64::consts::{PI, SQRT_2};
+use crate::wingcoef::{self, Bq, Ctx};
+use core::f32::consts::FRAC_1_SQRT_2;
 use wing_dsp::smooth::one_pole_coeff;
 use wing_dsp::Complex;
 
@@ -77,8 +70,8 @@ pub const DEQ_RATIOS: [f32; 7] = [1.2, 1.3, 1.5, 2.0, 3.0, 5.0, 10.0];
 pub const DEQ_DET_TAU_S: f64 = 0.005;
 /// Smoothing of user changes to band frequency and Q (log domain), as the STD EQ (`eq.rs`, 20 ms).
 pub const PARAM_TAU_S: f64 = 0.02;
-/// Moved corner frequencies (cut shelves) are clamped below `CORNER_MAX_FRAC * fs`.
-pub const CORNER_MAX_FRAC: f64 = 0.49;
+/// Dynamic gains closer to 0 dB than this use the identity section (as the STD EQ bypasses 0 dB bands).
+pub const IDENTITY_DB: f32 = 1e-3;
 /// DS902: HF/total energy ratio (dB) at which de-essing starts. Assumption: plain speech has < -20 dB of its
 /// energy above 4-5 kHz, sibilants are dominated by it (ratio near 0 dB).
 pub const DS902_ONSET_DB: f64 = -12.0;
@@ -97,7 +90,7 @@ const POWER_FLOOR: f64 = 1e-24;
 const DENORMAL: f64 = 1e-30;
 
 // ---------------------------------------------------------------------------------------------------------
-// Band design (static)
+// Band design (exact WING sections)
 // ---------------------------------------------------------------------------------------------------------
 
 /// Band shape (`filt` enum, schema order).
@@ -105,16 +98,16 @@ const DENORMAL: f64 = 1e-30;
 pub enum DeqFilter {
     /// Wide band: gain applies to the whole signal, detector unfiltered.
     Off,
-    /// Peaking band (WING STD PEQ law).
+    /// Peaking band (`hqpeq`).
     #[default]
     Bp,
-    /// First-order low shelf.
+    /// First-order low shelf (`hqls6`).
     Lp6,
-    /// Second-order low shelf (WING STD SHV law).
+    /// Second-order low shelf (`ls12`, STD low SHV).
     Lp12,
-    /// First-order high shelf.
+    /// First-order high shelf (`hqhs6`).
     Hp6,
-    /// Second-order high shelf (WING STD SHV law).
+    /// Second-order high shelf (`hqhs12`, STD high SHV).
     Hp12,
 }
 
@@ -144,120 +137,46 @@ impl DeqFilter {
             DeqFilter::Hp12 => "HP12",
         }
     }
+}
 
-    /// Realised with the first-order TPT section (else the TPT SVF).
-    pub fn first_order(self) -> bool {
-        matches!(self, DeqFilter::Lp6 | DeqFilter::Hp6)
+/// The WING section of a band of shape `filt` at frequency `f` (Hz), Q `q` and gain `gain_db`, called the
+/// way `eq.rs::wing_band` calls `wingcoef` for the STD EQ.
+pub fn band_section(filt: DeqFilter, c: &Ctx, f: f32, q: f32, gain_db: f32) -> Bq {
+    if filt == DeqFilter::Off {
+        return [wingcoef::db2lin(gain_db), 0.0, 0.0, 0.0, 0.0];
     }
-}
-
-/// One band at one gain: TPT SVF (`g = tan(pi fc/fs)`, damping `k`) or TPT one-pole (`g`; `k`, `c_bp` unused),
-/// output `c_hp * hp + c_bp * bp + c_lp * lp`. Analog prototype (s normalised to `fc`):
-/// `(c_hp s^2 + c_bp s + c_lp) / (s^2 + k s + 1)`, first order `(c_hp s + c_lp) / (s + 1)`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct BandCoefs {
-    pub g: f64,
-    pub k: f64,
-    pub c_hp: f64,
-    pub c_bp: f64,
-    pub c_lp: f64,
-}
-
-impl BandCoefs {
-    #[inline]
-    fn step_to(self, t: BandCoefs, n: f64) -> BandCoefs {
-        BandCoefs {
-            g: (t.g - self.g) / n,
-            k: (t.k - self.k) / n,
-            c_hp: (t.c_hp - self.c_hp) / n,
-            c_bp: (t.c_bp - self.c_bp) / n,
-            c_lp: (t.c_lp - self.c_lp) / n,
-        }
+    if gain_db.abs() < IDENTITY_DB {
+        return wingcoef::IDENTITY;
     }
-
-    #[inline(always)]
-    fn add(&mut self, d: &BandCoefs) {
-        self.g += d.g;
-        self.k += d.k;
-        self.c_hp += d.c_hp;
-        self.c_bp += d.c_bp;
-        self.c_lp += d.c_lp;
-    }
-}
-
-#[inline]
-fn prewarp(fs: f64, fc: f64) -> f64 {
-    (PI * fc.clamp(1e-3, CORNER_MAX_FRAC * fs) / fs).tan()
-}
-
-/// Pre-warped `f` scaled by `factor` in the warped (`tan`) domain, as WING does for its mirrored cuts (the
-/// reference cut shelf has `K_poles / K_zeros = sqrt(1/G)` exactly), so a digital cut is the exact inverse of
-/// the digital boost. Clamped below `tan(pi * CORNER_MAX_FRAC)`.
-#[inline]
-fn warped(fs: f64, f: f64, factor: f64) -> f64 {
-    (prewarp(fs, f) * factor).min((PI * CORNER_MAX_FRAC).tan())
-}
-
-/// Coefficients of a band of shape `filt` at frequency `f` (Hz), Q `q` and gain `gain_db` (see module doc
-/// for the laws). Pure function; a few `tan`/`sqrt`/`powf`.
-pub fn band_coefs(filt: DeqFilter, fs: f64, f: f64, q: f64, gain_db: f64) -> BandCoefs {
-    let gl = 10f64.powf(gain_db / 20.0);
-    let sg = gl.sqrt();
     match filt {
-        // y = G * x = G * (hp + k bp + lp).
-        DeqFilter::Off => BandCoefs {
-            g: prewarp(fs, f),
-            k: SQRT_2,
-            c_hp: gl,
-            c_bp: gl * SQRT_2,
-            c_lp: gl,
-        },
-        // Boost: k = 1/q, y = x + (G-1) k bp. Cut: k = 1/(qG), numerator damping 1/q = kG. Both: c_bp = kG.
-        DeqFilter::Bp => {
-            let k = gl.recip().max(1.0) / q;
-            BandCoefs {
-                g: prewarp(fs, f),
-                k,
-                c_hp: 1.0,
-                c_bp: k * gl,
-                c_lp: 1.0,
-            }
+        DeqFilter::Bp => wingcoef::peq(c, f, gain_db, q),
+        DeqFilter::Lp12 => {
+            let f = if f > 8000.0 { 8000.0 } else { f.trunc() };
+            wingcoef::ls12(c, f, gain_db, FRAC_1_SQRT_2)
         }
-        // Boost: poles at f; cut: inverse, poles at K/sqrt(G) (warped domain). Both: hp + sqrt(2G) bp + G lp.
-        DeqFilter::Lp12 => BandCoefs {
-            g: warped(fs, f, sg.recip().max(1.0)),
-            k: SQRT_2,
-            c_hp: 1.0,
-            c_bp: SQRT_2 * sg,
-            c_lp: gl,
-        },
-        DeqFilter::Hp12 => BandCoefs {
-            g: warped(fs, f, sg.min(1.0)),
-            k: SQRT_2,
-            c_hp: gl,
-            c_bp: SQRT_2 * sg,
-            c_lp: 1.0,
-        },
-        // Boost: (s + G)/(s + 1) at f; cut: pole at K/G (warped domain). Both: hp + G lp.
-        DeqFilter::Lp6 => BandCoefs {
-            g: warped(fs, f, gl.recip().max(1.0)),
-            k: 0.0,
-            c_hp: 1.0,
-            c_bp: 0.0,
-            c_lp: gl,
-        },
-        DeqFilter::Hp6 => BandCoefs {
-            g: warped(fs, f, gl.min(1.0)),
-            k: 0.0,
-            c_hp: gl,
-            c_bp: 0.0,
-            c_lp: 1.0,
-        },
+        DeqFilter::Hp12 => {
+            let f = if f < 50.0 { 50.0 } else { f.trunc() };
+            wingcoef::hqhs12(c, f, gain_db)
+        }
+        DeqFilter::Lp6 => wingcoef::hqls6(c, f, gain_db),
+        DeqFilter::Hp6 => wingcoef::hqhs6(c, f, gain_db),
+        DeqFilter::Off => unreachable!(),
     }
 }
 
-/// Exact frequency response of the digital band (`band_coefs` realised by the TPT structure, i.e. the
-/// bilinear transform of the analog prototype) at `at_hz`.
+/// Side-chain (detector) section of a band shape.
+pub fn sidechain_section(filt: DeqFilter, c: &Ctx, f: f32, q: f32) -> Bq {
+    match filt {
+        DeqFilter::Off => wingcoef::IDENTITY,
+        DeqFilter::Bp => wingcoef::bp(c, f, q),
+        DeqFilter::Lp12 => wingcoef::lp12(c, f, FRAC_1_SQRT_2),
+        DeqFilter::Lp6 => wingcoef::lp6(c, f),
+        DeqFilter::Hp12 => wingcoef::hp12(c, f),
+        DeqFilter::Hp6 => wingcoef::hp6(c, f),
+    }
+}
+
+/// Exact frequency response of a band section at `at_hz`.
 pub fn band_response(
     filt: DeqFilter,
     fs: f64,
@@ -266,54 +185,52 @@ pub fn band_response(
     gain_db: f64,
     at_hz: f64,
 ) -> Complex {
-    let c = band_coefs(filt, fs, f, q, gain_db);
-    let s = Complex::new(0.0, (PI * at_hz / fs).tan() / c.g);
-    let re = |x: f64| Complex::new(x, 0.0);
-    if filt.first_order() {
-        (s * c.c_hp + re(c.c_lp)) / (s + re(1.0))
-    } else {
-        (s * s * c.c_hp + s * c.c_bp + re(c.c_lp)) / (s * s + s * c.k + re(1.0))
-    }
+    let c = Ctx::new(fs);
+    let s = band_section(filt, &c, f as f32, q as f32, gain_db as f32);
+    wingcoef::response(fs, &[s], at_hz)
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// TPT sections
+// Direct form I
 // ---------------------------------------------------------------------------------------------------------
 
-/// Simper SVF tick: returns (hp, bp, lp).
-#[inline(always)]
-fn svf_tick(s: &mut [f64; 2], a1: f64, a2: f64, a3: f64, k: f64, x: f64) -> (f64, f64, f64) {
-    let v3 = x - s[1];
-    let v1 = a1 * s[0] + a2 * v3;
-    let v2 = s[1] + a2 * s[0] + a3 * v3;
-    s[0] = 2.0 * v1 - s[0];
-    s[1] = 2.0 * v2 - s[1];
-    (x - k * v1 - v2, v1, v2)
+type Coef = [f64; 5];
+
+#[inline]
+fn coef(b: &Bq) -> Coef {
+    [
+        b[0] as f64,
+        b[1] as f64,
+        b[2] as f64,
+        b[3] as f64,
+        b[4] as f64,
+    ]
 }
 
+/// DF1 tick; `s` = [x1, x2, y1, y2].
 #[inline(always)]
-fn svf_a(g: f64, k: f64) -> (f64, f64, f64) {
-    let a1 = 1.0 / (1.0 + g * (g + k));
-    let a2 = g * a1;
-    (a1, a2, g * a2)
-}
-
-/// TPT one-pole tick (`gg = g/(1+g)`): returns (hp, lp).
-#[inline(always)]
-fn tpt1_tick(s: &mut f64, gg: f64, x: f64) -> (f64, f64) {
-    let v = (x - *s) * gg;
-    let lp = v + *s;
-    *s = lp + v;
-    (x - lp, lp)
+fn df1(c: &Coef, s: &mut [f64; 4], x: f64) -> f64 {
+    let y = c[0] * x + c[1] * s[0] + c[2] * s[1] - c[3] * s[2] - c[4] * s[3];
+    s[1] = s[0];
+    s[0] = x;
+    s[3] = s[2];
+    s[2] = y;
+    y
 }
 
 #[inline]
-fn flush(s: &mut [[f64; 2]; 2]) {
+fn flush(s: &mut [[f64; 4]; 2]) {
     for v in s.iter_mut().flatten() {
         if v.abs() < DENORMAL {
             *v = 0.0;
         }
     }
+}
+
+#[inline]
+fn step_to(cur: &Coef, target: &Coef) -> Coef {
+    let n = CTRL_BLOCK as f64;
+    core::array::from_fn(|i| (target[i] - cur[i]) / n)
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -367,9 +284,9 @@ impl DeqBandParams {
 /// One dynamic EQ band (stereo-linked), the DSP core of DEQ / DEQ2.
 #[derive(Clone, Debug)]
 pub struct DeqBand {
-    fs: f64,
+    ctx: Ctx,
     p: DeqBandParams,
-    // derived at apply()
+    // derived at set_params()
     att_c: f64,
     rel_c: f64,
     param_c: f64,
@@ -379,17 +296,15 @@ pub struct DeqBand {
     // control state
     lf: f64,
     lq: f64,
-    det: BandCoefs,
-    det_a: (f64, f64, f64),
+    det: Coef,
     env: f64,
     dyn_db: f64,
     phase: usize,
-    shape: DeqFilter,
-    cur: BandCoefs,
-    step: BandCoefs,
+    cur: Coef,
+    step: Coef,
     // per-channel state
-    det_s: [[f64; 2]; 2],
-    st: [[f64; 2]; 2],
+    det_s: [[f64; 4]; 2],
+    st: [[f64; 4]; 2],
     ms: [f64; 2],
     listen: bool,
 }
@@ -397,7 +312,7 @@ pub struct DeqBand {
 impl DeqBand {
     pub fn new(p: DeqBandParams) -> Self {
         let mut b = Self {
-            fs: 48_000.0,
+            ctx: Ctx::new(48_000.0),
             p,
             att_c: 0.0,
             rel_c: 0.0,
@@ -407,16 +322,14 @@ impl DeqBand {
             lq_target: 0.0,
             lf: 0.0,
             lq: 0.0,
-            det: BandCoefs::default(),
-            det_a: (0.0, 0.0, 0.0),
+            det: coef(&wingcoef::IDENTITY),
             env: 0.0,
             dyn_db: 0.0,
             phase: 0,
-            shape: p.filt,
-            cur: BandCoefs::default(),
-            step: BandCoefs::default(),
-            det_s: [[0.0; 2]; 2],
-            st: [[0.0; 2]; 2],
+            cur: coef(&wingcoef::IDENTITY),
+            step: [0.0; 5],
+            det_s: [[0.0; 4]; 2],
+            st: [[0.0; 4]; 2],
             ms: [POWER_FLOOR; 2],
             listen: false,
         };
@@ -425,7 +338,7 @@ impl DeqBand {
     }
 
     pub fn prepare(&mut self, fs: f64) {
-        self.fs = fs;
+        self.ctx = Ctx::new(fs);
         self.set_params(self.p);
         self.reset();
     }
@@ -437,7 +350,8 @@ impl DeqBand {
     /// Apply new parameters (RT-safe: a few `exp`/`log2`). Frequency and Q glide ([`PARAM_TAU_S`]); the
     /// rest takes effect at the next control block.
     pub fn set_params(&mut self, p: DeqBandParams) {
-        let ctrl_fs = self.fs / CTRL_BLOCK as f64;
+        let fs = self.ctx.fs;
+        let ctrl_fs = fs / CTRL_BLOCK as f64;
         self.p = DeqBandParams {
             thr_db: p.thr_db.clamp(-60.0, 0.0),
             ratio: p.ratio.clamp(1.0, 100.0),
@@ -451,12 +365,12 @@ impl DeqBand {
         self.att_c = one_pole_coeff(self.p.att_ms as f64 * 1e-3, ctrl_fs);
         self.rel_c = one_pole_coeff(self.p.rel_ms as f64 * 1e-3, ctrl_fs);
         self.param_c = one_pole_coeff(PARAM_TAU_S, ctrl_fs);
-        self.det_c = one_pole_coeff(DEQ_DET_TAU_S, self.fs);
+        self.det_c = one_pole_coeff(DEQ_DET_TAU_S, fs);
         self.lf_target = (self.p.freq as f64).log2();
         self.lq_target = (self.p.q as f64).log2();
     }
 
-    /// Output the band-filtered side-chain instead of the processed signal.
+    /// Output the filtered side-chain instead of the processed signal.
     pub fn set_listen(&mut self, on: bool) {
         self.listen = on;
     }
@@ -468,14 +382,13 @@ impl DeqBand {
         self.env = 0.0;
         self.dyn_db = 0.0;
         self.phase = 0;
-        self.det_s = [[0.0; 2]; 2];
-        self.st = [[0.0; 2]; 2];
+        self.det_s = [[0.0; 4]; 2];
+        self.st = [[0.0; 4]; 2];
         self.ms = [POWER_FLOOR; 2];
-        self.shape = self.p.filt;
-        let (f, q) = (self.lf.exp2(), self.lq.exp2());
-        self.update_detector(f, q);
-        self.cur = band_coefs(self.shape, self.fs, f, q, 0.0);
-        self.step = BandCoefs::default();
+        let (f, q) = (self.lf.exp2() as f32, self.lq.exp2() as f32);
+        self.det = coef(&sidechain_section(self.p.filt, &self.ctx, f, q));
+        self.cur = coef(&band_section(self.p.filt, &self.ctx, f, q, 0.0));
+        self.step = [0.0; 5];
     }
 
     /// Current dynamic gain (dB, signed).
@@ -483,52 +396,12 @@ impl DeqBand {
         self.dyn_db as f32
     }
 
-    fn update_detector(&mut self, f: f64, q: f64) {
-        let g = prewarp(self.fs, f);
-        self.det = match self.p.filt {
-            DeqFilter::Bp => BandCoefs {
-                g,
-                k: 1.0 / q,
-                c_bp: 1.0 / q,
-                ..Default::default()
-            },
-            DeqFilter::Lp12 | DeqFilter::Lp6 => BandCoefs {
-                g,
-                k: SQRT_2,
-                c_lp: 1.0,
-                ..Default::default()
-            },
-            DeqFilter::Hp12 | DeqFilter::Hp6 => BandCoefs {
-                g,
-                k: SQRT_2,
-                c_hp: 1.0,
-                ..Default::default()
-            },
-            DeqFilter::Off => BandCoefs {
-                g,
-                k: SQRT_2,
-                c_hp: 1.0,
-                c_bp: SQRT_2,
-                c_lp: 1.0,
-            },
-        };
-        self.det_a = if self.p.filt.first_order() {
-            (g / (1.0 + g), 0.0, 0.0)
-        } else {
-            svf_a(g, self.det.k)
-        };
-    }
-
     /// Control-rate update: parameter glides, gain computer, ballistics, coefficient targets.
     fn control(&mut self) {
         self.lf = self.lf_target + self.param_c * (self.lf - self.lf_target);
         self.lq = self.lq_target + self.param_c * (self.lq - self.lq_target);
-        let (f, q) = (self.lf.exp2(), self.lq.exp2());
-        let order_change = self.p.filt.first_order() != self.shape.first_order();
-        if order_change {
-            self.det_s = [[0.0; 2]; 2];
-        }
-        self.update_detector(f, q);
+        let (f, q) = (self.lf.exp2() as f32, self.lq.exp2() as f32);
+        self.det = coef(&sidechain_section(self.p.filt, &self.ctx, f, q));
 
         let level = 10.0 * self.ms[0].max(self.ms[1]).max(POWER_FLOOR).log10();
         let amt = self.p.static_gain_db(level as f32).abs() as f64;
@@ -540,32 +413,16 @@ impl DeqBand {
         self.env = amt + c * (self.env - amt);
         self.dyn_db = self.env.copysign(self.p.gain_db as f64);
 
-        let target = band_coefs(self.p.filt, self.fs, f, q, self.dyn_db);
-        if order_change {
-            // 1st <-> 2nd order: the state means something else; restart from rest at the new shape.
-            self.st = [[0.0; 2]; 2];
-            self.cur = target;
-            self.step = BandCoefs::default();
-        } else {
-            self.step = self.cur.step_to(target, CTRL_BLOCK as f64);
-        }
-        self.shape = self.p.filt;
+        let target = coef(&band_section(
+            self.p.filt,
+            &self.ctx,
+            f,
+            q,
+            self.dyn_db as f32,
+        ));
+        self.step = step_to(&self.cur, &target);
         flush(&mut self.st);
         flush(&mut self.det_s);
-    }
-
-    #[inline(always)]
-    fn detect(&mut self, ch: usize, x: f64) -> f64 {
-        let d = &self.det;
-        let s = &mut self.det_s[ch];
-        if self.shape.first_order() {
-            let (hp, lp) = tpt1_tick(&mut s[0], self.det_a.0, x);
-            d.c_hp * hp + d.c_lp * lp
-        } else {
-            let (a1, a2, a3) = self.det_a;
-            let (hp, bp, lp) = svf_tick(s, a1, a2, a3, d.k, x);
-            d.c_hp * hp + d.c_bp * bp + d.c_lp * lp
-        }
     }
 
     /// Process a stereo block in place; `key` = external side-chain (else the input).
@@ -587,28 +444,17 @@ impl DeqBand {
                 ),
                 None => (xl, xr),
             };
-            let dl = self.detect(0, kl);
-            let dr = self.detect(1, kr);
+            let dl = df1(&self.det, &mut self.det_s[0], kl);
+            let dr = df1(&self.det, &mut self.det_s[1], kr);
             let c = self.det_c;
             self.ms[0] = dl * dl + c * (self.ms[0] - dl * dl);
             self.ms[1] = dr * dr + c * (self.ms[1] - dr * dr);
 
-            self.cur.add(&self.step);
-            let b = self.cur;
-            let (yl, yr) = if self.shape.first_order() {
-                let gg = b.g / (1.0 + b.g);
-                let (hl, ll) = tpt1_tick(&mut self.st[0][0], gg, xl);
-                let (hr, lr) = tpt1_tick(&mut self.st[1][0], gg, xr);
-                (b.c_hp * hl + b.c_lp * ll, b.c_hp * hr + b.c_lp * lr)
-            } else {
-                let (a1, a2, a3) = svf_a(b.g, b.k);
-                let (hl, bl, ll) = svf_tick(&mut self.st[0], a1, a2, a3, b.k, xl);
-                let (hr, br, lr) = svf_tick(&mut self.st[1], a1, a2, a3, b.k, xr);
-                (
-                    b.c_hp * hl + b.c_bp * bl + b.c_lp * ll,
-                    b.c_hp * hr + b.c_bp * br + b.c_lp * lr,
-                )
-            };
+            for (v, d) in self.cur.iter_mut().zip(&self.step) {
+                *v += d;
+            }
+            let yl = df1(&self.cur, &mut self.st[0], xl);
+            let yr = df1(&self.cur, &mut self.st[1], xr);
             if self.listen {
                 left[i] = dl as f32;
                 right[i] = dr as f32;
@@ -885,29 +731,28 @@ const DS902_DEFAULTS: [f32; 3] = [5000.0, 4.0, 1.0];
 
 /// `DS902` BDX902 DEESSER (dbx 902), stereo-linked.
 pub struct DeEsser902 {
-    fs: f64,
+    ctx: Ctx,
     /// Staged `f`, `range`, `mode` (0 = FULL, 1 = HF).
     v: [f32; 3],
     dirty: bool,
     hf_mode: bool,
-    range_db: f64,
     lf_target: f64,
     lf: f64,
     param_c: f64,
     det_c: f64,
     att_c: f64,
     rel_c: f64,
-    /// Detector: Butterworth HP at f.
-    a: (f64, f64, f64),
+    /// Detector: WING `hqhp12` at f.
+    det: Coef,
     phase: usize,
     env: f64,
-    /// Audio: WING HP12 shelf law (HF mode) or wide-band gain (FULL), interpolated per sample.
-    cur: BandCoefs,
-    step: BandCoefs,
+    /// Audio section (WING `hqhs12` cut in HF mode, wide-band gain in FULL), blended per sample.
+    cur: Coef,
+    step: Coef,
     hf_ms: [f64; 2],
     full_ms: [f64; 2],
-    det_s: [[f64; 2]; 2],
-    st: [[f64; 2]; 2],
+    det_s: [[f64; 4]; 2],
+    st: [[f64; 4]; 2],
 }
 
 impl Default for DeEsser902 {
@@ -919,26 +764,25 @@ impl Default for DeEsser902 {
 impl DeEsser902 {
     pub fn new() -> Self {
         let mut m = Self {
-            fs: 48_000.0,
+            ctx: Ctx::new(48_000.0),
             v: DS902_DEFAULTS,
             dirty: true,
             hf_mode: true,
-            range_db: 4.0,
             lf_target: 0.0,
             lf: 0.0,
             param_c: 0.0,
             det_c: 0.0,
             att_c: 0.0,
             rel_c: 0.0,
-            a: (0.0, 0.0, 0.0),
+            det: coef(&wingcoef::IDENTITY),
             phase: 0,
             env: 0.0,
-            cur: BandCoefs::default(),
-            step: BandCoefs::default(),
+            cur: coef(&wingcoef::IDENTITY),
+            step: [0.0; 5],
             hf_ms: [0.0; 2],
             full_ms: [0.0; 2],
-            det_s: [[0.0; 2]; 2],
-            st: [[0.0; 2]; 2],
+            det_s: [[0.0; 4]; 2],
+            st: [[0.0; 4]; 2],
         };
         m.apply();
         m.reset();
@@ -960,19 +804,36 @@ impl DeEsser902 {
             return;
         }
         self.dirty = false;
-        let ctrl_fs = self.fs / CTRL_BLOCK as f64;
+        let fs = self.ctx.fs;
+        let ctrl_fs = fs / CTRL_BLOCK as f64;
         self.lf_target = (self.v[0] as f64).log2();
-        self.range_db = self.v[1] as f64;
         self.hf_mode = self.v[2] != 0.0;
         self.param_c = one_pole_coeff(PARAM_TAU_S, ctrl_fs);
-        self.det_c = one_pole_coeff(DS902_DET_TAU_S, self.fs);
+        self.det_c = one_pole_coeff(DS902_DET_TAU_S, fs);
         self.att_c = one_pole_coeff(DS902_ATTACK_S, ctrl_fs);
         self.rel_c = one_pole_coeff(DS902_RELEASE_S, ctrl_fs);
     }
 
+    /// Audio section at `reduction_db`.
+    fn audio_section(&self, reduction_db: f64) -> Coef {
+        let shape = if self.hf_mode {
+            DeqFilter::Hp12
+        } else {
+            DeqFilter::Off
+        };
+        let f = self.lf.exp2() as f32;
+        coef(&band_section(
+            shape,
+            &self.ctx,
+            f,
+            1.0,
+            -reduction_db as f32,
+        ))
+    }
+
     fn control(&mut self) {
         self.lf = self.lf_target + self.param_c * (self.lf - self.lf_target);
-        self.a = svf_a(prewarp(self.fs, self.lf.exp2()), SQRT_2);
+        self.det = coef(&wingcoef::hp12(&self.ctx, self.lf.exp2() as f32));
         let hf = self.hf_ms[0] + self.hf_ms[1];
         let full = self.full_ms[0] + self.full_ms[1] + DS902_POWER_FLOOR;
         let ratio_db = 10.0 * (hf / full).max(POWER_FLOOR).log10();
@@ -983,20 +844,10 @@ impl DeEsser902 {
             self.rel_c
         };
         self.env = target + c * (self.env - target);
-        let t = self.audio_coefs(self.env);
-        self.step = self.cur.step_to(t, CTRL_BLOCK as f64);
+        let t = self.audio_section(self.env);
+        self.step = step_to(&self.cur, &t);
         flush(&mut self.det_s);
         flush(&mut self.st);
-    }
-
-    /// Audio band at `reduction_db`: HF mode = WING high-shelf law at f (cut mirrored), FULL = wide band.
-    fn audio_coefs(&self, reduction_db: f64) -> BandCoefs {
-        let shape = if self.hf_mode {
-            DeqFilter::Hp12
-        } else {
-            DeqFilter::Off
-        };
-        band_coefs(shape, self.fs, self.lf.exp2(), 1.0, -reduction_db)
     }
 }
 
@@ -1006,7 +857,7 @@ impl Model for DeEsser902 {
     }
 
     fn prepare(&mut self, sample_rate: f64, _max_block: usize) {
-        self.fs = sample_rate;
+        self.ctx = Ctx::new(sample_rate);
         self.dirty = true;
         self.apply();
         self.reset();
@@ -1020,7 +871,6 @@ impl Model for DeEsser902 {
     ) {
         self.apply();
         let n = left.len().min(right.len());
-        let k = SQRT_2;
         for i in 0..n {
             if self.phase == 0 {
                 self.control();
@@ -1029,7 +879,6 @@ impl Model for DeEsser902 {
             if self.phase == CTRL_BLOCK {
                 self.phase = 0;
             }
-            let (a1, a2, a3) = self.a;
             let x = [left[i] as f64, right[i] as f64];
             let key = match sidechain {
                 Some((a, b)) => [
@@ -1038,18 +887,17 @@ impl Model for DeEsser902 {
                 ],
                 None => x,
             };
-            self.cur.add(&self.step);
-            let b = self.cur;
-            let (b1, b2, b3) = svf_a(b.g, b.k);
+            for (v, d) in self.cur.iter_mut().zip(&self.step) {
+                *v += d;
+            }
             let c = self.det_c;
             let mut y = [0.0; 2];
             for ch in 0..2 {
-                let (hp, _, _) = svf_tick(&mut self.det_s[ch], a1, a2, a3, k, key[ch]);
+                let hp = df1(&self.det, &mut self.det_s[ch], key[ch]);
                 let (kp, hpp) = (key[ch] * key[ch], hp * hp);
                 self.full_ms[ch] = kp + c * (self.full_ms[ch] - kp);
                 self.hf_ms[ch] = hpp + c * (self.hf_ms[ch] - hpp);
-                let (h, bp, lp) = svf_tick(&mut self.st[ch], b1, b2, b3, b.k, x[ch]);
-                y[ch] = b.c_hp * h + b.c_bp * bp + b.c_lp * lp;
+                y[ch] = df1(&self.cur, &mut self.st[ch], x[ch]);
             }
             left[i] = y[0] as f32;
             right[i] = y[1] as f32;
@@ -1059,15 +907,15 @@ impl Model for DeEsser902 {
     fn reset(&mut self) {
         self.apply();
         self.lf = self.lf_target;
-        self.a = svf_a(prewarp(self.fs, self.lf.exp2()), SQRT_2);
+        self.det = coef(&wingcoef::hp12(&self.ctx, self.lf.exp2() as f32));
         self.phase = 0;
         self.env = 0.0;
-        self.cur = self.audio_coefs(0.0);
-        self.step = BandCoefs::default();
+        self.cur = self.audio_section(0.0);
+        self.step = [0.0; 5];
         self.hf_ms = [0.0; 2];
         self.full_ms = [0.0; 2];
-        self.det_s = [[0.0; 2]; 2];
-        self.st = [[0.0; 2]; 2];
+        self.det_s = [[0.0; 4]; 2];
+        self.st = [[0.0; 4]; 2];
     }
 
     fn set_param(&mut self, slot: u16, value: ParamValue) {
@@ -1107,6 +955,7 @@ impl Model for DeEsser902 {
 mod tests {
     use super::*;
     use crate::fidelity::{cascade_db, FreqCurves};
+    use core::f64::consts::{PI, SQRT_2};
     use ParamValue::{Enum, Float};
 
     const FS: f64 = 48_000.0;
@@ -1197,36 +1046,37 @@ mod tests {
     }
 
     #[test]
-    fn deq_band_shapes_follow_wing_std_laws() {
-        let freqs: Vec<f64> = (0..60)
-            .map(|i| 20.0 * 1000f64.powf(i as f64 / 60.0))
-            .collect();
+    fn deq_band_shapes_follow_wing_sections() {
         for filt in DeqFilter::ALL {
+            // 0 dB (and anything within IDENTITY_DB) is the identity: a band at rest is transparent.
+            for f in [20.0, 250.0, 1000.0, 12_000.0] {
+                assert_eq!(
+                    band_section(filt, &Ctx::new(FS), f, 2.0, 0.0),
+                    if filt == DeqFilter::Off {
+                        [1.0, 0.0, 0.0, 0.0, 0.0]
+                    } else {
+                        wingcoef::IDENTITY
+                    }
+                );
+            }
             for g in [-15.0, -6.0, 6.0, 15.0] {
-                // Cut is the exact inverse of the boost; 0 dB is the identity.
-                for &f in &freqs {
-                    let b = band_response(filt, FS, 500.0, 2.0, g, f).norm();
-                    let c = band_response(filt, FS, 500.0, 2.0, -g, f).norm();
-                    assert!((b * c - 1.0).abs() < 1e-9, "{filt:?} {g} at {f}");
-                    let z = band_response(filt, FS, 500.0, 2.0, 0.0, f).norm();
-                    assert!((z - 1.0).abs() < 1e-12);
-                }
                 let at = |f: f64| band_response(filt, FS, 1000.0, 2.0, g, f).db();
                 match filt {
                     DeqFilter::Off => {
-                        assert!((at(37.0) - g).abs() < 1e-9 && (at(15e3) - g).abs() < 1e-9)
+                        assert!((at(37.0) - g).abs() < 1e-5 && (at(15e3) - g).abs() < 1e-5)
                     }
                     DeqFilter::Bp => {
-                        assert!((at(1000.0) - g).abs() < 1e-9);
-                        assert!(at(20.0).abs() < 0.1 && at(20e3).abs() < 0.2);
+                        // hqpeq: exact gain at f.
+                        assert!((at(1000.0) - g).abs() < 1e-3, "bp {g}: {}", at(1000.0));
+                        assert!(at(20.0).abs() < 0.1, "bp {g}: {}", at(20.0));
                     }
                     DeqFilter::Lp6 | DeqFilter::Lp12 => {
-                        assert!((at(1e-3) - g).abs() < 1e-6, "{filt:?} dc");
-                        assert!(at(20e3).abs() < 0.5, "{filt:?} hf {}", at(20e3));
+                        assert!((at(5.0) - g).abs() < 0.3, "{filt:?} {g} dc {}", at(5.0));
+                        assert!(at(20e3).abs() < 0.5, "{filt:?} {g} hf {}", at(20e3));
                     }
                     DeqFilter::Hp6 | DeqFilter::Hp12 => {
-                        assert!((at(FS / 2.0 - 1e-3) - g).abs() < 1e-3, "{filt:?} nyq");
-                        assert!(at(20.0).abs() < 0.5, "{filt:?} lf {}", at(20.0));
+                        assert!((at(20e3) - g).abs() < 0.5, "{filt:?} {g} hf {}", at(20e3));
+                        assert!(at(20.0).abs() < 0.3, "{filt:?} {g} lf {}", at(20.0));
                     }
                 }
             }
@@ -1240,9 +1090,8 @@ mod tests {
         assert!((a - b).norm() > 0.1);
     }
 
-    /// The DEQ band laws reproduce the WING-Edit STD EQ biquads (reference curves, T00A) where WING's design
-    /// is the plain bilinear transform (band frequencies <= 300 Hz). Above, WING de-cramps (follow-up T03C);
-    /// the deviation there is bounded but larger.
+    /// DEQ band sections vs the WING-Edit STD EQ biquads (reference curves, T00A) over every reference
+    /// case and frequency: BP = mid PEQ, LP12 = low SHV, HP12 = high SHV.
     #[test]
     fn deq_bands_match_wing_std_reference_biquads() {
         let Some(refc) = FreqCurves::load("eq-std-ch.json").unwrap() else {
@@ -1256,8 +1105,7 @@ mod tests {
             .copied()
             .filter(|&f| f < 20_000.0)
             .collect();
-        let mut checked = 0;
-        let (mut worst_lo, mut worst_hi) = (0.0f64, 0.0f64);
+        let (mut checked, mut worst) = (0, 0.0f64);
         for c in &refc.curves {
             let (filt, key, idx) = match c.case.as_str() {
                 "mid-peq" => (DeqFilter::Bp, "2", 2),
@@ -1270,30 +1118,64 @@ mod tests {
                 continue;
             };
             let bq = [c.biquads[idx]];
-            let dev = eval
-                .iter()
-                .map(|&x| (band_response(filt, fs, f, q, g, x).db() - cascade_db(&bq, fs, x)).abs())
-                .fold(0.0, f64::max);
-            // <= 300 Hz the residual (max 0.23 dB at 30 Hz, Q 10) is the float32 rounding of the reference
-            // coefficients near z = 1; up to 1 kHz the low-Q de-cramping reaches 1 dB (Q 0.44, -15 dB).
-            if f < 50.0 && filt == DeqFilter::Hp12 {
-                // The STD high shelf clamps its corner to ~50 Hz (reference K ratio 1.675 at 29.9 Hz);
-                // whether DEQ shares that clamp is unknown (VERIFY-ON-HARDWARE).
-                continue;
-            } else if f < 50.0 {
-                // 30 Hz: the float32 reference poles sit within 1e-3 of z = 1 (0.4 dB worst case).
-                assert!(dev < 0.5, "{} g {g} f {f} q {q}: {dev:.3} dB", c.case);
-            } else if f <= 310.0 {
-                worst_lo = worst_lo.max(dev);
-                assert!(dev < 0.3, "{} g {g} f {f} q {q}: {dev:.3} dB", c.case);
-            } else if f <= 1100.0 {
-                worst_hi = worst_hi.max(dev);
-                assert!(dev < 1.1, "{} g {g} f {f} q {q}: {dev:.3} dB", c.case);
-            }
+            // Exported params are printed read-backs: as in T03C, accept the gain's +-1 f32 ulp neighbours.
+            let g32 = g as f32;
+            let ulp = |d: i32| f32::from_bits((g32.to_bits() as i32 + d) as u32) as f64;
+            let dev = [ulp(0), ulp(1), ulp(-1)]
+                .into_iter()
+                .map(|gg| {
+                    eval.iter()
+                        .map(|&x| {
+                            (band_response(filt, fs, f, q, gg, x).db() - cascade_db(&bq, fs, x))
+                                .abs()
+                        })
+                        .fold(0.0, f64::max)
+                })
+                .fold(f64::INFINITY, f64::min);
+            assert!(dev < 0.01, "{} g {g} f {f} q {q}: {dev:.4} dB", c.case);
+            worst = worst.max(dev);
             checked += 1;
         }
-        assert!(checked > 50, "only {checked} reference cases");
-        eprintln!("DEQ vs WING STD biquads: <=300 Hz {worst_lo:.3} dB, <=1 kHz {worst_hi:.3} dB");
+        assert!(checked > 200, "only {checked} reference cases");
+        eprintln!("DEQ vs WING STD biquads: {checked} cases, max {worst:.5} dB");
+    }
+
+    /// The running band (detector, ballistics, per-sample blend, DF1) settles exactly on the WING section:
+    /// mode low with thr 0 dB holds the band at full `g` on a quiet signal; its impulse response then matches
+    /// `band_response`.
+    #[test]
+    fn deq_runtime_settles_on_the_wing_section() {
+        for (fi, f, g) in [
+            (1u32, 3000.0, -9.0),
+            (3, 120.0, 6.0),
+            (5, 6000.0, -12.0),
+            (2, 500.0, 9.0),
+        ] {
+            let filt = DeqFilter::from_index(fi as usize);
+            let mut m = deq(&[
+                (1, Float(0.0)),
+                (2, Enum(6)),
+                (3, Float(0.0)),
+                (5, Enum(fi)),
+                (6, Float(g)),
+                (7, Float(f)),
+                (8, Float(0.7)),
+                (9, Enum(0)),
+            ]);
+            let mut x = vec![0.0f32; 4800 + 16_384];
+            x[4800] = 1e-4;
+            let y = run(&mut m, &x, None);
+            assert!((m.band(0).dynamic_gain_db() - g).abs() < 1e-4);
+            let h: Vec<f64> = y[4800..].iter().map(|&v| v as f64 * 1e4).collect();
+            for at in [60.0, 400.0, 1000.0, 2500.0, 6000.0, 15_000.0] {
+                let meas = wing_dsp::dtft(&h, 2.0 * PI * at / FS).db();
+                let want = band_response(filt, FS, f as f64, 0.7, g as f64, at).db();
+                assert!(
+                    (meas - want).abs() < 0.01,
+                    "{filt:?} at {at}: {meas:.4} vs {want:.4}"
+                );
+            }
+        }
     }
 
     /// Gain-envelope trajectory (telemetry per control block) for a 1 kHz key that is on for `on_s`.
