@@ -2,7 +2,7 @@
 id: T050
 title: FX rack framework (16 slots, insert/send, stereo)
 stage: S5
-status: review
+status: done
 owner: claude-T050-T044
 depends: [T036, T03A]
 branch: task/T050-T044

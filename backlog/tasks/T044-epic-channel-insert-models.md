@@ -2,7 +2,7 @@
 id: T044
 title: Insert points hosting FX slots + automix X/Y
 stage: S4
-status: review
+status: done
 owner: claude-T050-T044
 depends: [T050, T035]
 branch: task/T050-T044
