@@ -2,7 +2,7 @@
 id: T04B
 title: VCA compressors: B160, B560, D241C, 9000C, SBUS
 stage: S4
-status: review
+status: done
 owner: agent-T04B
 depends: [T045, T034]
 branch: task/T04B
