@@ -11,3 +11,4 @@ pub mod dyn_special;
 pub mod eq_alt;
 pub mod filter_tool;
 pub mod gate_vintage;
+pub mod pse;

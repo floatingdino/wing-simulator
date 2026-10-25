@@ -63,3 +63,7 @@ harness = false
 [[bench]]
 name = "dyn_special"
 harness = false
+
+[[bench]]
+name = "pse"
+harness = false

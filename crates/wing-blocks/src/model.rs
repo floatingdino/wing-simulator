@@ -31,6 +31,7 @@ use crate::models::dyn_special::{AutoRider, TransientDesigner, WarmthPre};
 use crate::models::eq_alt::{AltEq, AltKind};
 use crate::models::filter_tool::FilterToolModel;
 use crate::models::gate_vintage::{VintageGate, VintageGateKind};
+use crate::models::pse::{PseKind, SourceExtractor};
 use crate::std_models::{DynModel, GateModel, StdEqModel};
 
 /// A parameter value in engineering units (see module doc for the encoding).
@@ -334,6 +335,8 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "WAVE") => Box::new(TransientDesigner::new()),
         (BlockKind::Dynamics, "RIDE") => Box::new(AutoRider::new()),
         (BlockKind::Dynamics, "WARM") => Box::new(WarmthPre::new()),
+        (BlockKind::Dynamics, "PSE") => Box::new(SourceExtractor::new(PseKind::Pse)),
+        (BlockKind::Dynamics, "CMB") => Box::new(SourceExtractor::new(PseKind::Combo)),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
         (BlockKind::Eq(_), "SOUL") => Box::new(AltEq::new(AltKind::Soul)),
         (BlockKind::Eq(_), "E88") => Box::new(AltEq::new(AltKind::E88)),
@@ -477,6 +480,7 @@ mod tests {
             "LA", "L100", "F670", "BLISS",
             "DS902", "DEQ", "DEQ2",
             "ONEC", "3CMP",
+            "PSE", "CMB",
             "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS", "76LA", "NSTR",
             "WAVE", "RIDE", "WARM",
         ];
@@ -503,7 +507,8 @@ mod tests {
 
     #[test]
     fn stub_is_passthrough() {
-        let mut m = create_model(BlockKind::Dynamics, "PSE");
+        // Every dynamics model is implemented now; FX models are still stubs (T05x).
+        let mut m = create_model(BlockKind::Fx, "HALL");
         m.prepare(48_000.0, 64);
         m.set_param(1, ParamValue::Float(12.0));
         let mut l: Vec<f32> = (0..64).map(|i| (i as f32 * 0.1).sin()).collect();
@@ -524,11 +529,11 @@ mod tests {
         assert!(reg.select_id("COMP"));
         assert_eq!(reg.active_id(), "COMP");
         assert!(!reg.active_model().is_stub());
-        assert!(reg.select_id("PSE"));
-        assert!(reg.active_model().is_stub());
+        assert!(reg.select_id("WAVE"));
+        assert!(!reg.active_model().is_stub());
         assert!(!reg.select(99));
         assert!(!reg.select_id("NOPE"));
-        assert_eq!(reg.active_id(), "PSE");
+        assert_eq!(reg.active_id(), "WAVE");
         // 76LA / NSTR: 2x oversampling (39) + control-path alignment (18).
         assert_eq!(reg.max_latency(), 57);
     }
