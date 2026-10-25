@@ -8,3 +8,4 @@ WING-Edit.app/
 *.wav
 !fixtures/audio/*.wav
 /PUBLIC.snap
+__pycache__/

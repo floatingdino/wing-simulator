@@ -230,3 +230,126 @@ Loading a 1.x scene (T011) therefore needs a small migration map. 3.x scenes are
   static curves per model.
 - T011: write a 1.x→3.x migration map for the PUBLIC.snap legacy keys in §5.
 - T012/T013: report firmware ≥ 3.1 in discovery and in the info string.
+
+## 9. libwing cross-check (T009)
+
+Closes the first §8 follow-up. Script: `tools/schema-extract/compare_libwing.py`.
+```
+git clone https://github.com/dannydulai/libwing SCRATCH/libwing        # Apache-2.0; commit 74c2ff6, crate 1.0.5
+python3 -I tools/schema-extract/compare_libwing.py SCRATCH/libwing [--json out.json] [--examples N]
+```
+libwing's data is not vendored. The script parses the binary records in `src/propmap.rs` (the `from_bytes` layout in
+`src/node.rs`; the ids and names also agree with `propmap.jsonl` on all records). It has 60,748 records (5,954 nodes
+and 54,794 params), captured from a **fw 3.0.5 WING Compact** by walking the node-definition protocol.
+
+**Join.** (1) Default tree: unroll the arrays in `wing-tree.json` (43,007 paths) and match on the full path. (2) Variants:
+libwing writes model-dependent params as `/<block>/<MODEL>/<param>` with the id of the *slot* (`/ch/1/dyn/COMP/thr`
+has id `0x104b1346`, which is `wing_hash("ch/1/dyn/1")`). We resolve them against `variants` (`fx/1` covers fx 1–8,
+`fx/9` covers 9–16). (3) Leftovers are joined on id only.
+
+### 9.1 Hashes and paths: full agreement
+
+| | count |
+|---|---|
+| libwing records matched by default path | 30,610 (5,415 nodes + 25,195 params) |
+| ...of which id == our hash | **30,610 (100%)** |
+| libwing records matched by variant path | 27,252 |
+| ...of which id == `wing_hash(block/slot)` | **27,148 (100% of those with a matching wing param; the other 104 have no wing counterpart, see 9.3)** |
+| libwing records matched by neither | 2,886 (9.3) |
+
+**Not a single id disagrees.** This independently confirms the §3 hash on 57,758 records from a different firmware and
+a different program, and it confirms the "variant params are hashed by slot position" rule. A wing-tree path
+is the same string libwing calls `fullname`.
+
+### 9.2 Definitions of the 30,610 path-matched records
+
+| result | records |
+|---|---|
+| identical (type, unit, long name, range/steps, enum values and labels, maxlen) | 27,140 |
+| at least one difference | 3,470 |
+
+Field counts (a record can differ in several fields):
+
+| field | records | what it is |
+|---|---|---|
+| `type` | 0 | Type nibbles agree everywhere on default paths |
+| range (min/max, tolerance 0.2% for float32) | 2,297 | mostly 3.1+ widening: `ch/*/send/*/plink` 0..1 → 0..2 (640+128 records), `io/{in,out}/*/col` 1..12 → 1..18 (colours added), `io/in/LCL/*/$ha` 0..4 → 0..6 |
+| steps | 165 | `ch/*/dynxo/depth` (0..20 dB/41 steps vs -30..+30 dB/121), `ch/*/in/set/$g`, `*/in/set/dly` and `bus/*/dly/dly` (see below) |
+| enum values | 290 | list drift, below |
+| enum labels | 707 | same tokens, different display text: `io/out/*/grp` `CRD` "WLIVE PLAY" (3.0.5) vs "EXP CARD" (3.3.4), the 64 `$ctl/user/*/bu\|bd/mode` lists, and others |
+| long name | 238 | 3.0.5 still names the gate block "GATE" (we say "DYNAMICS"), `cfg/mon/{1,2}/$lvl` "PHONES"/"SPEAKERS" vs "LEVEL", `ch/*/in/set/dly` "DIST" vs "DELAY" |
+| maxlen | 2 | `$ctl/safes/source/USR` 48 vs 56; `$ctl/$stat/cnslock` 19 vs 0 (our extractor read 0) |
+| unit | 1 | `$ctl/cfg/lights/main` libwing "%" vs none |
+
+Enum examples (libwing 3.0.5 vs WING-Edit 3.3.4):
+- `cfg/rta/rtatap`: 3.3.4 adds `FXIN` at the end. `$syscfg/opt_mod`: adds `ACOM`. `ch/*/gatesc/type`: adds `NOTCH`.
+- `ch/*/dynxo/type`: `OFF LO6 LO12 HI6 HI12 PC` → `OFF LO HI S6 S12 PEAK` (completely reworked).
+- `ch/*/gate/mdl` is a 14-entry gate-only list in 3.0.5 (`GATE DUCK E88 9000G D241 DS902 WAVE DEQ WARM 76LA LA RIDE PSE CMB`).
+  3.3.4 has a **32-entry unified list** (adds `DEQ2` and `COMP EXP B160 ... ONEC`, renames `D241` → `D241G`), and
+  `ch/*/dyn/mdl` is the same 32-entry list instead of the 19 compressor models.
+
+Artefacts of our extractor, not firmware drift:
+- **Default-tree values of model-dependent slots reflect the block's state before `update_direct()`.** libwing
+  reports `ch/*/in/set/dly` as the METERS variant (0.1..150 m, 1500 steps, "DIST"), and so does
+  `variants["ch/*/in/set"]["dlymode"]` "M". The default tree has 0.0..150, 1501 steps, "DELAY". For
+  model-slot params the `variants` entry is authoritative.
+- Read-only (`libwing ro`, bit 9 of the wire flags) cannot be derived from our raw flags. Against the `$` name prefix:
+  1,986 ro and `$`, 21,950 neither, 674 ro without `$`, 585 `$` without ro. **Keep a separate `ro` field if the
+  simulator must reject writes; the `$` prefix is not a reliable proxy.** (Open: the extractor does not record the
+  wire flags; the update-mask/bit-26 analysis in §2 doesn't give it either.)
+- libwing unit nibble 7 is named "octaves" in its source. WING-Edit's table says `ft`. No libwing record uses it, so
+  this is unresolved. We only see it on the `FT` delay variant.
+
+### 9.3 Missing in either direction
+
+**In wing-tree but not in libwing: 12,397 paths.**
+- 7,488 are `unused_slot` placeholders (`n/a` model slots, e.g. `ch/1/gate/1`). libwing only lists slots belonging
+  to a model, so these are expected.
+- 4,909 real paths. **4,260 are `$ctl/layer/WEDIT/*`**, a layer that exists only inside WING-Edit (no console
+  counterpart, so libwing never sees it). The remainder is mostly 3.1+ additions: `ch/*/gate/{mix,gain}` (the
+  unified gate/dyn block has MIX and GAIN; 3.0.5's gate block has only `on` and `mdl`), `io/in/SC|USR/*`, `ch/*/dynxo/*`
+  extras, `aux/*/dynsc`, the `$stat/*/{errorsc,errorsu,clrerr}` counters, `cards/wmadi`, `cfg/talk/lvl`.
+- Variant params at template level: 1,694 of 3,927 `(block, model, param)` triples have no libwing record. They are
+  the models that are new or renamed in the 3.x unified dynamics (`D241G`, `DEQ2`, `COMP`... under `gate`, `GATE`...
+  under `dyn`), the three non-default delay modes (libwing only shows the default METERS state), and a few
+  `$ctl/layer/*/MIDI/val`.
+
+**In libwing but not in wing-tree: 2,886 of 60,748 (4.8%), plus 104 variant records.**
+- 2,214 have no counterpart by id or path. About 1,842 are in the six `$ctl/layer/{L,C,R,CMPCT,RCK,EXT}` families
+  (a `$spill/*` strip set of about 78 nodes per layer; libwing lists strip positions up to 76 where we have up to
+  16-40), which `CcontrolEngine` (the GUI layer engine, not run, see §7) most likely creates. The rest are 56
+  `aux/*/dyn/*` records (3.0.5 has a model-less aux dynamics block) and a handful of `$syscfg`, `cfg/talk/$lvl`, `rec`.
+- 672 have an id that is present in our tree under another path: the 3.0.5 model names that were renamed or removed
+  (`ch|bus|mtx|main/*/dyn|gate/D241/*`, `fx/*/DEL/*`) and 28 `$ctl` records.
+- 104 variant records resolve to a (block, model) but have no matching param in our variant (e.g.
+  `ch/*/gate/WARM/mix`, a few `fx/*/GEQ|PIA|MACH4|*MASTER*` slots). They are counted in 9.1's variant row.
+
+Variant definitions (27,252 resolved): 25,844 identical, 1,304 differ (1,156 step counts, 148 types). Examples:
+`flt/AP1/f` 100 vs 101 steps; `gate/WAVE/att` 61 vs 301 steps, `gate/WAVE/sust` 97 vs 481; `gate/GATE/rel` 130 vs 121;
+`gate|dyn/*/hld` is linear 1..200 ms in 3.0.5 and log 1..1000 ms (or 30..30000) in 3.3.4. Those are real 3.x
+parameter-law changes: take the WING-Edit side for a 3.1+ simulator.
+
+### 9.4 Implications
+
+1. **ids are settled.** Hashes, slot-positional hashing and path naming agree 100%, so any client built on libwing
+   propmap-style ids or on `wing_hash` will address the simulator's nodes correctly. libwing's `propmap.jsonl` is
+   usable as a second, independent test vector set for the hash (give or take licence/vendoring; do not copy it in).
+2. **3.0.5 is not 3.1+.** The big structural difference is the unified dynamics (one 32-model list in both `gate` and
+   `dyn`, `gate/{mix,gain}`), reworked `dynxo` and send `plink` ranges and added colours. A libwing-based client
+   (fw 3.0.5 era) will find its `/ch/1/gate/D241/thr`, `/ch/1/dyn/D241/*` and `aux/*/dyn` model paths absent or
+   renamed (but resolvable by id, since ids are slot-positional). The 3.0.5 id-addressed reads (`D7 <hash>`) still
+   work. **Decision for T012/T013:** advertise firmware ≥ 3.1 (WING-Edit gate, §6) and serve the 3.3.4 tree. Offer a
+   config switch only if a 3.0.5 client is a requirement.
+3. **A node-definition server can answer from `wing-tree.json` directly**, with model-dependent slots taken from
+   `variants` (the default tree has pre-update values for slot params).
+4. libwing's per-model *names* (`/ch/1/dyn/COMP/thr`) are a libwing/OSC convenience. The wire only carries slot ids.
+   For the OSC server (2223) the simulator needs the same name-per-model map, available from `variants`.
+5. Real gaps to fix in the schema: (a) `$spill` strips and other CcontrolEngine nodes (≈2.2k records),
+   (b) per-parameter read-only flag, (c) the `$ctl/$stat/cnslock` maxlen, (d) the delay-variant default
+   (use `variants`), (e) unit nibble 7.
+
+### 9.5 Proposed follow-ups
+- Extractor: also run `CcontrolEngine::C2` (or emulate its `$spill` generation) and record the wire flags (including
+  read-only) per param.
+- Optional test fixture: use libwing's id→(type, range) records as a conformance check in CI, loaded from a local
+  checkout path (never committed).

@@ -18,3 +18,4 @@ Implement the native binary protocol server: handshake, node reads/writes, tree 
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 coordinator: from T009 — libwing has 2,886 records absent from our tree (mostly $ctl/layer/*/$spill strips, likely created at runtime by CcontrolEngine); schema lacks a per-param read-only flag and cnslock maxlen is wrong (0 vs 19). Handle these when serving node definitions. Use docs/research/wing-edit-session.md (T00B) for the connect sequence.
