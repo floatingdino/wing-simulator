@@ -2,18 +2,21 @@
 //! Labs EL8 Distressor). Parameters, ranges and defaults: `docs/research/models.md` §3.2 and
 //! `data/schema/wing-tree.json` (slot order `in out att rel ratio` for both).
 //!
-//! Both share one stereo-linked core that runs at **2x oversampling** (`wing_dsp::oversample::Oversampler2x`,
-//! linear-phase half-band, latency 39 samples reported by [`Model::latency`]):
+//! Both share one stereo-linked core. Audio runs at **2x oversampling** (`Oversampler2x`, linear-phase
+//! half-band); the control path (detector, static curve, ballistics) runs at **16x** (768 kHz at 48 kHz) on a
+//! half-band-interpolated key, and its GR is low-pass decimated back to 2x and time-aligned with a matching
+//! audio delay (see [`CTRL_SUB`]). Latency reported by [`Model::latency`]: 39 + 18 = **57 samples**.
 //! ```text
-//! x -> input drive (in knob) -> 2x up -> |peak| key (max of L/R) -> level dB -> static curve (fixed threshold,
-//!      ratio-dependent knee / threshold / ALL-buttons dip) -> dB-domain ballistics (attack, programme-dependent
-//!      or opto release, ALL overshoot) -> gain cell -> colouration (FET / harmonic stage) -> output gain
-//!      -> output-stage soft saturation -> 2x down -> DC blocker -> y
+//! x -> input drive (in knob) -> 2x up ---------------------------------> delay (36 @2x) -> x GR gain cell
+//!                                  \-> 8x up -> |peak| key (max L/R) -> level dB -> static curve (fixed
+//!      threshold, ratio knee / threshold / ALL dip) -> dB ballistics (attack; programme-dependent, opto or
+//!      plain release; ALL overshoot) @16x -> GR low-pass FIR + decimate to 2x --------------------^
+//! gain cell -> colouration (FET 2nd / Distressor LF-weighted 2nd+3rd) -> output gain -> output-stage soft
+//!      saturation -> 2x down -> DC blocker (2 Hz) -> y
 //! ```
-//! Detection, gain and every nonlinearity run at the oversampled rate, so the gain-modulation sidebands of the
-//! fast FET ballistics and the polynomial colouration stages (order <= 3) stay alias-free (tested: aliasing
-//! below -90 dBc for a 10 kHz input). Both units have a *fixed* threshold: the input knob drives the gain cell,
-//! the output knob is make-up.
+//! Every nonlinearity is either a polynomial of order <= 3 at 2x or part of the 16x control path, so a 10 kHz
+//! input stays alias-free (tested < -90 dBc for every ratio at fastest / default / slowest timing). Both units
+//! have a *fixed* threshold: the input knob drives the gain cell, the output knob is make-up.
 //!
 //! **76LA** (1176LN): input/output knobs are dB attenuators (-48..0; the schema defaults -30/-27 give unity
 //! gain below threshold); attack 1..7 and release 1..7 are 1176 knob numbers (7 = fastest) mapped
@@ -37,11 +40,22 @@
 //! `docs/VERIFY-ON-HARDWARE.md`. GR telemetry is dB; [`gr_meter`] reproduces WING-Edit's GR-meter mapping
 //! (`comp_gain_u1176` / `comp_gain_distress`, `data/reference-curves/dyn-models.json`).
 //!
-//! THD profile (2x oversampled, measured by `thd_profile_is_documented_and_bounded`, 1 kHz unless stated):
-//! see the T04D task Log for the measured table.
+//! THD profile (H2..H5, input peak -6 dBFS, measured by `thd_profile_is_documented_and_bounded`):
+//! ```text
+//! setting                      GR      100 Hz   1 kHz    5 kHz
+//! 76LA no GR (in -48)          0.0 dB  0.013 %  0.013 %  0.013 %   class-A output stage only
+//! 76LA 8:1, att/rel 1 (slow)   8.7 dB  0.39 %   0.38 %   0.38 %    FET 2nd harmonic
+//! 76LA 8:1, att/rel 7 (fast)   8.7 dB  1.5 %    0.41 %   0.38 %    + GR ripple at low frequencies
+//! 76LA ALL, att/rel 7          9.1 dB  2.3 %    0.86 %   0.83 %    changed bias, dip, overshoot
+//! NSTR 1.5:1 (defaults)        4.0 dB  0.30 %   0.024 %  0.014 %   LF-weighted 2nd + 3rd
+//! NSTR 4:1                     8.9 dB  0.30 %   0.024 %  0.006 %
+//! NSTR 10:1                   10.7 dB  0.40 %   0.033 %  0.006 %
+//! NSTR NUKE                   11.9 dB  0.47 %   0.039 %  0.006 %
+//! ```
 //!
 //! Real-time: `prepare` allocates the oversamplers and scratch; `process`, `set_param`, `commit`, `reset` are
-//! allocation-free. Per oversampled sample: one fast log, one or two fast exp, a few multiply-adds.
+//! allocation-free. Bench (`benches/comp_fet.rs`, M1, stereo 64-sample block): ~15-18 µs (~1.3 % of a core
+//! per instance at 48 kHz); the 16x control path dominates (one fast log per control sample).
 
 use crate::model::{Model, ModelTelemetry, ParamValue};
 use wing_dsp::gain::{db_to_lin, db_to_lin_fast, lin_to_db_fast};
@@ -74,7 +88,7 @@ pub const KEY_UP_DELAY_CTL: usize = 4 * 39 + 2 * 39 + 13;
 /// Audio-path delay (oversampled samples) matching key interpolator + GR FIR.
 const AUDIO_DELAY_OS: usize = (KEY_UP_DELAY_CTL + (GR_FIR_LEN - 1) / 2) / CTRL_SUB;
 const _: () = assert!(AUDIO_DELAY_OS * CTRL_SUB == KEY_UP_DELAY_CTL + (GR_FIR_LEN - 1) / 2);
-const _: () = assert!(AUDIO_DELAY_OS % OS == 0);
+const _: () = assert!(AUDIO_DELAY_OS.is_multiple_of(OS));
 
 // ---- 76LA (1176LN) ---------------------------------------------------------------------------------------
 
@@ -332,14 +346,16 @@ pub struct FetComp {
     out_db: f32,
     att_s: f64,
     rel_s: f64,
-    att_c: f32,
+    att_c: f64,
     /// Release rate `1 / (tau * fs_os)` (per-sample exponent), scaled per sample in PD / opto modes.
-    rel_rate: f32,
-    rel_c: f32,
+    rel_rate: f64,
+    rel_c: f64,
+    /// Release coefficient in use (see `update_release`).
+    rel_c_dyn: f64,
     rel_mode: ReleaseMode,
-    hist_c: f32,
+    hist_c: f64,
     overshoot: f32,
-    ov_c: f32,
+    ov_c: f64,
     fet_k: f32,
     out_k2: f32,
     out_h: f32,
@@ -351,9 +367,9 @@ pub struct FetComp {
     inv_thr: f32,
     dc_r: f32,
     // state
-    gr: f32,
-    hist: f32,
-    ov_slow: f32,
+    gr: f64,
+    hist: f64,
+    ov_slow: f64,
     gr_now: f32,
     lp: [f32; 2],
     dc_x: [f32; 2],
@@ -403,6 +419,7 @@ impl FetComp {
             att_c: 0.0,
             rel_rate: 0.0,
             rel_c: 0.0,
+            rel_c_dyn: 0.0,
             rel_mode: ReleaseMode::Plain,
             hist_c: 0.0,
             overshoot: 0.0,
@@ -503,6 +520,7 @@ impl FetComp {
     pub fn detector_step(&mut self, key_in: f32) -> f32 {
         self.apply();
         let d = db_to_lin(self.drive_db);
+        self.update_release();
         self.gr_step(key_in.abs() * d)
     }
 
@@ -513,7 +531,9 @@ impl FetComp {
         self.dirty = false;
         let fs_os = self.fs * OS as f64;
         let fs_ctl = fs_os * CTRL_SUB as f64;
-        let c = |tau: f64| one_pole_coeff(tau, fs_ctl) as f32;
+        // Control-rate coefficients and state are f64: at 768 kHz a 3.5 s release moves the GR by ~4e-7 of
+        // itself per sample, below f32 resolution.
+        let c = |tau: f64| one_pole_coeff(tau, fs_ctl);
         let v = self.v;
         let ri = v[4] as usize;
         match self.kind {
@@ -571,13 +591,14 @@ impl FetComp {
         self.inv_thr = 1.0 / self.thr_lin;
         self.out_inv3h2 = 1.0 / (3.0 * self.out_h * self.out_h);
         self.att_c = c(self.att_s);
-        self.rel_rate = (1.0 / (self.rel_s * fs_ctl)) as f32;
+        self.rel_rate = 1.0 / (self.rel_s * fs_ctl);
         self.rel_c = c(self.rel_s);
         self.hist_c = c(PD_HIST_TAU_S);
         self.ov_c = c(LA76_ALL_OVERSHOOT_TAU_S);
         self.lf_a =
             1.0 - one_pole_coeff(1.0 / (2.0 * core::f64::consts::PI * NSTR_LF_HZ), fs_os) as f32;
-        self.dc_r = one_pole_coeff(1.0 / (2.0 * core::f64::consts::PI * DC_BLOCK_HZ), self.fs) as f32;
+        self.dc_r =
+            one_pole_coeff(1.0 / (2.0 * core::f64::consts::PI * DC_BLOCK_HZ), self.fs) as f32;
         self.drive.set_target(db_to_lin(self.drive_db));
         self.out_g.set_target(db_to_lin(self.out_db));
     }
@@ -585,9 +606,31 @@ impl FetComp {
     /// Static curve + ballistics for one control-rate sample of the (driven) key magnitude.
     #[inline(always)]
     fn gr_step(&mut self, key: f32) -> f32 {
-        let target = self.curve.gr(lin_to_db_fast(key.max(KEY_FLOOR)));
+        let target = self.curve.gr(lin_to_db_fast(key.max(KEY_FLOOR))) as f64;
         let g = self.gr;
-        let rel_c = match self.rel_mode {
+        let c = if target > g {
+            self.att_c
+        } else {
+            self.rel_c_dyn
+        };
+        let g = target + c * (g - target);
+        self.gr = g;
+        self.hist = g + self.hist_c * (self.hist - g);
+        let out = if self.overshoot > 0.0 {
+            self.ov_slow = g + self.ov_c * (self.ov_slow - g);
+            g + self.overshoot as f64 * (g - self.ov_slow).max(0.0)
+        } else {
+            g
+        };
+        out as f32
+    }
+
+    /// Release coefficient for the current GR state (programme-dependent / opto modes), refreshed once per
+    /// oversampled sample (the GR moves by far less than its own scale in 8 control samples).
+    #[inline(always)]
+    fn update_release(&mut self) {
+        let g = self.gr;
+        self.rel_c_dyn = match self.rel_mode {
             ReleaseMode::Plain => self.rel_c,
             ReleaseMode::ProgramDependent => {
                 let h = if g > 1e-3 {
@@ -595,25 +638,16 @@ impl FetComp {
                 } else {
                     1.0
                 };
-                let m = PD_MIN + (1.0 - PD_MIN) * h;
-                rate_coeff(self.rel_rate / m)
+                rate_coeff(self.rel_rate / (PD_MIN as f64 + (1.0 - PD_MIN as f64) * h))
             }
             ReleaseMode::Opto => {
-                let e = db_to_lin_fast(-g * (20.0 / core::f32::consts::LN_10) / NSTR_OPTO_GR_DB);
-                let m = NSTR_OPTO_MIN + (NSTR_OPTO_MAX - NSTR_OPTO_MIN) * e;
+                let e = db_to_lin_fast(
+                    -(g as f32) * (20.0 / core::f32::consts::LN_10) / NSTR_OPTO_GR_DB,
+                ) as f64;
+                let m = NSTR_OPTO_MIN as f64 + (NSTR_OPTO_MAX - NSTR_OPTO_MIN) as f64 * e;
                 rate_coeff(self.rel_rate / m)
             }
         };
-        let c = if target > g { self.att_c } else { rel_c };
-        let g = target + c * (g - target);
-        self.gr = g;
-        self.hist = g + self.hist_c * (self.hist - g);
-        if self.overshoot > 0.0 {
-            self.ov_slow = g + self.ov_c * (self.ov_slow - g);
-            g + self.overshoot * (g - self.ov_slow).max(0.0)
-        } else {
-            g
-        }
     }
 
     /// Push one control-rate GR value into the mirrored FIR history.
@@ -679,13 +713,18 @@ impl FetComp {
         for j in 0..n2 {
             // Control path at CTRL_SUB x the audio rate; GR decimated back through the low-pass FIR; audio
             // delayed so it meets the GR it produced (key up-sampler + FIR group delay).
+            self.update_release();
             for s in 0..CTRL_SUB {
                 let c = CTRL_SUB * j + s;
                 let key = self.khi[0][c].abs().max(self.khi[1][c].abs());
                 let g = self.gr_step(key);
                 self.push_gr(g);
             }
-            let gr = dot(&self.gr_taps, &self.gr_hist[self.gr_pos..self.gr_pos + GR_FIR_LEN]).max(0.0);
+            let gr = dot(
+                &self.gr_taps,
+                &self.gr_hist[self.gr_pos..self.gr_pos + GR_FIR_LEN],
+            )
+            .max(0.0);
             let p = self.adly_pos;
             let (xl, xr) = (self.adly[0][p], self.adly[1][p]);
             self.adly[0][p] = self.hi[0][j];
@@ -771,10 +810,11 @@ fn dot(a: &[f32], b: &[f32]) -> f32 {
     s
 }
 
-/// `exp(-rate)` for small per-sample rates (release coefficients), via the fast exp2.
+/// `exp(-rate)` for small per-sample rates (release coefficients), by series.
 #[inline(always)]
-fn rate_coeff(rate: f32) -> f32 {
-    wing_dsp::gain::fast_exp2(-rate * core::f32::consts::LOG2_E)
+fn rate_coeff(rate: f64) -> f64 {
+    // Release rates are <= 1/(25 ms * 768 kHz) = 5e-5: the 4-term series is exact to f64 precision.
+    1.0 - rate * (1.0 - rate * (0.5 - rate * (1.0 / 6.0)))
 }
 
 impl Model for FetComp {
@@ -791,7 +831,10 @@ impl Model for FetComp {
         self.hi = [vec![0.0; OS * mb], vec![0.0; OS * mb]];
         self.kos2 = [Oversampler2x::new(OS * mb), Oversampler2x::new(OS * mb)];
         self.kmid = [vec![0.0; 2 * OS * mb], vec![0.0; 2 * OS * mb]];
-        self.kos = [Oversampler4x::new(2 * OS * mb), Oversampler4x::new(2 * OS * mb)];
+        self.kos = [
+            Oversampler4x::new(2 * OS * mb),
+            Oversampler4x::new(2 * OS * mb),
+        ];
         self.khi = [vec![0.0; OS * CTRL_SUB * mb], vec![0.0; OS * CTRL_SUB * mb]];
         self.sc_os = [Oversampler2x::new(mb), Oversampler2x::new(mb)];
         self.sc_pre = [vec![0.0; mb], vec![0.0; mb]];
@@ -866,17 +909,14 @@ impl Model for FetComp {
             return;
         };
         let (lo, hi, _) = self.kind.slots()[i];
+        // The ratio is a plain (string) enum in the schema: its value is the enum index, delivered as
+        // `Enum(i)`, `Int(i)` or (engine pipeline) `Float(i)`. Out-of-range indices are ignored.
         let x = if i == 4 {
-            match value {
-                ParamValue::Float(f) => nearest_ratio(self.kind, f),
-                other => {
-                    let k = other.as_i32();
-                    if k < 0 || k as usize >= self.kind.num_ratios() {
-                        return;
-                    }
-                    k as f32
-                }
+            let k = value.as_i32();
+            if k < 0 || k as usize >= self.kind.num_ratios() {
+                return;
             }
+            k as f32
         } else {
             value.as_f32().clamp(lo, hi)
         };
@@ -908,25 +948,6 @@ impl Model for FetComp {
     }
 }
 
-/// Ratio index for a numeric ratio value (snapshot strings `"4"`, `"2:1"` parsed upstream to numbers);
-/// values above the largest finite ratio select ALL (76LA) / NUKE (NSTR).
-fn nearest_ratio(kind: FetKind, v: f32) -> f32 {
-    let table: &[f32] = match kind {
-        FetKind::La76 => &LA76_RATIOS,
-        FetKind::Nstr => &NSTR_RATIOS[..7],
-    };
-    if v > 1.5 * table[table.len() - 1] {
-        return table.len() as f32;
-    }
-    let mut best = 0;
-    for (i, &r) in table.iter().enumerate() {
-        if (r - v).abs() < (table[best] - v).abs() {
-            best = i;
-        }
-    }
-    best as f32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -945,22 +966,27 @@ mod tests {
         m
     }
 
-    fn tone(f: f64, amp: f64, n: usize) -> Vec<f32> {
+    fn f(v: f32) -> ParamValue {
+        ParamValue::Float(v)
+    }
+
+    fn tone(freq: f64, amp: f64, n: usize) -> Vec<f32> {
         (0..n)
-            .map(|i| (amp * (2.0 * core::f64::consts::PI * f * i as f64 / FS).sin()) as f32)
+            .map(|i| (amp * (2.0 * core::f64::consts::PI * freq * i as f64 / FS).sin()) as f32)
             .collect()
     }
 
-    /// Single-bin amplitude of `x` at `f`, 4-term Blackman-Harris window (-92 dB sidelobes) so slow
-    /// settling of the release history cannot leak into neighbouring 2 kHz lines.
-    fn amp_at(x: &[f32], f: f64) -> f64 {
+    /// Single-bin amplitude of `x` at `freq`, 4-term Blackman-Harris window (-92 dB sidelobes) so slow
+    /// settling of the release history cannot leak into neighbouring lines.
+    fn amp_at(x: &[f32], freq: f64) -> f64 {
         use core::f64::consts::PI;
         let n = x.len() as f64;
-        let w = 2.0 * PI * f / FS;
+        let w = 2.0 * PI * freq / FS;
         let (mut re, mut im, mut wsum) = (0.0f64, 0.0f64, 0.0f64);
         for (i, &v) in x.iter().enumerate() {
             let t = 2.0 * PI * i as f64 / n;
-            let win = 0.35875 - 0.48829 * t.cos() + 0.14128 * (2.0 * t).cos() - 0.01168 * (3.0 * t).cos();
+            let win =
+                0.35875 - 0.48829 * t.cos() + 0.14128 * (2.0 * t).cos() - 0.01168 * (3.0 * t).cos();
             let p = w * i as f64;
             re += win * v as f64 * p.cos();
             im -= win * v as f64 * p.sin();
@@ -973,50 +999,384 @@ mod tests {
         20.0 * x.abs().max(1e-30).log10()
     }
 
+    /// Steady-state output tail for a tone (settle `settle` samples, analyse `n`).
+    fn tone_tail(m: &mut FetComp, freq: f64, amp: f64, settle: usize, n: usize) -> Vec<f32> {
+        m.reset();
+        let y = run_mono(m, &tone(freq, amp, settle + n));
+        y[settle..].to_vec()
+    }
+
     /// Worst non-harmonic line (dBc) for a 10 kHz input: the steady-state output is periodic in 24 samples
     /// (2 kHz grid); 10k / 20k are the in-band harmonics, every other 2 kHz line is aliasing.
-    fn alias_dbc(m: &mut FetComp, amp: f64) -> (f64, f64) {
-        let n_settle = 48_000;
-        let n = 4800;
-        let x = tone(10_000.0, amp, n_settle + n);
-        let y = run_mono(m, &x);
-        let tail = &y[n_settle..];
-        let fund = amp_at(tail, 10_000.0);
-        let mut worst = f64::NEG_INFINITY;
-        for k in 1..12 {
-            let f = 2000.0 * k as f64;
-            if k == 5 || k == 10 {
-                continue;
-            }
-            worst = worst.max(db(amp_at(tail, f) / fund));
-            if std::env::var("FET_DBG").is_ok() {
-                eprint!(" {}k:{:.0}", 2 * k, db(amp_at(tail, f) / fund));
-            }
-        }
-        (worst, m.telemetry().gain_reduction_db as f64)
+    fn alias_dbc(m: &mut FetComp, amp: f64) -> f64 {
+        let tail = tone_tail(m, 10_000.0, amp, 24_000, 4800);
+        let fund = amp_at(&tail, 10_000.0);
+        (1..12)
+            .filter(|k| *k != 5 && *k != 10)
+            .map(|k| db(amp_at(&tail, 2000.0 * k as f64) / fund))
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    /// THD (H2..H5, %) of a steady tone.
+    fn thd_pct(m: &mut FetComp, freq: f64, amp: f64) -> f64 {
+        // 0.5 s settle, 0.2 s analysed (whole cycles of 100 Hz / 1 kHz / 5 kHz).
+        let tail = tone_tail(m, freq, amp, 24_000, 9600);
+        let h1 = amp_at(&tail, freq);
+        let hs: f64 = (2..=5)
+            .map(|k| amp_at(&tail, freq * k as f64).powi(2))
+            .sum();
+        100.0 * hs.sqrt() / h1
     }
 
     #[test]
-    fn explore_alias() {
+    fn knob_maps_hit_published_endpoints() {
+        let close = |a: f64, b: f64| (a - b).abs() < 1e-9 * b.max(1.0);
+        assert!(close(la76_attack_s(1.0), 800e-6) && close(la76_attack_s(7.0), 20e-6));
+        assert!(close(la76_release_s(1.0), 1.1) && close(la76_release_s(7.0), 0.050));
+        assert!(close(nstr_attack_s(0.0), 50e-6) && close(nstr_attack_s(10.0), 0.030));
+        assert!(close(nstr_release_s(0.0), 0.050) && close(nstr_release_s(10.0), 3.5));
+        // Geometric taper: the middle knob is the geometric mean; monotonic (1176: 7 = fastest).
+        assert!(close(la76_attack_s(4.0), (800e-6f64 * 20e-6).sqrt()));
+        assert!(close(nstr_release_s(5.0), (0.05f64 * 3.5).sqrt()));
+        for k in 1..7 {
+            assert!(la76_attack_s(k as f32 + 1.0) < la76_attack_s(k as f32));
+            assert!(la76_release_s(k as f32 + 1.0) < la76_release_s(k as f32));
+        }
+        // Schema defaults are unity gain below threshold.
         for kind in FetKind::ALL {
-            for ri in [0u32, 3] {
-                for (att, rel) in [(7.0, 7.0), (7.0, 6.0), (7.0, 5.0), (6.0, 7.0), (6.5, 7.0), (0.0, 0.0), (0.0, 1.0)] {
-                    let mut m = model(
-                        kind,
-                        &[
-                            (3, ParamValue::Float(att)),
-                            (4, ParamValue::Float(rel)),
-                            (5, ParamValue::Enum(ri)),
-                        ],
+            let mut m = FetComp::new(kind);
+            assert_eq!(m.drive_db(), 0.0, "{kind:?}");
+            assert_eq!(m.makeup_db(), 0.0, "{kind:?}");
+            assert!((m.static_out_db(-60.0) + 60.0).abs() < 1e-4);
+        }
+        // Knob law: 76LA dB pots, NSTR 4 dB / step (PUBLIC.snap settings).
+        let mut m = model(FetKind::La76, &[(1, f(-16.0)), (2, f(-36.0))]);
+        assert_eq!((m.drive_db(), m.makeup_db()), (14.0, -9.0));
+        let mut m = model(FetKind::Nstr, &[(1, f(9.0)), (2, f(0.7))]);
+        assert!((m.drive_db() - 20.0).abs() < 1e-5 && (m.makeup_db() + 9.2).abs() < 1e-4);
+    }
+
+    #[test]
+    fn static_curves_per_ratio() {
+        let levels = [-50.0, -30.0, -24.0, -20.0, -18.0, -15.0, -10.0, -5.0, 0.0];
+        for kind in FetKind::ALL {
+            for ri in 0..kind.num_ratios() as u32 {
+                let mut m = model(kind, &[(5, ParamValue::Enum(ri))]);
+                m.set_coloration(false);
+                let meas = static_curve(&mut m, FS, &levels, 0.4);
+                for (&l, &o) in levels.iter().zip(&meas) {
+                    let want = m.static_out_db(l as f32) as f64;
+                    assert!(
+                        (o - want).abs() < 0.05,
+                        "{kind:?} r{ri} in {l}: {o:.3} vs {want:.3}"
                     );
-                    let (a, gr) = alias_dbc(&mut m, 0.5);
-                    m.set_coloration(false);
-                    m.reset();
-                    let (a2, _) = alias_dbc(&mut m, 0.5);
-                    eprintln!("{kind:?} r{ri} att{att} rel{rel}: alias {a:.1} dBc (nocol {a2:.1}), gr {gr:.1}");
+                }
+                let c = m.curve();
+                let mut local = |a: f32| (m.static_out_db(a + 1.0) - m.static_out_db(a)) as f64;
+                // Below the knee: unity.
+                assert!((local(c.thr_db - 30.0) - 1.0).abs() < 1e-3);
+                let far = c.thr_db + 30.0;
+                match (kind, ri) {
+                    (FetKind::La76, 4) => {
+                        // ALL buttons: output falls just above threshold, then rises at ~1/20.
+                        assert!(local(c.thr_db + 2.0) < -0.05, "ALL dip");
+                        assert!((local(c.thr_db + 40.0) - 1.0 / 20.0).abs() < 0.01);
+                        assert!(m.static_out_db(c.thr_db + 10.0) < m.static_out_db(c.thr_db) - 0.5);
+                    }
+                    (FetKind::La76, _) => {
+                        let want = 1.0 / LA76_RATIOS[ri as usize] as f64;
+                        assert!((local(far) - want).abs() < 1e-3);
+                    }
+                    (FetKind::Nstr, 7) => assert!(local(far).abs() < 1e-3, "NUKE brick wall"),
+                    (FetKind::Nstr, _) => {
+                        let want = 1.0 / NSTR_RATIOS[ri as usize] as f64;
+                        assert!((local(far) - want).abs() < 1e-3);
+                    }
                 }
             }
         }
-        let _ = static_curve;
+        // 1176: knee softer at 4:1 than 20:1 (GR at threshold larger), threshold rises with ratio.
+        let ca = model(FetKind::La76, &[(5, ParamValue::Enum(0))]).curve();
+        let cb = model(FetKind::La76, &[(5, ParamValue::Enum(3))]).curve();
+        assert!(ca.gr(ca.thr_db) > cb.gr(cb.thr_db) && cb.thr_db > ca.thr_db);
+    }
+
+    #[test]
+    fn tone_through_colouration_follows_static_curve() {
+        // Peak detector: the static curve applies to the tone's peak level. 1 kHz, slow timing.
+        for (kind, att, rel) in [(FetKind::La76, 1.0, 1.0), (FetKind::Nstr, 10.0, 10.0)] {
+            for ri in [0u32, 3] {
+                let mut m = model(kind, &[(3, f(att)), (4, f(rel)), (5, ParamValue::Enum(ri))]);
+                for peak_db in [-30.0, -12.0, -6.0] {
+                    let a = 10f64.powf(peak_db / 20.0);
+                    let tail = tone_tail(&mut m, 1000.0, a, 72_000, 4800);
+                    let out = db(amp_at(&tail, 1000.0));
+                    let want = m.static_out_db(peak_db as f32) as f64;
+                    assert!(
+                        (out - want).abs() < 0.3,
+                        "{kind:?} r{ri} {peak_db}: {out:.2} vs {want:.2}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// GR trajectory at control rate for a key step from silence to `over_db` above threshold (`n_hi`
+    /// samples), then back to silence (`n_lo` samples).
+    fn gr_steps(m: &mut FetComp, over_db: f32, n_hi: usize, n_lo: usize) -> Vec<f32> {
+        m.reset();
+        let c = m.curve();
+        let key = db_to_lin(c.thr_db + over_db - m.drive_db());
+        (0..n_hi + n_lo)
+            .map(|i| m.detector_step(if i < n_hi { key } else { 0.0 }))
+            .collect()
+    }
+
+    /// 10 % -> 90 % time (s) of the monotonic segment `g[a..b]` (sub-sample interpolated).
+    fn t10_90(g: &[f32], a: usize, b: usize, rate: f64) -> f64 {
+        let (g0, g1) = (if a == 0 { 0.0 } else { g[a - 1] }, g[b - 1]);
+        let d = g1 - g0;
+        let at = |frac: f32| {
+            let i = a + g[a..b].iter().position(|&v| (v - g0) / d >= frac).unwrap();
+            let v1 = (g[i] - g0) / d;
+            let v0 = if i == 0 { 0.0 } else { (g[i - 1] - g0) / d };
+            i as f64 - ((v1 - frac) / (v1 - v0).max(1e-9)) as f64
+        };
+        (at(0.9) - at(0.1)) / rate
+    }
+
+    #[test]
+    fn attack_and_release_match_published_times() {
+        let ln9 = 9f64.ln();
+        // 76LA (ratio 20, programme-dependent release; sustained GR -> published release time).
+        for knob in [1.0f32, 4.0, 7.0] {
+            let mut m = model(
+                FetKind::La76,
+                &[(3, f(knob)), (4, f(knob)), (5, ParamValue::Enum(3))],
+            );
+            let rate = m.control_rate();
+            let (ta, tr) = m.times_s();
+            let n_hi = (8.0 * PD_HIST_TAU_S * rate) as usize;
+            let n_lo = (8.0 * tr * rate) as usize;
+            let g = gr_steps(&mut m, 20.0, n_hi, n_lo);
+            let att = t10_90(&g, 0, (20.0 * ta * rate) as usize, rate);
+            let rel = t10_90(&g, n_hi, n_hi + n_lo, rate);
+            let (wa, wr) = (ta * ln9, tr * ln9);
+            assert!(
+                (att - wa).abs() < 0.02 * wa + 1.0 / rate,
+                "76LA att {knob}: {att} vs {wa}"
+            );
+            assert!(
+                (rel - wr).abs() < 0.02 * wr,
+                "76LA rel {knob}: {rel} vs {wr}"
+            );
+        }
+        // NSTR at 4:1 (plain release).
+        for knob in [0.0f32, 5.0, 10.0] {
+            let mut m = model(
+                FetKind::Nstr,
+                &[(3, f(knob)), (4, f(knob)), (5, ParamValue::Enum(3))],
+            );
+            let rate = m.control_rate();
+            let (ta, tr) = m.times_s();
+            let n_hi = (20.0 * ta * rate) as usize;
+            let n_lo = (8.0 * tr * rate) as usize;
+            let g = gr_steps(&mut m, 20.0, n_hi, n_lo);
+            let att = t10_90(&g, 0, n_hi, rate);
+            let rel = t10_90(&g, n_hi, n_hi + n_lo, rate);
+            let (wa, wr) = (ta * ln9, tr * ln9);
+            assert!(
+                (att - wa).abs() < 0.02 * wa + 1.0 / rate,
+                "NSTR att {knob}: {att} vs {wa}"
+            );
+            assert!(
+                (rel - wr).abs() < 0.02 * wr,
+                "NSTR rel {knob}: {rel} vs {wr}"
+            );
+        }
+    }
+
+    #[test]
+    fn programme_dependent_opto_and_all_overshoot() {
+        let ln9 = 9f64.ln();
+        // 1176: a short transient releases faster than sustained compression (down to PD_MIN x).
+        let mut m = model(
+            FetKind::La76,
+            &[(3, f(7.0)), (4, f(4.0)), (5, ParamValue::Enum(3))],
+        );
+        let rate = m.control_rate();
+        let tr = m.times_s().1;
+        let n_lo = (6.0 * tr * rate) as usize;
+        let short = (0.003 * rate) as usize;
+        let g = gr_steps(&mut m, 20.0, short, n_lo);
+        let fast = t10_90(&g, short, short + n_lo, rate);
+        assert!(
+            fast < 0.9 * tr * ln9 && fast > 0.9 * PD_MIN as f64 * tr * ln9,
+            "{fast}"
+        );
+
+        // NSTR 2:1 opto-like release: the dB rate slows as GR falls.
+        let mut m = model(
+            FetKind::Nstr,
+            &[(3, f(0.0)), (4, f(3.0)), (5, ParamValue::Enum(1))],
+        );
+        let rate = m.control_rate();
+        let tr = m.times_s().1;
+        let n_hi = (0.05 * rate) as usize;
+        let g = gr_steps(&mut m, 30.0, n_hi, (10.0 * tr * rate) as usize);
+        let g0 = g[n_hi - 1];
+        let idx = |frac: f32| n_hi + g[n_hi..].iter().position(|&v| v <= frac * g0).unwrap();
+        // Plain one-pole: equal times for equal ratios; opto: the 0.4 -> 0.16 leg is much slower.
+        let (a, b, c) = (n_hi, idx(0.4), idx(0.16));
+        assert!(
+            (c - b) as f64 > 1.5 * (b - a) as f64,
+            "opto {} {}",
+            b - a,
+            c - b
+        );
+
+        // ALL buttons: transient GR overshoot above the settled value.
+        let mut m = model(
+            FetKind::La76,
+            &[(3, f(7.0)), (4, f(4.0)), (5, ParamValue::Enum(4))],
+        );
+        let rate = m.control_rate();
+        let n_hi = (0.2 * rate) as usize;
+        let g = gr_steps(&mut m, 20.0, n_hi, 1);
+        let peak = g[..n_hi].iter().cloned().fold(0.0, f32::max);
+        assert!(
+            peak > g[n_hi - 1] + 2.0,
+            "overshoot {peak} vs {}",
+            g[n_hi - 1]
+        );
+    }
+
+    #[test]
+    fn aliasing_below_minus_90_dbc_at_10khz() {
+        // Heavy drive (~4-12 dB GR at 0.5 peak), every ratio, fastest / default / slowest timing.
+        let la = [(7.0, 7.0), (2.0, 2.0), (1.0, 1.0)];
+        let ns = [(0.0, 0.0), (4.0, 5.0), (10.0, 10.0)];
+        for kind in FetKind::ALL {
+            let times = if kind == FetKind::La76 { la } else { ns };
+            for ri in 0..kind.num_ratios() as u32 {
+                for (att, rel) in times {
+                    let mut m = model(kind, &[(3, f(att)), (4, f(rel)), (5, ParamValue::Enum(ri))]);
+                    let a = alias_dbc(&mut m, 0.5);
+                    assert!(m.telemetry().gain_reduction_db > 3.0);
+                    assert!(a < -90.0, "{kind:?} r{ri} att {att} rel {rel}: {a:.1} dBc");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn thd_profile_is_documented_and_bounded() {
+        // (label, kind, in, att, rel, ratio idx); input peak -6 dBFS.
+        let cases: [(&str, FetKind, f32, f32, f32, u32); 8] = [
+            ("76LA no GR", FetKind::La76, -48.0, 2.0, 2.0, 1),
+            ("76LA 8:1 slow", FetKind::La76, -30.0, 1.0, 1.0, 1),
+            ("76LA 8:1 fast", FetKind::La76, -30.0, 7.0, 7.0, 1),
+            ("76LA ALL fast", FetKind::La76, -30.0, 7.0, 7.0, 4),
+            ("NSTR 1.5:1", FetKind::Nstr, 4.0, 4.0, 5.0, 0),
+            ("NSTR 4:1", FetKind::Nstr, 4.0, 4.0, 5.0, 3),
+            ("NSTR 10:1", FetKind::Nstr, 4.0, 4.0, 5.0, 5),
+            ("NSTR NUKE", FetKind::Nstr, 4.0, 4.0, 5.0, 7),
+        ];
+        let a = 10f64.powf(-6.0 / 20.0);
+        let mut table = Vec::new();
+        for (label, kind, inp, att, rel, ri) in cases {
+            let mut m = model(
+                kind,
+                &[
+                    (1, f(inp)),
+                    (3, f(att)),
+                    (4, f(rel)),
+                    (5, ParamValue::Enum(ri)),
+                ],
+            );
+            let row: Vec<f64> = [100.0, 1000.0, 5000.0]
+                .iter()
+                .map(|&fr| thd_pct(&mut m, fr, a))
+                .collect();
+            let gr = m.telemetry().gain_reduction_db;
+            eprintln!(
+                "THD {label:14} GR {gr:5.1} dB: 100 Hz {:.3} %, 1 kHz {:.3} %, 5 kHz {:.3} %",
+                row[0], row[1], row[2]
+            );
+            table.push((label, gr, row));
+        }
+        let get = |l: &str| table.iter().find(|r| r.0 == l).unwrap();
+        // 1176 class-A stage alone: clean (< 0.1 %).
+        let clean = get("76LA no GR");
+        assert!(clean.1 < 0.1 && clean.2[1] < 0.1);
+        // Compressing, slow timing: audible but within the 1176's "< 0.5 %" class at 1 kHz.
+        let slow = get("76LA 8:1 slow");
+        assert!(slow.1 > 5.0 && slow.2[1] > 0.05 && slow.2[1] < 1.0);
+        // Fast release distorts low frequencies (GR ripple); ALL more than 8:1.
+        let fast = get("76LA 8:1 fast");
+        assert!(fast.2[0] > 3.0 * slow.2[0] && fast.2[0] > 1.0);
+        assert!(get("76LA ALL fast").2[1] > fast.2[1]);
+        // Distressor: harmonics grow with ratio and are low-frequency weighted.
+        assert!(get("NSTR NUKE").2[1] > get("NSTR 1.5:1").2[1]);
+        let n4 = get("NSTR 4:1");
+        assert!(n4.2[1] > n4.2[2] && n4.2[1] < 1.0);
+    }
+
+    #[test]
+    fn latency_is_reported_and_sidechain_keys() {
+        // Below threshold, colouration off: a pure delay of `latency()` samples.
+        let mut m = model(FetKind::La76, &[(1, f(-48.0)), (2, f(-9.0))]);
+        m.set_coloration(false);
+        assert_eq!(m.latency(), 57);
+        let x = tone(1000.0, 0.1, 4800);
+        let y = run_mono(&mut m, &x);
+        let lat = m.latency();
+        for i in 1000..4800 {
+            assert!((y[i] - x[i - lat]).abs() < 1e-4, "{i}");
+        }
+        // External key: loud key compresses a quiet signal; silent key leaves a loud signal alone.
+        for kind in FetKind::ALL {
+            let mut m = model(kind, &[]);
+            let (mut l, mut r) = (vec![0.01f32; 64], vec![0.01f32; 64]);
+            let key = vec![0.9f32; 64];
+            for _ in 0..200 {
+                m.process(&mut l, &mut r, Some((&key, &key)));
+                l.fill(0.01);
+                r.fill(0.01);
+            }
+            assert!(m.telemetry().gain_reduction_db > 5.0, "{kind:?}");
+            m.reset();
+            let silent = vec![0.0f32; 64];
+            for _ in 0..200 {
+                l.fill(0.9);
+                r.fill(0.9);
+                m.process(&mut l, &mut r, Some((&silent, &silent)));
+            }
+            assert!(m.telemetry().gain_reduction_db < 0.01, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn params_meter_and_ratio_parsing() {
+        let mut m = FetComp::new(FetKind::Nstr);
+        // Enum index in any numeric form (the engine pipeline sends Float(index)).
+        m.set_param(5, ParamValue::Float(5.0));
+        assert_eq!(m.param(5), Some(5.0));
+        m.set_param(5, ParamValue::Enum(7));
+        assert_eq!(m.param(5), Some(7.0)); // NUKE
+        m.set_param(5, ParamValue::Enum(8)); // out of range: ignored
+        assert_eq!(m.param(5), Some(7.0));
+        m.set_param(1, f(42.0));
+        assert_eq!(m.param(1), Some(10.0));
+        m.set_param(9, f(1.0));
+        assert_eq!(m.param(9), None);
+        let mut m = FetComp::new(FetKind::La76);
+        m.set_param(5, ParamValue::Int(4));
+        assert_eq!(m.param(5), Some(4.0)); // ALL
+        m.load_defaults();
+        assert_eq!(m.param(5), Some(1.0));
+        assert_eq!(gr_meter(FetKind::La76, 10.0), -0.5);
+        assert_eq!(gr_meter(FetKind::La76, 40.0), -1.0);
+        assert_eq!(gr_meter(FetKind::Nstr, 40.0), 1.3);
     }
 }

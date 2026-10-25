@@ -1,5 +1,6 @@
-//! Criterion benches for the T04D FET-style compressors (stereo-linked, 2x oversampled, 64-sample blocks,
-//! 48 kHz), compressing (~10 dB GR) with colouration on.
+//! Criterion benches for the T04D FET-style compressors (stereo-linked, 2x audio / 16x control-path
+//! oversampling, 64-sample blocks, 48 kHz), compressing with colouration on. `r1` = ratio enum index 1
+//! (76LA 8:1, NSTR 2:1 opto release), `r4` = index 4 (76LA ALL, NSTR 6:1).
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use wing_blocks::model::{Model, ParamValue};
@@ -18,7 +19,7 @@ fn bench_fet(c: &mut Criterion) {
     let mut g = c.benchmark_group("comp_fet");
     g.throughput(Throughput::Elements(BLOCK as u64));
     for kind in FetKind::ALL {
-        for (label, ratio) in [("ratio2", 1u32), ("ratio_last", 4)] {
+        for (label, ratio) in [("r1", 1u32), ("r4", 4)] {
             let mut m = FetComp::new(kind);
             m.prepare(FS, BLOCK);
             m.set_param(5, ParamValue::Enum(ratio));
