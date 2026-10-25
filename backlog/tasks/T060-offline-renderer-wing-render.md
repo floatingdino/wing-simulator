@@ -4,7 +4,7 @@ title: Offline renderer (wing-render)
 stage: S6
 status: todo
 owner: -
-depends: [T03B]
+depends: [T026, T037, T038]
 branch: -
 ---
 
