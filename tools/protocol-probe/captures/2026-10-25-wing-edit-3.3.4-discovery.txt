@@ -1,0 +1,43 @@
+# 2026-10-25 live captures, WING-Edit 3.3.4 (macOS, pid 25328) on host 192.168.20.130/24. No root.
+
+## capture_discovery.py (passive, 20 s)
+[  1.708s] #1 from 192.168.20.130:50677 len=5 repr=b'WING?'
+00000000  57 49 4e 47 3f                                   |WING?|
+[  1.708s] #2 from 192.168.20.130:50677 len=5 repr=b'WING?'
+00000000  57 49 4e 47 3f                                   |WING?|
+[  3.707s] #3 from 192.168.20.130:50677 len=5 repr=b'WING?'
+00000000  57 49 4e 47 3f                                   |WING?|
+[  3.707s] #4 from 192.168.20.130:50677 len=5 repr=b'WING?'
+00000000  57 49 4e 47 3f                                   |WING?|
+... (pattern repeats every 2.0 s, 2 datagrams per cycle)
+
+## destination addresses (IP_RECVDSTADDR)
+[  0.595s] #1 from 192.168.20.130:61447 to ['192.168.20.255'] len=5 repr=b'WING?'
+00000000  57 49 4e 47 3f                                   |WING?|
+[  0.595s] #2 from 192.168.20.130:61447 to ['255.255.255.255'] len=5 repr=b'WING?'
+00000000  57 49 4e 47 3f                                   |WING?|
+[  2.595s] #3 from 192.168.20.130:61447 to ['192.168.20.255'] len=5 repr=b'WING?'
+00000000  57 49 4e 47 3f                                   |WING?|
+[  2.595s] #4 from 192.168.20.130:61447 to ['255.255.255.255'] len=5 repr=b'WING?'
+00000000  57 49 4e 47 3f                                   |WING?|
+[  4.596s] #5 from 192.168.20.130:61447 to ['192.168.20.255'] len=5 repr=b'WING?'
+00000000  57 49 4e 47 3f                                   |WING?|
+done, 5 datagrams
+
+## fake_wing.py run 1 (reply ngc-full / 3.0.5, TCP 2222 listening silent, 45 s)
+[   0.003s] discovery reply = 'WING,192.168.20.130,WINGSIM,ngc-full,S0000000000SIM,3.0.5-0-g0c2b9d4a:release'
+[   1.960s] UDP2222 <- ('192.168.20.130', 50677) b'WING?' (#1); replying
+[   1.962s] UDP2222 <- ('192.168.20.130', 50677) b'WING?' (#2); replying
+[   3.964s] UDP2222 <- ('192.168.20.130', 50677) b'WING?' (#3); replying
+[   3.964s] UDP2222 <- ('192.168.20.130', 50677) b'WING?' (#4); replying
+[  19.966s] UDP2222 <- ('192.168.20.130', 50677) b'WING?' (#20); replying
+[  39.990s] UDP2222 <- ('192.168.20.130', 52164) b'WING?' (#40); replying
+[  45.013s] done; discovery probes seen=44; open conns=0
+
+## fake_wing.py run 3 (reply ip field 10.9.9.9, wing-compact, fw 1.07.2-40-g1b1b292b:develop, 14 s)
+[   0.005s] discovery reply = 'WING,10.9.9.9,ALTNAME,wing-compact,S0000000000SIM,1.07.2-40-g1b1b292b:develop'
+[   1.188s] UDP2222 <- ('192.168.20.130', 52164) b'WING?' (#1); replying
+[   1.189s] UDP2222 <- ('192.168.20.130', 52164) b'WING?' (#2); replying
+[   3.187s] UDP2222 <- ('192.168.20.130', 52164) b'WING?' (#3); replying
+[   3.187s] UDP2222 <- ('192.168.20.130', 52164) b'WING?' (#4); replying
+[  14.198s] done; discovery probes seen=14; open conns=0
