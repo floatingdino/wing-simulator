@@ -13,7 +13,7 @@
 //! status                -> ok <DaemonStatus JSON, one line>
 //! save <path>           -> ok saved <bytes> bytes to <path>     (current state as a .snap;
 //!                                                               becomes the scene file)
-//! export <path>         -> ok saved <bytes> bytes to <path>     (same, scene file unchanged)
+//! export <path>         -> ok exported <path> + <stem>.changes.md (console-ready 3.x .snap, validated; scene file unchanged)
 //! load <path>           -> ok loaded <path>: <load report>      (replaces the current state)
 //! reload-hostio [path]  -> ok <routes>   (re-read the --hostio TOML, or switch to <path>;
 //!                                         the audio session restarts with the new bridges)
@@ -112,7 +112,7 @@ pub enum Command {
     Ping,
     Status,
     Save(PathBuf),
-    /// Like `Save`, but the daemon's scene file is not changed (snapshots for diffs).
+    /// Console-ready validated export plus a `.changes.md` report (T062); the scene file is not changed.
     Export(PathBuf),
     Load(PathBuf),
     /// Re-read the host-output TOML (`None`: the current `--hostio` file).

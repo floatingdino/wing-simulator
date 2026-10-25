@@ -545,6 +545,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "wing-diff",
  "wing-engine",
  "wing-hostio",
  "wing-model",

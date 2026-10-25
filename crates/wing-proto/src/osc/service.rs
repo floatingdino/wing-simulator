@@ -31,6 +31,12 @@
 //!   - `/wingsim/scene/next`, `/wingsim/scene/prev`: recall the scene after/before the active one
 //!     (a numeric argument of 0, a button release, is ignored).
 //!   - `/wingsim/scenes` (no args): reply `/wingsim/scenes ,s...` with the scene names.
+//!   - `/wingsim/ab/{store_a,store_b,toggle,a,b}` (T062): A/B compare. `store_a`/`store_b` capture
+//!     the current state into a slot (and make it the active side); `a`/`b`/`toggle` switch sides,
+//!     applying only the parameters that differ through the normal set path (RT-staged, fanned
+//!     out to native/OSC clients). A numeric argument of 0 (button release) is ignored.
+//!   - `/wingsim/export ,s path`: write the current state as a console-ready 3.x `.snap` at
+//!     `path` plus `<path stem>.changes.md` (wing-diff report vs the scene as loaded).
 //!   - `/wingsim/marker ,s text`, `/wingsim/region ,s text`: a DAW timeline marker/region name
 //!     (REAPER's `LAST_MARKER_NAME`/`LAST_REGION_NAME` feedback). `WING:<scene or #N>` (prefix
 //!     case-insensitive) recalls that scene; other names are ignored. A name equal to the
@@ -341,6 +347,23 @@ impl OscService {
                 };
                 lib.action(a, 0, origin);
             }
+            "/wingsim/ab/store_a"
+            | "/wingsim/ab/store_b"
+            | "/wingsim/ab/toggle"
+            | "/wingsim/ab/a"
+            | "/wingsim/ab/b" => {
+                if arg.and_then(num) == Some(0) {
+                    return None; // button release
+                }
+                let cmd = addr
+                    .trim_end_matches('/')
+                    .trim_start_matches("/wingsim/ab/");
+                lib.action(&format!("AB:{cmd}"), 0, origin);
+            }
+            "/wingsim/export" => match text(arg) {
+                Some(p) if !p.is_empty() => lib.action(&format!("EXPORT:{p}"), 0, origin),
+                _ => return err("INCOMPLETE DATA"),
+            },
             "/wingsim/marker" | "/wingsim/region" => {
                 let t = text(arg)?;
                 let slot = usize::from(addr.contains("region"));
@@ -890,6 +913,34 @@ mod tests {
         assert_eq!(r[0].msg.args, [st("Intro"), st("Verse")].concat());
         // no library: not found
         let r = ask(&svc(), "/wingsim/scene/next", vec![]);
+        assert_eq!(r[0].msg.args, st("NODE NOT FOUND"));
+    }
+
+    #[test]
+    fn wingsim_ab_and_export() {
+        let (s, l) = lib_svc();
+        let st = |t: &str| vec![Arg::Str(t.into())];
+        for c in ["store_a", "store_b", "toggle", "a", "b"] {
+            assert!(ask(&s, &format!("/wingsim/ab/{c}"), vec![]).is_empty());
+        }
+        ask(&s, "/wingsim/ab/toggle", vec![Arg::Float(0.0)]); // button release
+        ask(&s, "/wingsim/ab/toggle", vec![Arg::Float(1.0)]);
+        ask(&s, "/wingsim/export", st("/tmp/mix.snap"));
+        assert_eq!(
+            take(&l),
+            [
+                ("AB:store_a".into(), 0),
+                ("AB:store_b".into(), 0),
+                ("AB:toggle".into(), 0),
+                ("AB:a".into(), 0),
+                ("AB:b".into(), 0),
+                ("AB:toggle".into(), 0),
+                ("EXPORT:/tmp/mix.snap".into(), 0),
+            ]
+        );
+        let r = ask(&s, "/wingsim/export", vec![]);
+        assert_eq!(r[0].msg.args, st("INCOMPLETE DATA"));
+        let r = ask(&s, "/wingsim/ab/bogus", vec![]);
         assert_eq!(r[0].msg.args, st("NODE NOT FOUND"));
     }
 
