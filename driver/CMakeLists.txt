@@ -35,6 +35,7 @@ set(DRIVER_ENTRYPOINT "WingSimulatorEntryPoint")
 
 add_library(${DRIVER_NAME} MODULE
   src/Driver.cpp
+  src/Config.cpp
   src/ShmLink.cpp
 )
 target_include_directories(${DRIVER_NAME} PRIVATE include src)
@@ -92,3 +93,6 @@ add_test(NAME shm_selftest
   COMMAND wing_shm_selftest --client $<TARGET_FILE:wing_shm_client>)
 add_test(NAME driver_smoketest
   COMMAND wing_driver_smoketest $<TARGET_BUNDLE_DIR:${DRIVER_NAME}>)
+# Same with a configured (non-default) input delay read from a config plist.
+add_test(NAME driver_smoketest_delay
+  COMMAND wing_driver_smoketest $<TARGET_BUNDLE_DIR:${DRIVER_NAME}> --delay 96)

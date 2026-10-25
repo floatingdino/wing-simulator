@@ -11,6 +11,16 @@
 //! ```text
 //! cargo run --release -p wing-shm --example wake_latency [-- --cycles 1500]
 //! ```
+//!
+//! `--attach [NAME] [--seconds S] [--max-p99-us U]` instead measures against
+//! the real driver (installed in coreaudiod, IO running, e.g. driven by
+//! `wing_hal_probe`): a passive observer waits on the live segment's
+//! `cycle_seq` exactly like the daemon (it registers in `daemon_waiting`, so
+//! the driver issues `os_sync_wake_by_address_all` from inside the coreaudiod
+//! sandbox) but never heartbeats or writes audio, so it can run next to
+//! `gain_client`. Exits non-zero if wakes were not delivered (waits that ran to
+//! their timeout although `cycle_seq` changed), no cycles were seen, or p99
+//! exceeds `--max-p99-us` (default 1000).
 
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::Arc;
@@ -18,7 +28,7 @@ use std::time::{Duration, Instant};
 
 use wing_shm::clock;
 use wing_shm::sim::DriverSim;
-use wing_shm::{DaemonLink, OpenOptions, Segment, WakeMode, CHANNELS};
+use wing_shm::{DaemonLink, OpenOptions, Segment, Waiter, WakeMode, CHANNELS};
 
 const BUF: usize = 128;
 const RATE: u32 = 48_000;
@@ -83,9 +93,91 @@ fn cpu_time() -> f64 {
     tv(ru.ru_utime) + tv(ru.ru_stime)
 }
 
+/// `--attach`: observe the live driver's wake-ups (see module docs).
+fn observe(name: &str, seconds: f64, max_p99_us: f64) -> i32 {
+    let seg = match Segment::open(name, &OpenOptions::default()) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("wake_latency: {name}: {e} (driver installed and loaded?)");
+            return 1;
+        }
+    };
+    let waiter = Waiter::new(WakeMode::OsSync {
+        spin: Duration::ZERO,
+    });
+    let h = seg.header();
+    let timeout = Duration::from_millis(20);
+    let mut seen = h.cycle_seq.load(Relaxed);
+    let mut lat = Vec::with_capacity((seconds * 2000.0) as usize + 16);
+    let (mut missed, mut idle) = (0u64, 0u64);
+    let t0 = Instant::now();
+    while t0.elapsed().as_secs_f64() < seconds {
+        let w0 = clock::now_ticks();
+        let woke = waiter.wait(&h.cycle_seq, &h.daemon_waiting, seen, timeout);
+        let now = clock::now_ticks();
+        if !woke {
+            idle += 1; // no IO cycle within the timeout
+            continue;
+        }
+        if clock::ticks_to_ns(now - w0) >= timeout.as_nanos() as u64 {
+            missed += 1; // cycle_seq changed but the wake never arrived
+        } else {
+            let hb = h.driver_heartbeat.load(Relaxed);
+            lat.push(clock::ticks_to_ns(now.saturating_sub(hb)));
+        }
+        seen = h.cycle_seq.load(Relaxed);
+    }
+    lat.sort_unstable();
+    println!(
+        "attach {name}: {} wakes in {seconds:.0} s, mechanism {:?}, rate {} Hz, \
+         undelivered {missed}, idle timeouts {idle}",
+        lat.len(),
+        waiter.mechanism(),
+        h.sample_rate.load(Relaxed)
+    );
+    if lat.is_empty() {
+        println!("FAIL  no driver cycles observed (is IO running? wing_hal_probe)");
+        return 1;
+    }
+    let pct = |p: f64| lat[((lat.len() - 1) as f64 * p) as usize] as f64 / 1000.0;
+    println!(
+        "latency us     p50 {:.1}  p90 {:.1}  p99 {:.1}  p99.9 {:.1}  max {:.1}",
+        pct(0.5),
+        pct(0.9),
+        pct(0.99),
+        pct(0.999),
+        pct(1.0)
+    );
+    let ok = missed == 0 && pct(0.99) <= max_p99_us;
+    println!(
+        "{}  wakes delivered from the driver host, p99 <= {max_p99_us} us",
+        if ok { "PASS" } else { "FAIL" }
+    );
+    i32::from(!ok)
+}
+
 fn main() {
     let mut cycles = 1500usize;
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(i) = args.iter().position(|a| a == "--attach") {
+        let name = args
+            .get(i + 1)
+            .filter(|v| v.starts_with('/'))
+            .cloned()
+            .unwrap_or_else(|| wing_shm::SHM_NAME.to_string());
+        let num = |flag: &str, default: f64| {
+            args.iter()
+                .position(|a| a == flag)
+                .and_then(|j| args.get(j + 1))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
+        };
+        std::process::exit(observe(
+            &name,
+            num("--seconds", 10.0),
+            num("--max-p99-us", 1000.0),
+        ));
+    }
     if let Some(i) = args.iter().position(|a| a == "--cycles") {
         cycles = args
             .get(i + 1)
