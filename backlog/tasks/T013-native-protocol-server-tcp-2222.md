@@ -2,7 +2,7 @@
 id: T013
 title: Native protocol server (TCP 2222)
 stage: S1
-status: review
+status: done
 owner: agent-T013-T015
 depends: [T010, T012]
 branch: task/T013-T015

@@ -2,7 +2,7 @@
 id: T015
 title: Meter transport (synthetic)
 stage: S1
-status: review
+status: done
 owner: agent-T013-T015
 depends: [T013]
 branch: task/T013-T015
