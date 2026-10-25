@@ -55,7 +55,7 @@
 //!
 //! Real-time: `prepare` allocates the oversamplers and scratch; `process`, `set_param`, `commit`, `reset` are
 //! allocation-free. Bench (`benches/comp_fet.rs`, M1, stereo 64-sample block): ~15-18 µs (~1.3 % of a core
-//! per instance at 48 kHz); the 16x control path dominates (one fast log per control sample).
+//! per instance at 48 kHz) before T070, ~10-12 µs on M4 after it (docs/perf.md); the sequential 16x ballistics dominate.
 
 use crate::model::{Model, ModelTelemetry, ParamValue};
 use wing_dsp::gain::{db_to_lin, db_to_lin_fast, lin_to_db_fast, lin_to_db_fast4};
@@ -1172,7 +1172,7 @@ mod tests {
         let levels = [-50.0, -30.0, -24.0, -20.0, -18.0, -15.0, -10.0, -5.0, 0.0];
         for kind in FetKind::ALL {
             for ri in 0..kind.num_ratios() as u32 {
-                let mut m = model(kind, &[(5, ParamValue::Enum(ri as u32))]);
+                let mut m = model(kind, &[(5, ParamValue::Enum(ri))]);
                 m.set_coloration(false);
                 let meas = static_curve(&mut m, FS, &levels, 0.4);
                 for (&l, &o) in levels.iter().zip(&meas) {

@@ -5,6 +5,7 @@
 //!             --out <dir> [--taps main/1,bus/3,mon/1,usb_out/1-48] [--rate 48000] [--threads N]
 //!             [--start SECS] [--end SECS] [--tail SECS] [--block 64] [--set path=value]...
 //!             [--dry-run] [--quiet]
+//! wing-render --bench [...]     performance suite (T070; see wing_render::perf, docs/perf.md)
 //! ```
 //!
 //! Inputs: `--inputs` (repeatable, comma-separated) files or directories of WAVs; USB inputs by

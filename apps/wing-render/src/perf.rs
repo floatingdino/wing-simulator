@@ -49,10 +49,12 @@ pub const HEAVY_AUX_EQ: &str = "PULSAR";
 pub const HEAVY_MIX_EQ: &str = "PIA";
 /// Filter-tool model.
 pub const HEAVY_FLT: &str = "AP2";
-/// Models of FX slots 1..16 (1..8 full: any model; 9..16 lite: no reverb/mod/delay/pitch).
+/// Models of FX slots 1..16 (1..8 full: any model; 9..16 lite: no reverb/mod/delay/pitch). `*MASTER*`
+/// runs with all four stages on (TAPE + MACH4 + ENHANCE + LIMITER, the heaviest FX model); the
+/// rest are the heaviest single models of the survey, plus the heaviest reverbs.
 pub const HEAVY_FX: [&str; 16] = [
-    "ENHANCE", "ANGEL", "EXCITER", "UKROCK", "SPRING", "DELUXE", "RACKAMP", "VSS3", "ENHANCE",
-    "ANGEL", "EXCITER", "UKROCK", "DELUXE", "RACKAMP", "JAZZC", "TAPE",
+    "*MASTER*", "ANGEL", "EXCITER", "UKROCK", "SPRING", "DELUXE", "RACKAMP", "VSS3", "*MASTER*",
+    "ENHANCE", "ANGEL", "EXCITER", "UKROCK", "DELUXE", "RACKAMP", "JAZZC",
 ];
 
 /// A benchmark scene.
@@ -80,21 +82,29 @@ impl Scene {
         }
     }
 
-    /// A fresh store with this scene loaded.
+    /// A fresh store with this scene loaded (plus the `--set` overrides of [`OVERRIDES`]).
     pub fn store(self) -> Result<ParamStore, String> {
-        match self {
+        let s = match self {
             Scene::Public => {
                 let p = public_snap();
-                load_scene(Some(&p)).map(|(s, _)| s)
+                load_scene(Some(&p)).map(|(s, _)| s)?
             }
             Scene::Everything => {
                 let (s, _) = load_scene(None)?;
                 everything_on(&s)?;
-                Ok(s)
+                s
             }
+        };
+        for (p, v) in OVERRIDES.get().map_or(&[][..], |v| &v[..]) {
+            set(&s, p, v)?;
         }
+        Ok(s)
     }
 }
+
+/// Parameter overrides applied to every bench scene (`wing-render --bench --set path=value`;
+/// what-if analyses such as "this scene without FX 5").
+pub static OVERRIDES: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
 
 /// Path of `fixtures/PUBLIC.snap` (repo root relative to this crate).
 pub fn public_snap() -> std::path::PathBuf {
@@ -116,6 +126,12 @@ pub fn everything_on(store: &ParamStore) -> Result<(), String> {
         let n = k + 1;
         set(store, &format!("fx/{n}/mdl"), m)?;
         set(store, &format!("fx/{n}/fxmix"), "100")?;
+        if *m == "*MASTER*" {
+            // every stage in: TAPE -> MACH4 -> ENHANCE -> LIMITER (the heaviest FX model)
+            for s in ["t_on", "eq_on", "e_on", "l_on"] {
+                set(store, &format!("fx/{n}/{s}"), "1")?;
+            }
+        }
     }
     for i in 0..48 {
         let (p, usb) = if i < 40 {
@@ -475,7 +491,7 @@ pub fn model_survey(
 
 /// Usage of `wing-render --bench`.
 pub const BENCH_USAGE: &str = "usage: wing-render --bench [--scene public,everything] [--block 64,128] \
-[--workers 0-12 | 0,3,7] [--cycles N] [--paced N] [--paced-workers 7,8,10] [--profile] [--models [--model ID,..] [--model-blocks N]] [--digest N] [--no-lpt]";
+[--workers 0-12 | 0,3,7] [--cycles N] [--paced N] [--paced-workers 7,8,10] [--profile] [--models [--model ID,..] [--model-blocks N]] [--digest N] [--no-lpt] [--set path=value]...";
 
 /// Options of `wing-render --bench`.
 #[derive(Debug, Clone)]
@@ -525,6 +541,7 @@ pub fn parse_bench_args(mut it: impl Iterator<Item = String>) -> Result<BenchArg
         model_blocks: 2000,
         digest: 0,
     };
+    let mut sets: Vec<(String, String)> = Vec::new();
     while let Some(flag) = it.next() {
         let mut val = || it.next().ok_or(format!("{flag} needs a value"));
         match flag.as_str() {
@@ -543,6 +560,13 @@ pub fn parse_bench_args(mut it: impl Iterator<Item = String>) -> Result<BenchArg
             "--profile" => a.profile = true,
             "--models" => a.models = true,
             "--no-lpt" => LPT.store(false, std::sync::atomic::Ordering::Relaxed),
+            "--set" => {
+                let v = val()?;
+                let (p, x) = v
+                    .split_once('=')
+                    .ok_or(format!("--set '{v}': expected path=value"))?;
+                sets.push((p.trim().trim_start_matches('/').into(), x.trim().into()));
+            }
             "--model" => a.model_filter = Some(val()?),
             "--model-blocks" => {
                 a.model_blocks = val()?.parse().map_err(|e| format!("--model-blocks: {e}"))?
@@ -557,6 +581,9 @@ pub fn parse_bench_args(mut it: impl Iterator<Item = String>) -> Result<BenchArg
     }
     if a.cycles == 0 {
         return Err("--cycles must be > 0".into());
+    }
+    if !sets.is_empty() && OVERRIDES.set(sets).is_err() {
+        return Err("--set: overrides already installed".into());
     }
     Ok(a)
 }
