@@ -1,0 +1,20 @@
+run: 60.5 min wall (60.0 min measured), 2695508 engine cycles measured, 1536666 HAL cycles, 7 workers, rt true, bursts [64, 512], phase 300 s
+cycle time over the whole run: p50 80 us, p99 190 us, p99.9 250 us, max 1163 us (peak of any interval), mean load 6.5% of the 1333 us period (worst interval 12.0%), slow cycles (> period): 0
+client load: 340471 OSC sets, 339122 native sets, 80 storms, 362 model swaps, 120 A/B toggles, 12 scene recalls, 725 control-socket polls, 0 client errors
+driver reads that went ahead of the daemon (daemon not done by 90% of the period): 0
+simulated host device: 680632 callbacks, 0 started > 1 ms late (max 172 us late: harness scheduling lag)
+memory: RSS 241.1 MB at first sample, 248.6 MB at the end, max 248.6 MB; trend +1.94 MB/h (least squares over the last 58 min)
+
+PASS  ran past the warm-up: 362 samples
+PASS  driver xruns (underruns + overruns) in settled periods: 0 (during the 15 s after each IO restart: 1)
+PASS  daemon stayed attached (no loopback fallback, no detached status): 0 loopback cycles, 0 detached samples
+PASS  clean detach at shutdown (driver back in loopback): daemon heartbeat cleared
+PASS  allocations on RT threads (wing-audio-rt, wing-worker-*): 0 allocs, 0 deallocs, 0 reallocs, 0 bytes
+PASS  cycles slower than one engine period: 0 (0.00000% of cycles; harness-induced scheduling or machine load possible)
+PASS  cycle p99.9 within the T070 budget (50% of the period): 250 us vs 667 us
+PASS  host bridge underruns / resyncs in settled periods: 0 underruns, 0 resyncs (in transition periods: 6 underruns, 0 resyncs)
+FAIL  bridge fill within target in settled periods: max |fill - target| 3.97 ms (limit 2 ms), overflow frames dropped 0
+INFO  bridge drift tracking: max |controller drift estimate + true device error| 39 ppm in settled periods (sign convention: estimate = -device error), max |ratio correction| 218 ppm
+PASS  RSS growth: +1.94 MB/h (limit 4 MB/h)
+
+RESULT: FAIL

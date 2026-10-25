@@ -343,6 +343,8 @@ fn start_sim_device(
 #[derive(Default)]
 struct HalShared {
     phase: AtomicUsize,
+    /// IO restarts begun so far (bumped when the stop gap starts).
+    restarts: AtomicU64,
     burst: AtomicUsize,
     /// Ms after the run start from which the current phase counts as settled.
     settled_ms: AtomicU64,
@@ -387,6 +389,7 @@ fn hal_thread(drv: DriverSim, sh: Arc<HalShared>, cfg: HalCfg) -> DriverSim {
         let period_ns = buf as u64 * 1_000_000_000 / FS as u64;
         if phase > 0 {
             // DAW stops and restarts the device (new IO epoch)
+            sh.restarts.fetch_add(1, Relaxed);
             drv.set_running(false);
             let t = Instant::now();
             while t.elapsed() < Duration::from_millis(500) {
@@ -727,6 +730,7 @@ fn client_thread(
 // ---- measurement ----------------------------------------------------------------------------------
 
 struct Row {
+    restarts: u64,
     t_s: f64,
     phase: usize,
     burst: usize,
@@ -928,7 +932,7 @@ fn main() {
 /// The counter must see an allocation on an audio-named thread and ignore other threads.
 fn counting_self_test() {
     COUNTING.store(true, SeqCst);
-    for (name, expect) in [("wing-worker-selftest", 2), ("soak-selftest", 0)] {
+    for (name, rt) in [("wing-worker-selftest", true), ("soak-selftest", false)] {
         std::thread::Builder::new()
             .name(name.into())
             .spawn(|| drop(std::hint::black_box(Box::new([0u8; 100]))))
@@ -936,9 +940,10 @@ fn counting_self_test() {
             .join()
             .unwrap();
         let n = rt_alloc_events();
-        assert_eq!(
-            n, expect,
-            "allocation counter self-test failed on thread {name}"
+        // (a thread's own start-up allocations count too, hence "at least" the boxed array)
+        assert!(
+            if rt { n >= 2 } else { n == 0 },
+            "allocation counter self-test failed on thread {name}: {n} events"
         );
         RT_ALLOCS.store(0, SeqCst);
         RT_DEALLOCS.store(0, SeqCst);
@@ -1261,12 +1266,16 @@ fn run(a: Args) -> i32 {
             });
         let now_ms = t_run.elapsed().as_millis() as u64;
         let phase = hal_sh.phase.load(Relaxed);
+        let restarts = hal_sh.restarts.load(Relaxed);
+        let prev_restarts = rows.last().map(|r| r.restarts);
         let prev_phase = rows.last().map(|r| r.phase);
         let prev_t_ms = rows.last().map_or(0, |r| (r.t_s * 1000.0) as u64);
         let steady = base_cycles.is_some()
             && prev_phase == Some(phase)
+            && prev_restarts == Some(restarts)
             && prev_t_ms >= hal_sh.settled_ms.load(Relaxed);
         let row = Row {
+            restarts,
             t_s: t_run.elapsed().as_secs_f64(),
             phase,
             burst: hal_sh.burst.load(Relaxed),
