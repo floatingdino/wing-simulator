@@ -50,7 +50,8 @@ pub const EXAMPLE_TOML: &str = include_str!("../hostio.example.toml");
 /// (T024 for USB/local outs, mains, busses, matrices; T038 for the monitor section).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Tap {
-    /// Monitor section output: 1 = monitor A, 2 = monitor B. Stereo; follows solo.
+    /// Monitor section output: 1 = monitor A (PH, phones), 2 = monitor B (SPK, speakers). Stereo;
+    /// follows solo: a monitor a route plays receives every solo, whatever `cfg/solo/mon` (T03G).
     Monitor(u8),
     /// Main bus 1-4. Stereo.
     Main(u8),

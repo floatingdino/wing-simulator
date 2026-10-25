@@ -112,6 +112,15 @@ impl ConsoleNodes {
     }
 }
 
+/// Monitors (bit 0 = mon/1, bit 1 = mon/2) carried by host-bridge `taps`: the monitors the user
+/// listens to, which every solo reaches (`MixLogic::set_listen`, T03G).
+pub fn listen_mask(taps: impl IntoIterator<Item = TapChannel>) -> u8 {
+    taps.into_iter().fold(0, |m, t| match t.tap {
+        Tap::Monitor(n @ 1..=2) => m | 1 << (n - 1),
+        _ => m,
+    })
+}
+
 // ---- graph ------------------------------------------------------------------------------------
 
 /// Build the console graph and its parameter map. Deterministic node ids: a [`ParamMap`] /
@@ -183,6 +192,11 @@ impl Console {
         bridges: Vec<super::hostio::Feed>,
         stats: Arc<AudioStats>,
     ) -> Result<Self, String> {
+        // the monitors the host plays receive every solo (T03G: cfg/solo/mon = SPK with the
+        // default mon/1 route was silent on the host)
+        routing.logic.set_listen(listen_mask(
+            bridges.iter().flat_map(|(_, taps)| taps.iter().copied()),
+        ));
         let (mut engine, nodes, map) = build_engine(&cfg, store, routing)?;
         let mut pipeline = match pipeline {
             Some(p) => p,
