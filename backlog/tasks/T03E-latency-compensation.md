@@ -2,7 +2,7 @@
 id: T03E
 title: Latency compensation (model-slot dry path + strip/bus alignment)
 stage: S4
-status: review
+status: done
 owner: agent-T03E
 depends: [T04D, T037, T038]
 branch: task/T03E
