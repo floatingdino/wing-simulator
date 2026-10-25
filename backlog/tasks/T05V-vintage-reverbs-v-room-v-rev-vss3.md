@@ -2,7 +2,7 @@
 id: T05V
 title: Vintage reverbs: V-ROOM, V-REV, VSS3
 stage: S5
-status: review
+status: done
 owner: claude-T05V
 depends: [T05R]
 branch: task/T05V
