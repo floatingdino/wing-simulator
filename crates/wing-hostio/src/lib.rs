@@ -14,7 +14,8 @@
 //! * [`control`]: PI drift controller (ring fill -> ratio), clamped and slew-limited.
 //! * [`bridge`]: ring + resampler + controller + lock-free [`BridgeStats`]; portable and
 //!   tested with simulated drifting clocks (`tests/drift.rs`).
-//! * [`config`]: route mapping (`usb_out 45/46 -> "Scarlett 2i4 USB" 1/2`) and TOML parsing.
+//! * [`config`]: route mapping from console taps (`mon/1 -> "Scarlett 2i4 USB" 1/2`,
+//!   `main/1`, `bus/n`, `usb_out/45-46`) to device channels, and TOML parsing.
 //! * [`coreaudio`] (macOS): device enumeration and [`coreaudio::HostOutput`], a HAL IO-proc
 //!   client with automatic reconnect and sample-rate / buffer-size change handling.
 //!
@@ -37,7 +38,7 @@ pub mod ring;
 pub use bridge::{
     bridge, BridgeConfig, BridgeConsumer, BridgeProducer, BridgeState, BridgeStats, StatsSnapshot,
 };
-pub use config::{ConfigError, DevicePlan, HostIoConfig, Route, SourceChannel, SourceKind};
+pub use config::{ConfigError, DevicePlan, HostIoConfig, Route, Tap, TapChannel, EXAMPLE_TOML};
 pub use control::DriftConfig;
 pub use resampler::{Resampler, ResamplerConfig};
 

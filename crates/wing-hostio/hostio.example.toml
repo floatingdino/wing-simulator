@@ -1,0 +1,11 @@
+# Host output bridge (wing-hostio). Each route patches a console tap to host device channels.
+[hostio]
+latency_ms = 5.0            # extra latency on top of one device buffer + one engine burst
+
+# Monitor A (L/R) -> Scarlett outputs 1/2, like the console's monitor/phones out (solo-aware).
+[[hostio.route]]
+map = 'mon/1 -> "Scarlett 2i4 USB" 1/2'
+
+# More examples:
+# map = 'main/1 -> "MacBook Pro Speakers" 1/2'
+# map = 'usb_out/45-46 -> "Scarlett 2i4 USB" 3/4'

@@ -39,8 +39,13 @@ CoreAudio client to any host device; mapping config 'USB out 45/46 -> Scarlett 2
     variable-size pull callback; API churn). Measured THD+N < -110 dB (f32-limited, -114..-139 dB) at
     ratios 1, +-200 ppm, 0.1 %, 48<->44.1k; passband +-0.05 dB to 20 kHz (18 kHz for 48->44.1);
     23 kHz alias < -80 dB.
-  - Config (`config.rs`): route lines `usb_out 45/46 -> "Scarlett 2i4 USB" 1/2` (sources usb_out, main,
-    bus, mtx, mon, local_out; lists/ranges); TOML `[hostio]` with `latency_ms`, `buffer_frames`,
+  - Config (`config.rs`, revised per coordinator: monitor-style taps): source side is a general tap
+    reference, stable enum `Tap { Monitor(1=A,2=B), Main(1-4), Bus(1-16), Matrix(1-8), UsbOut, LocalOut }`
+    + `TapChannel { tap, lane }` (stereo taps: lanes L/R, `.L`/`.R` picks one side; flat taps: channel
+    numbers). Lines: `mon/1 -> "Scarlett 2i4 USB" 1/2`, `main/1`, `bus/3.L`, `usb_out/45-46` (legacy
+    `usb_out 45/46` accepted for flat taps). Engine resolves taps to ports later (T024; monitor/solo
+    in T038 - not implemented here). Default config `crates/wing-hostio/hostio.example.toml`
+    (`EXAMPLE_TOML`, `HostIoConfig::example()`): monitor A -> Scarlett 1/2. TOML `[hostio]` with `latency_ms`, `buffer_frames`,
     `[[hostio.route]]` (`map = ...` or `source`/`device`/`channels`, per-route `latency_ms`);
     `HostIoConfig::devices()` groups per device and rejects double-mapped device channels.
   - Files: Cargo.toml (member, serde/toml workspace deps, dev opt-level 2 for wing-hostio so the hour
@@ -59,7 +64,7 @@ CoreAudio client to any host device; mapping config 'USB out 45/46 -> Scarlett 2
     303 callbacks, 0 underruns (audibility for the user to confirm). `--example list_devices` works.
   - Not done: acceptance "hear REAPER audio on Scarlett via the sim" needs T024 (usb_out source ->
     engine port routing + daemon wiring). Live unplug/replug not exercised on hardware.
-  - Proposed follow-ups: (1) T024/daemon: resolve `SourceChannel` -> engine `Port`, create one bridge per
+  - Proposed follow-ups: (1) T024/daemon: resolve `TapChannel` -> engine `Port` (T038 for `Tap::Monitor`), create one bridge per
     `DevicePlan` in wing-sim, push from `CycleIo::after_cycle` with `host_time_ns()`, expose
     `StatsSnapshot` on the status API; (2) hardware soak: replug the Scarlett and switch it to 44.1 kHz
     while running; (3) optional set-rate to match the sim rate when no other client uses the device.
