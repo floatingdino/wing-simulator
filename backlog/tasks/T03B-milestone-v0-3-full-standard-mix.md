@@ -18,3 +18,4 @@ PUBLIC.snap scene mixes the REAPER session in realtime with standard models; nul
 - 2026-10-25 coordinator: created.
 - 2026-10-25 coordinator: user live test — full mix works on a main tap, menu-bar app works; monitor tap stuck at -inf and DCA mutes ignored (T03F). v0.3 sign-off after T03F.
 - 2026-10-25 user live test (v0.4 build): monitor A to host tap works, DCA mute + DCA solo work, full mix works, menu app works. Remaining: channel solo (T03G).
+- 2026-10-26 user v0.5 test: sidechain OK, mute toggles OK, additive solo OK, 76LA GR OK; open: WARM in gate slot (T085), DEQ/TAPE-DL meters + RTA 'another window' (T086).
