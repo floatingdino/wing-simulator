@@ -9,20 +9,21 @@
 //! * `claim[l]`: next unclaimed schedule position within the level. Threads claim with a CAS that
 //!   also checks the epoch tag, so a late thread still running an old cycle can never steal a
 //!   claim from the current one.
-//! * `done[l]`: completed nodes. A thread that finishes the level's last node wakes parked
-//!   workers. Everyone waits for `done[l] == (tag | len)` before moving to level `l + 1`.
+//! * `done[l]`: completed nodes. Everyone waits for `done[l] == (tag | len)` before moving on to
+//!   level `l + 1`; the thread completing a level wakes any worker sleeping on it.
 //!
-//! The driver resets all counters to the new tag, stores the epoch (release) and wakes workers;
-//! then it participates like a worker and returns once the last level is complete. Workers wait
-//! for a new epoch and for level barriers with spin-then-park (`thread::park`, woken via a
-//! per-worker `parked` flag so no syscall happens unless a worker is actually asleep). The
+//! The driver resets all counters to the new tag, publishes the epoch, rings the `bell` (wakes
+//! sleeping workers), then participates like a worker and returns once the last level is
+//! complete. Workers wait (for the bell and at level barriers) by spinning for
+//! [`EngineConfig::spin`] and then sleeping on the counter's address (`os_sync_wait_on_address`,
+//! a futex). Wakers only make the wake syscall if a sleeper counter says someone is asleep. The
 //! driver never sleeps: it spins (then yields) at level barriers.
 //!
 //! Nothing on this path allocates or takes locks.
 
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering::*};
-use std::sync::{Arc, OnceLock};
-use std::thread::{self, JoinHandle, Thread};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering::*};
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use crate::graph::{Graph, NodeId, Port, ProcessCtx, Processor};
@@ -34,7 +35,7 @@ use crate::stats::{Stats, StatsHandle};
 pub struct EngineConfig {
     /// Number of worker threads in addition to the driver (0 = single-threaded).
     pub workers: usize,
-    /// How long a waiting worker spins before parking.
+    /// How long a waiting worker spins before sleeping.
     pub spin: Duration,
     /// Apply `THREAD_TIME_CONSTRAINT_POLICY` to worker threads.
     pub rt_workers: bool,
@@ -56,6 +57,39 @@ impl Default for EngineConfig {
     }
 }
 
+/// Address-based wait/wake (futex). macOS 14.4+: `os_sync_wait_on_address`; elsewhere a
+/// yield-based fallback (correct, but busy).
+mod futex {
+    use std::sync::atomic::AtomicU64;
+
+    /// Sleep while `*addr == expected` (may return spuriously).
+    #[inline]
+    pub fn wait(addr: &AtomicU64, expected: u64) {
+        #[cfg(target_os = "macos")]
+        // SAFETY: `addr` is a valid, 8-byte aligned atomic for the duration of the call.
+        unsafe {
+            libc::os_sync_wait_on_address(addr.as_ptr().cast(), expected, 8, 0);
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (addr, expected);
+            std::thread::yield_now();
+        }
+    }
+
+    /// Wake every thread sleeping on `addr`.
+    #[inline]
+    pub fn wake_all(addr: &AtomicU64) {
+        #[cfg(target_os = "macos")]
+        // SAFETY: as above. ENOENT (no waiters) is fine.
+        unsafe {
+            libc::os_sync_wake_by_address_all(addr.as_ptr().cast(), 8, 0);
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = addr;
+    }
+}
+
 #[repr(align(128))]
 #[derive(Default)]
 struct Padded<T>(T);
@@ -67,24 +101,25 @@ impl<T> std::ops::Deref for Padded<T> {
     }
 }
 
-struct WorkerSlot {
-    parked: Padded<AtomicBool>,
-    thread: OnceLock<Thread>,
-    /// 0 = not attempted, 1 = ok, other = error code (+2 to avoid collisions).
-    rt_status: AtomicU64,
-}
-
 struct Shared {
     graph: Graph,
     epoch: Padded<AtomicU64>,
+    /// Incremented for every event workers must react to (new cycle, workgroup change,
+    /// shutdown); idle workers sleep on it.
+    bell: Padded<AtomicU64>,
+    bell_sleepers: Padded<AtomicU32>,
+    level_sleepers: Padded<AtomicU32>,
     claim: Box<[Padded<AtomicU64>]>,
     done: Box<[Padded<AtomicU64>]>,
     shutdown: AtomicBool,
-    workers: Box<[WorkerSlot]>,
+    /// Per worker: 0 = not attempted, 1 = ok, n = kern_return + 2.
+    rt_status: Box<[AtomicU64]>,
     spin: Duration,
     wg_ptr: AtomicPtr<std::ffi::c_void>,
     wg_gen: AtomicU64,
 }
+
+const TAG_MASK: u64 = !0xffff_ffff;
 
 #[inline]
 fn tag(epoch: u64) -> u64 {
@@ -92,21 +127,25 @@ fn tag(epoch: u64) -> u64 {
 }
 
 impl Shared {
+    /// Wake idle workers (call after the event's state change).
     #[inline]
-    fn wake_parked(&self) {
-        for w in self.workers.iter() {
-            if w.parked.swap(false, SeqCst) {
-                if let Some(t) = w.thread.get() {
-                    t.unpark();
-                }
-            }
+    fn ring(&self) {
+        self.bell.fetch_add(1, SeqCst);
+        if self.bell_sleepers.load(SeqCst) > 0 {
+            futex::wake_all(&self.bell);
         }
     }
 
-    /// Spin-then-park until `cond` holds. `me` = worker index, or `None` for the driver (never
-    /// parks; yields instead).
+    /// Spin, then (workers only) sleep on `addr` until `cond` holds. The driver (`sleep ==
+    /// false`) yields instead of sleeping.
     #[inline]
-    fn wait(&self, me: Option<usize>, mut cond: impl FnMut() -> bool) {
+    fn wait(
+        &self,
+        addr: &AtomicU64,
+        sleepers: &AtomicU32,
+        sleep: bool,
+        mut cond: impl FnMut() -> bool,
+    ) {
         let mut spins = 0u32;
         let mut start: Option<Instant> = None;
         loop {
@@ -122,35 +161,32 @@ impl Shared {
             if t0.elapsed() < self.spin {
                 continue;
             }
-            match me {
-                None => thread::yield_now(),
-                Some(i) => {
-                    let slot = &self.workers[i];
-                    slot.parked.store(true, SeqCst);
-                    if cond() || self.shutdown.load(SeqCst) {
-                        slot.parked.store(false, SeqCst);
-                        return;
-                    }
-                    thread::park();
-                    slot.parked.store(false, SeqCst);
-                    if self.shutdown.load(SeqCst) {
-                        return;
-                    }
-                }
+            if !sleep {
+                thread::yield_now();
+                continue;
             }
+            // Dekker-style handshake with the waker (all SeqCst): either we see the new value
+            // (cond true / futex value mismatch) or the waker sees `sleepers > 0` and wakes us.
+            let v = addr.load(SeqCst);
+            sleepers.fetch_add(1, SeqCst);
+            if !cond() {
+                futex::wait(addr, v);
+            }
+            sleepers.fetch_sub(1, SeqCst);
         }
     }
 
     /// Participate in cycle `epoch`. Returns early if the cycle is already over (late worker).
     #[inline]
-    fn run_cycle(&self, epoch: u64, me: Option<usize>) {
+    fn run_cycle(&self, epoch: u64, worker: bool) {
         let t = tag(epoch);
         let ctx = ProcessCtx {
             cycle: epoch,
             block_size: self.graph.block_size(),
             sample_rate: self.graph.sample_rate(),
         };
-        for l in 0..self.graph.num_levels() {
+        let nl = self.graph.num_levels();
+        for l in 0..nl {
             let range = self.graph.level_range(l);
             let len = range.len() as u64;
             let claim = &self.claim[l];
@@ -158,7 +194,7 @@ impl Shared {
             let target = t | len;
             loop {
                 let v = claim.load(Acquire);
-                if v & !0xffff_ffff != t {
+                if v & TAG_MASK != t {
                     return; // stale
                 }
                 let idx = v & 0xffff_ffff;
@@ -174,17 +210,17 @@ impl Shared {
                 // SAFETY: we hold the unique claim on this position for this epoch, and the
                 // previous level's barrier (acquire on `done`) completed before we got here.
                 unsafe { self.graph.run_node(range.start + idx as usize, &ctx) };
-                if done.fetch_add(1, SeqCst) + 1 == target {
-                    self.wake_parked();
+                if done.fetch_add(1, SeqCst) + 1 == target && self.level_sleepers.load(SeqCst) > 0 {
+                    futex::wake_all(done);
                 }
             }
-            if me.is_some() && l + 1 == self.graph.num_levels() {
+            if worker && l + 1 == nl {
                 // Workers need not wait for the final level; the driver does.
                 return;
             }
-            self.wait(me, || {
+            self.wait(done, &self.level_sleepers, worker, || {
                 let d = done.load(SeqCst);
-                d == target || d & !0xffff_ffff != t
+                d == target || d & TAG_MASK != t
             });
             if done.load(Acquire) != target {
                 return; // stale: a newer cycle began
@@ -194,19 +230,20 @@ impl Shared {
 }
 
 fn worker_main(shared: Arc<Shared>, idx: usize, rt_tc: Option<TimeConstraint>) {
-    // Register our handle before we can ever park, so wakers always find it.
-    let _ = shared.workers[idx].thread.set(thread::current());
     if let Some(tc) = rt_tc {
         let st = match rt::set_current_thread_time_constraint(tc) {
             Ok(()) => 1,
             Err(rt::RtError::Policy(k)) => 2 + k as u32 as u64,
             Err(_) => 2,
         };
-        shared.workers[idx].rt_status.store(st, Relaxed);
+        shared.rt_status[idx].store(st, Relaxed);
     }
     let mut membership: Option<WorkgroupMembership> = None;
     let mut wg_gen = 0u64;
-    let mut seen = shared.epoch.load(Acquire);
+    // Start from the initial values (not a fresh load) so events raised before this thread got
+    // scheduled (first cycle, shutdown) are never missed.
+    let mut seen_epoch = 0u64;
+    let mut bell = 0u64;
     loop {
         // Workgroup changes are applied between cycles (join allocates its token + syscalls).
         let g = shared.wg_gen.load(Acquire);
@@ -219,12 +256,18 @@ fn worker_main(shared: Arc<Shared>, idx: usize, rt_tc: Option<TimeConstraint>) {
                 membership = WorkgroupMembership::join(unsafe { RawWorkgroup::from_raw(p) }).ok();
             }
         }
-        shared.wait(Some(idx), || shared.epoch.load(SeqCst) != seen);
+        shared.wait(&shared.bell, &shared.bell_sleepers, true, || {
+            shared.bell.load(SeqCst) != bell || shared.shutdown.load(SeqCst)
+        });
+        bell = shared.bell.load(Acquire);
         if shared.shutdown.load(SeqCst) {
             break;
         }
-        seen = shared.epoch.load(Acquire);
-        shared.run_cycle(seen, Some(idx));
+        let ep = shared.epoch.load(Acquire);
+        if ep != seen_epoch {
+            seen_epoch = ep;
+            shared.run_cycle(ep, true);
+        }
     }
     drop(membership);
 }
@@ -242,25 +285,21 @@ impl Engine {
     pub fn new(graph: Graph, config: EngineConfig) -> Self {
         let nl = graph.num_levels();
         let period_ns = (graph.block_size() as f64 * 1e9 / graph.sample_rate() as f64) as u64;
+        let wg = config
+            .workgroup
+            .map_or(std::ptr::null_mut(), |w| w.as_ptr());
         let shared = Arc::new(Shared {
             claim: (0..nl).map(|_| Padded(AtomicU64::new(0))).collect(),
             done: (0..nl).map(|_| Padded(AtomicU64::new(0))).collect(),
             graph,
             epoch: Padded(AtomicU64::new(0)),
+            bell: Padded(AtomicU64::new(0)),
+            bell_sleepers: Padded(AtomicU32::new(0)),
+            level_sleepers: Padded(AtomicU32::new(0)),
             shutdown: AtomicBool::new(false),
-            workers: (0..config.workers)
-                .map(|_| WorkerSlot {
-                    parked: Padded(AtomicBool::new(false)),
-                    thread: OnceLock::new(),
-                    rt_status: AtomicU64::new(0),
-                })
-                .collect(),
+            rt_status: (0..config.workers).map(|_| AtomicU64::new(0)).collect(),
             spin: config.spin,
-            wg_ptr: AtomicPtr::new(
-                config
-                    .workgroup
-                    .map_or(std::ptr::null_mut(), |w| w.as_ptr()),
-            ),
+            wg_ptr: AtomicPtr::new(wg),
             wg_gen: AtomicU64::new(config.workgroup.is_some() as u64),
         });
         let rt_tc = config
@@ -269,13 +308,11 @@ impl Engine {
         let handles = (0..config.workers)
             .map(|i| {
                 let s = shared.clone();
-                let h = thread::Builder::new()
+                thread::Builder::new()
                     .name(format!("wing-worker-{i}"))
                     .stack_size(256 * 1024)
                     .spawn(move || worker_main(s, i, rt_tc))
-                    .expect("spawn worker thread");
-                let _ = shared.workers[i].thread.set(h.thread().clone());
-                h
+                    .expect("spawn worker thread")
             })
             .collect();
         let stats = Arc::new(Stats::default());
@@ -326,13 +363,13 @@ impl Engine {
         self.handles.len()
     }
 
-    /// Per-worker result of applying the time-constraint policy: `None` = not attempted / not yet,
-    /// `Some(Ok)`, or `Some(Err(kern_return))`.
+    /// Per-worker result of applying the time-constraint policy: `None` = not attempted / not
+    /// yet, `Some(Ok)`, or `Some(Err(kern_return))`.
     pub fn worker_rt_status(&self) -> Vec<Option<Result<(), i32>>> {
         self.shared
-            .workers
+            .rt_status
             .iter()
-            .map(|w| match w.rt_status.load(Relaxed) {
+            .map(|s| match s.load(Relaxed) {
                 0 => None,
                 1 => Some(Ok(())),
                 n => Some(Err((n - 2) as u32 as i32)),
@@ -340,21 +377,21 @@ impl Engine {
             .collect()
     }
 
-    /// Ask every worker to (re)join `wg` (or leave, with `None`) before its next cycle.
+    /// Ask every worker to (re)join `wg` (or leave, with `None`) between cycles.
     ///
     /// # Safety
-    /// The workgroup must stay valid until it is replaced and every worker has run at least one
-    /// more cycle, or until the engine is dropped.
+    /// The workgroup must stay valid until it is replaced and every worker has observed the
+    /// change, or until the engine is dropped.
     pub unsafe fn set_workgroup(&self, wg: Option<RawWorkgroup>) {
-        self.shared
-            .wg_ptr
-            .store(wg.map_or(std::ptr::null_mut(), |w| w.as_ptr()), Release);
+        let p = wg.map_or(std::ptr::null_mut(), |w| w.as_ptr());
+        self.shared.wg_ptr.store(p, Release);
         self.shared.wg_gen.fetch_add(1, Release);
-        self.shared.wake_parked();
+        self.shared.ring();
     }
 
     /// Run one cycle on the calling thread plus the worker pool and record its duration.
-    /// RT-safe: no allocation, no locks; the only syscalls are `unpark`s of sleeping workers.
+    /// RT-safe: no allocation and no locks; the only syscall is a single futex wake, made only
+    /// if some worker is asleep.
     pub fn process_cycle(&mut self) -> Duration {
         let t0 = Instant::now();
         self.epoch += 1;
@@ -366,8 +403,8 @@ impl Engine {
             d.store(t, Relaxed);
         }
         s.epoch.store(ep, SeqCst);
-        s.wake_parked();
-        s.run_cycle(ep, None);
+        s.ring();
+        s.run_cycle(ep, false);
         let dt = t0.elapsed();
         self.stats.record_cycle(dt.as_nanos() as u64);
         dt
@@ -401,12 +438,7 @@ impl Engine {
 impl Drop for Engine {
     fn drop(&mut self) {
         self.shared.shutdown.store(true, SeqCst);
-        for w in self.shared.workers.iter() {
-            w.parked.store(false, SeqCst);
-            if let Some(t) = w.thread.get() {
-                t.unpark();
-            }
-        }
+        self.shared.ring();
         for h in self.handles.drain(..) {
             let _ = h.join();
         }

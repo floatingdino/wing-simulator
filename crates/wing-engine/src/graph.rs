@@ -15,6 +15,9 @@ use std::cell::UnsafeCell;
 use std::fmt;
 use std::marker::PhantomData;
 
+/// Buffer alignment in samples (128 bytes: Apple Silicon cache line).
+const ALIGN_F32: usize = 32;
+
 /// Index of a node in a graph (insertion order).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(pub u32);
@@ -273,15 +276,21 @@ impl GraphBuilder {
             return Err(GraphError::ZeroBlockSize);
         }
         let b = self.block_size;
-        // Arena layout: [external inputs][node 0 outputs][node 1 outputs]...
+        // Arena layout: [external inputs][node 0 outputs][node 1 outputs]..., each region starting
+        // on a 128-byte boundary so nodes on different cores never share a cache line.
+        let pad = |n: usize| n.div_ceil(ALIGN_F32) * ALIGN_F32;
         let mut out_offset = Vec::with_capacity(self.nodes.len());
-        let mut total = self.num_external as usize * b;
+        let mut total = pad(self.num_external as usize * b);
         for n in &self.nodes {
             out_offset.push(total);
-            total += n.num_outputs as usize * b;
+            total += pad(n.num_outputs as usize * b);
         }
-        let arena: Box<[UnsafeCell<f32>]> = (0..total).map(|_| UnsafeCell::new(0.0)).collect();
-        let base = arena.as_ptr() as *mut f32;
+        let arena: Box<[UnsafeCell<f32>]> = (0..total + ALIGN_F32)
+            .map(|_| UnsafeCell::new(0.0))
+            .collect();
+        let raw = arena.as_ptr() as *mut f32;
+        // SAFETY: the arena has ALIGN_F32 spare samples, so the aligned base stays in bounds.
+        let base = unsafe { raw.add(raw.align_offset(ALIGN_F32 * 4)) };
 
         let num_levels = self.nodes.iter().map(|n| n.level + 1).max().unwrap_or(0) as usize;
         // Stable order: by level, then insertion order.
@@ -336,7 +345,8 @@ impl GraphBuilder {
             block_size: b,
             sample_rate: self.sample_rate,
             num_external: self.num_external as usize,
-            arena,
+            _arena: arena,
+            base,
             slots,
             position: position.into_boxed_slice(),
             levels: levels.into_boxed_slice(),
@@ -359,7 +369,10 @@ pub struct Graph {
     block_size: usize,
     sample_rate: f32,
     num_external: usize,
-    arena: Box<[UnsafeCell<f32>]>,
+    /// Owns the sample storage; only accessed through `base` and the per-node pointers.
+    _arena: Box<[UnsafeCell<f32>]>,
+    /// 128-byte aligned start of the arena layout.
+    base: *mut f32,
     slots: Box<[NodeSlot]>,
     /// NodeId index -> schedule position.
     position: Box<[usize]>,
@@ -432,7 +445,7 @@ impl Graph {
     }
 
     fn port_ptr(&self, p: Port) -> *mut f32 {
-        let base = self.arena.as_ptr() as *mut f32;
+        let base = self.base;
         let off = match p {
             Port::External(ch) => {
                 assert!(
