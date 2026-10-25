@@ -50,6 +50,26 @@ fn run_pre(m: &mut MixStrip, xl: &[f32], xr: &[f32]) -> (Vec<f32>, Vec<f32>) {
     (l, r)
 }
 
+/// `x` delayed by `d` samples (zeros in front, same length): the strip's constant latency (T03E).
+fn delayed(x: &[f32], d: usize) -> Vec<f32> {
+    let mut y = vec![0.0; x.len()];
+    y[d..].copy_from_slice(&x[..x.len() - d]);
+    y
+}
+
+/// `blocks` repetitions of the block `x` through the full strip (pre + out).
+fn run_repeated(m: &mut MixStrip, x: &[f32], blocks: usize) -> (Vec<f32>, Vec<f32>) {
+    let (mut yl, mut yr) = (Vec::new(), Vec::new());
+    for _ in 0..blocks {
+        let (mut l, mut r) = (x.to_vec(), x.to_vec());
+        m.process_pre(&mut l, &mut r);
+        m.process_out(&mut l, &mut r);
+        yl.extend(l);
+        yr.extend(r);
+    }
+    (yl, yr)
+}
+
 /// STD bus EQ settings as (0-based target position, value).
 const EQ_SET: [(u16, f32); 7] = [
     (0, 4.0),    // lg
@@ -97,8 +117,9 @@ fn eq_and_dyn_match_standalone_blocks() {
         for (a, b) in zl.chunks_mut(B).zip(zr.chunks_mut(B)) {
             eq.process(a, b, None);
         }
-        assert_eq!(yl, zl, "{strip:?} EQ L");
-        assert_eq!(yr, zr, "{strip:?} EQ R");
+        let lat = m.latency();
+        assert_eq!(yl, delayed(&zl, lat), "{strip:?} EQ L");
+        assert_eq!(yr, delayed(&zr, lat), "{strip:?} EQ R");
         assert!(yl.iter().zip(&xl).any(|(a, b)| (a - b).abs() > 1e-3));
 
         // EQ -> COMP (stereo-linked, keyed from itself)
@@ -118,8 +139,8 @@ fn eq_and_dyn_match_standalone_blocks() {
             eq.process(a, b, None);
             comp.process(a, b, None);
         }
-        assert_eq!(yl, zl, "{strip:?} EQ+COMP L");
-        assert_eq!(yr, zr, "{strip:?} EQ+COMP R");
+        assert_eq!(yl, delayed(&zl, lat), "{strip:?} EQ+COMP L");
+        assert_eq!(yr, delayed(&zr, lat), "{strip:?} EQ+COMP R");
         let t = m.take_telemetry();
         assert!(t.dyn_gr_db > 1.0, "{strip:?}: GR {}", t.dyn_gr_db);
     }
@@ -196,27 +217,26 @@ fn process_order_and_bypass() {
         "Ins2 after dyn"
     );
 
-    // polarity is inverted
-    let (mut l, mut r) = (x.clone(), x.clone());
+    // polarity is inverted (behind the strip's constant latency)
     set(&mut m, hook::DYN, 0, 0.0);
     set(&mut m, hook::PREINS, 0, 0.0);
     set(&mut m, hook::POSTINS, 0, 0.0);
     m.settle();
-    m.process_pre(&mut l, &mut r);
-    for (y, v) in l.iter().zip(&x) {
+    let lat = m.latency();
+    let xs: Vec<f32> = x.iter().cycle().take(4 * B).copied().collect();
+    let (l, _) = run_repeated(&mut m, &x, 4);
+    for (y, v) in l.iter().zip(&delayed(&xs, lat)) {
         assert!((y + v * trim).abs() < 1e-6);
     }
 
-    // everything off again: bit-exact pass-through
+    // everything off again: bit-exact pass-through, delayed by the strip latency
     set(&mut m, hook::INPUT, 0, 0.0);
     set(&mut m, hook::INPUT, 2, 0.0);
     set(&mut m, hook::EQ, 0, 0.0);
     m.settle();
-    let (mut l, mut r) = (x.clone(), x.clone());
-    m.process_pre(&mut l, &mut r);
-    m.process_out(&mut l, &mut r);
-    assert_eq!(l, x);
-    assert_eq!(r, x);
+    let (l, r) = run_repeated(&mut m, &x, 4);
+    assert_eq!(l, delayed(&xs, lat));
+    assert_eq!(r, delayed(&xs, lat));
 }
 
 #[test]
@@ -225,10 +245,11 @@ fn balance_attenuates_opposite_side() {
     let mut m = MixStrip::new(Strip::Mtx(2), FS, B);
     set(&mut m, hook::INPUT, 1, 6.0);
     m.settle();
-    let (mut l, mut r) = (x.clone(), x.clone());
-    m.process_pre(&mut l, &mut r);
-    assert!((l[0] - 0.5 * 10f32.powf(-6.0 / 20.0)).abs() < 1e-6);
-    assert_eq!(r[0], 0.5);
+    let n = 1 + m.latency() / B;
+    let (l, r) = run_repeated(&mut m, &x, n);
+    let last = l.len() - 1;
+    assert!((l[last] - 0.5 * 10f32.powf(-6.0 / 20.0)).abs() < 1e-6);
+    assert_eq!(r[last], 0.5);
 }
 
 fn impulse_delay(mode: u16, value: f32) -> Vec<f32> {
@@ -395,8 +416,12 @@ fn output_delay_is_post_fader_only() {
 fn mix_strip_hook_trait_object() {
     let mut h: Box<dyn StripHook> = Box::new(MixStrip::new(Strip::Bus(16), FS, B));
     let (mut l, mut r) = (vec![0.25f32; B], vec![0.25f32; B]);
-    h.process(&mut l, &mut r);
-    h.process_post(&mut l, &mut r);
+    for _ in 0..2 {
+        l.fill(0.25);
+        r.fill(0.25);
+        h.process(&mut l, &mut r); // the second block is past the strip latency
+        h.process_post(&mut l, &mut r);
+    }
     assert_eq!(l[0], 0.25);
 }
 

@@ -36,6 +36,15 @@ fn assert_gain(x: &[f32], y: &[f32], g: f64, what: &str) {
     );
 }
 
+/// The bare T036 mix (no bus/main/matrix strip processing): these tests check mix laws sample by sample
+/// against the channel PFL, which the bus strips' constant latency (T03E) would shift.
+fn laws() -> MixConfig {
+    MixConfig {
+        hooks: Some(no_processing()),
+        ..MixConfig::default()
+    }
+}
+
 fn base_store() -> ParamStore {
     let store = ParamStore::new();
     connect_usb(&store, "ch/1", 1);
@@ -52,7 +61,7 @@ fn fader_pan_and_width_laws() {
     seti(&store, "ch/2/in/conn/in", 3);
     setf(&store, "ch/2/fdr", 0.0);
     setf(&store, "ch/2/wid", 0.0);
-    let mut r = rig(&store, MixConfig::default(), 2);
+    let mut r = rig(&store, laws(), 2);
     let main1 = Strip::Main(1);
 
     r.cycles(SETTLE, &[1]);
@@ -116,7 +125,7 @@ fn mute_silences_fader_and_sends_not_pfl() {
     setf(&store, "ch/1/send/1/lvl", 0.0);
     sett(&store, "ch/1/send/1/mode", "PRE");
     seti(&store, "ch/1/mute", 1);
-    let mut r = rig(&store, MixConfig::default(), 0);
+    let mut r = rig(&store, laws(), 0);
     r.cycles(4, &[1]);
     let pfl = r.input(0, I::Pfl, Side::L);
     assert!(pfl.iter().any(|v| v.abs() > 0.01), "PFL carries signal");
@@ -204,7 +213,7 @@ fn send_taps_and_modes() {
     send("6", "POST", 0.0, 0, 0.0);
     seti(&store, "ch/1/send/6/on", 0);
     send("MX1", "POST", -2.0, 0, 100.0);
-    let mut r = rig(&store, MixConfig::default(), 3);
+    let mut r = rig(&store, laws(), 3);
     r.cycles(SETTLE, &[1]);
 
     let pfl = r.input(0, I::Pfl, Side::L);
@@ -266,19 +275,29 @@ fn send_taps_and_modes() {
         g * pr * lin(-6.0) * sr,
         "ptap POST",
     );
-    // tap IN (factory strip: equal to PFL); tapwid 0 % is a mono sum of the (mono) tap
+    // tap IN (factory strip: the strip input, ahead of the strip's constant latency, T03E); tapwid 0 %
+    // is a mono sum of the (mono) tap
     sett(&store, "ch/1/ptap", "IN");
     setf(&store, "ch/1/tapwid", 0.0);
     r.cycles(SETTLE, &[1]);
-    let pfl = r.input(0, I::Pfl, Side::L);
-    assert_gain(&pfl, &bus(&r, 1, Side::L), lin(-6.0) * sl, "ptap IN");
+    let input: Vec<f32> = (0..BLOCK as u64)
+        .map(|i| sig(0, r.t - BLOCK as u64 + i))
+        .collect();
+    assert_gain(&input, &bus(&r, 1, Side::L), lin(-6.0) * sl, "ptap IN");
 
     // mode change crossfades (no step): POST -> PRE on send 2
     sett(&store, "ch/1/send/2/mode", "PRE");
     r.cycle(&[1]);
     r.cycles(SETTLE, &[1]);
-    let pfl = r.input(0, I::Pfl, Side::L);
-    assert_gain(&pfl, &bus(&r, 2, Side::L), lin(-3.0) * C, "POST -> PRE");
+    let input: Vec<f32> = (0..BLOCK as u64)
+        .map(|i| sig(0, r.t - BLOCK as u64 + i))
+        .collect();
+    assert_gain(
+        &input,
+        &bus(&r, 2, Side::L),
+        lin(-3.0) * C,
+        "POST -> PRE (ptap IN)",
+    );
 }
 
 #[test]
@@ -312,7 +331,7 @@ fn busses_mains_matrices_and_tiers() {
     assert_eq!(bus_tiers(&store, BusOrder::Flat), [0; 16]);
     assert_eq!(bus_tiers(&store, BusOrder::Chain)[15], 15);
 
-    let mut r = rig(&store, MixConfig::default(), 4);
+    let mut r = rig(&store, laws(), 4);
     assert_eq!(r.tiers, t);
     r.cycles(SETTLE, &[1]);
     let pfl = r.input(0, I::Pfl, Side::L);
@@ -414,7 +433,7 @@ fn busses_mains_matrices_and_tiers() {
 fn fader_changes_are_smoothed() {
     let store = base_store();
     setf(&store, "ch/1/fdr", 0.0);
-    let mut r = rig(&store, MixConfig::default(), 0);
+    let mut r = rig(&store, laws(), 0);
     r.cycles(4, &[1]);
     setf(&store, "ch/1/fdr", -144.0);
     let (mut prev_g, mut prev_n) = (1.0f64, 0usize);
@@ -468,7 +487,7 @@ fn taps_feed_usb_outputs_and_reinputs() {
     // ch 2 re-inputs bus 1 (stereo pair BUS.1/2)
     sett(&store, "ch/2/in/conn/grp", "BUS");
     seti(&store, "ch/2/in/conn/in", 1);
-    let mut r = rig(&store, MixConfig::default(), 2);
+    let mut r = rig(&store, laws(), 2);
     r.cycles(SETTLE, &[1]);
     let usb = |r: &Rig, n: u32| r.port(Port::node(r.nodes.usb_out, n - 1));
     assert_eq!(usb(&r, 1), r.mix(Strip::Main(1), M::Post, Side::L));
@@ -481,12 +500,21 @@ fn taps_feed_usb_outputs_and_reinputs() {
     }
     assert_eq!(usb(&r, 4), r.mix(Strip::Bus(1), M::Post, Side::R));
 
-    // the re-input arrives one block later, through ch 2's (default, transparent) strip
-    let prev = r.mix(Strip::Bus(1), M::Post, Side::L);
-    r.cycle(&[1]);
+    // the re-input arrives one block later, through ch 2's (default, transparent) strip, which
+    // delays by the constant input-strip latency (T03E)
+    let lat = wing_engine::channel::ChannelStrip::channel(48_000.0, BLOCK).latency();
+    let k = lat / BLOCK + 2;
+    let mut hist = Vec::new();
+    for _ in 0..k {
+        hist.extend(r.mix(Strip::Bus(1), M::Post, Side::L));
+        r.cycle(&[1]);
+    }
     let ch2 = r.input(1, I::Pfl, Side::L);
-    assert!(prev.iter().any(|v| v.abs() > 0.01));
-    for (a, b) in ch2.iter().zip(&prev) {
+    // ch2[i] = bus(t - BLOCK - lat), t = start of the last cycle + i; hist ends at that t - BLOCK
+    let start = hist.len() - BLOCK - lat;
+    let prev = &hist[start..start + BLOCK];
+    assert!(hist.iter().any(|v| v.abs() > 0.01));
+    for (a, b) in ch2.iter().zip(prev) {
         assert!((a - b).abs() < 1e-5, "{a} vs {b}");
     }
 }
