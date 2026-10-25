@@ -4,7 +4,7 @@ title: Real metering
 stage: S3
 status: todo
 owner: -
-depends: [T015, T035]
+depends: [T015, T035, T026]
 branch: -
 ---
 

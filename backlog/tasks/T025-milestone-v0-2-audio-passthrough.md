@@ -4,7 +4,7 @@ title: Milestone v0.2: audio passthrough
 stage: S2
 status: todo
 owner: -
-depends: [T021, T023, T024]
+depends: [T021, T023, T024, T026]
 branch: -
 ---
 
