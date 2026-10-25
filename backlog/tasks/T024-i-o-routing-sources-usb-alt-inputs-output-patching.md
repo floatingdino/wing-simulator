@@ -2,7 +2,7 @@
 id: T024
 title: I/O routing: sources, USB alt inputs, output patching
 stage: S2
-status: review
+status: done
 owner: agent-T024
 depends: [T010, T022]
 branch: task/T024
