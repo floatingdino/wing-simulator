@@ -247,7 +247,8 @@ Send level `lvl` in dB (-144 = -oo .. +10), fader law shared with faders [S][E].
 
 - `cfg.solo = {mode LIVE|STUDIO|SIP (IN-PLACE), mon PH|SPK|PH+SPK (fw 1.13 fixture: "A"), mute, chtap, bustap,
   maintap, mtxtap (each PFL "PRE FDR" | AFL "POST FDR"), srcsolo OFF|CH39|AUX7}` [S][E/T003]: per strip-type solo
-  tap (fixture: ch/bus/main AFL, mtx PFL); `mon` = which monitor path solo goes to; strip `mon` A/B/A+B chooses monitor bus per strip; `solosafe` exempts a strip from
+  tap (fixture: ch/bus/main AFL, mtx PFL); `mon` = which monitor path solo goes to; strip `mon` A/B/A+B ("MON BUS") does not gate the solo destination (T03G, see
+  below; its function is unknown [I]); `solosafe` exempts a strip from
   solo-in-place muting [S][I]. LIVE = solo does not affect mix; STUDIO/IN-PLACE (SIP) mutes non-soloed strips [I].
   Exclusive solo / solo-follows-select are control-surface prefs (`ce_data.cfg.soloexcl/selfsolo`) [S].
 - Monitor outputs `cfg.mon.1|2` (= PH phones / SPK speakers, inferred from solo `mon` values and the strings
@@ -257,6 +258,15 @@ Send level `lvl` in dB (-144 = -oo .. +10), fader law shared with faders [S][E].
   monitor source while any solo is active [I]. `lvl` ("PHONES"/"SPEAKERS") is the dedicated monitor A/B level
   knob [E: WING manuals]; it is not in snapshots and WING-Edit pushes it as -oo, so the simulator treats it as a
   physical knob it owns (T03F; set via control socket/OSC).
+- **PH/SPK = monitor 1/2 (T03G, decided):** `cfg/solo/mon` PH = `cfg/mon/1` (phones, monitor A), SPK = `cfg/mon/2`
+  (speakers, monitor B), PH+SPK = both. Evidence: schema long names `cfg/mon/1/lvl` "PHONES" and `cfg/mon/2/lvl`
+  "SPEAKERS"; enum order PH, SPK, PH+SPK matches strip `mon` A, B, A+B; direct-input options `MON.PH`/`MON.SPK`
+  [S]. Every solo goes to the monitor(s) `cfg/solo/mon` names. (T038 had inferred "strip `mon` AND `cfg/solo/mon`";
+  as factory strips are all `A`, that made SPK silence every solo on both monitors, yet the user's real-WING scene
+  `live-mix-v0.4.snap` has SPK with every strip `A`, so the AND rule cannot be WING's.) With SPK (that scene and
+  WING-Edit's push) a WING sends solos to the speakers only, and a listener on monitor A hears nothing change. The simulator's host bridge (default `mon/1`) stands in for whatever the user
+  listens to, so wing-sim additionally sends a solo to the monitor(s) the host plays when its WING destination
+  misses them (`MixLogic::set_listen`, derived from the host routes); with PH or PH+SPK nothing changes.
 - Talkback `cfg.talk.A|B = {mode AUTO|PUSH|LATCH, mondim, busdim, B1..B16, M1..M4}`, `assign` (source, fixture
   CH40), `indiv` per-destination levels [S][E].
 - RTA/meters: `cfg.rta` and `cfg.mtr` select sources/taps (IN, PRE/POST etc.) - metering only [S].

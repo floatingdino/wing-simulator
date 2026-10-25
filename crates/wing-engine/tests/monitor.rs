@@ -61,7 +61,13 @@ impl T {
     }
 
     fn with_knobs(knobs: Option<Arc<MonitorLevels>>) -> Self {
+        Self::with(knobs, |_| {})
+    }
+
+    /// [`T::with_knobs`] with `extra` applied to the store before the graph is built.
+    fn with(knobs: Option<Arc<MonitorLevels>>, extra: impl FnOnce(&ParamStore)) -> Self {
         let (store, mut logic) = setup();
+        extra(&store);
         logic.refresh(&store);
         // bare mix (no bus/main strip processing): gains are fitted sample by sample against the
         // channel PFL, which the main strip latency (T03E) would shift
@@ -340,6 +346,76 @@ fn pfl_and_afl_taps() {
     assert_gain(&pfl, &t.mon(1, Side::L), lin(-12.0), "bus PFL");
 }
 
+/// T03G: channel, aux, bus, main, matrix and DCA solo all reach the monitor(s) `cfg/solo/mon`
+/// names (PH = monitor 1, SPK = monitor 2, PH+SPK = both), whatever the strip's MON BUS; with a
+/// listen mask (the monitor the daemon's host bridge plays) a solo that misses it reaches it too.
+#[test]
+fn every_solo_kind_reaches_the_cfg_solo_monitor_and_the_listened_one() {
+    let mut t = T::with(None, |s| {
+        connect_usb(s, "aux/1", 2);
+        setf(s, "aux/1/fdr", -5.0);
+    });
+    for tap in ["chtap", "bustap", "maintap", "mtxtap"] {
+        t.set(&format!("cfg/solo/{tap}"), "PFL");
+    }
+    for m in [1, 2] {
+        t.set(&format!("cfg/mon/{m}/pfldim"), "0");
+    }
+    // ch1 -> bus 2 (send 0 dB) and main 1; main 1 -> mtx 1 (MX1 0 dB); faders off unity so
+    // PFL and post differ
+    t.set("ch/1/send/2/on", "1");
+    t.set("ch/1/send/2/lvl", "0");
+    t.set("bus/2/fdr", "-4");
+    t.set("main/1/fdr", "-2");
+    t.set("main/1/send/MX1/on", "1");
+    t.set("main/1/send/MX1/lvl", "0");
+    t.set("mtx/1/fdr", "-3");
+    t.set("ch/1/tags", "#D3");
+    // every strip on monitor bus B: must not matter
+    for p in ["ch/1", "aux/1", "bus/2", "main/1", "mtx/1", "dca/3"] {
+        t.set(&format!("{p}/mon"), "B");
+    }
+    t.run(SETTLE);
+
+    let pfl = |t: &T, what: &str| match what {
+        "ch/1" | "dca/3" => t.pfl(0),
+        "aux/1" => t.r.input(40, I::Pfl, Side::L),
+        "bus/2" => t.r.mix(Strip::Bus(2), M::Pfl, Side::L),
+        "main/1" => t.r.mix(Strip::Main(1), M::Pfl, Side::L),
+        "mtx/1" => t.r.mix(Strip::Mtx(1), M::Pfl, Side::L),
+        _ => unreachable!(),
+    };
+    // (cfg/solo/mon, listen mask, solo on monitor 1, solo on monitor 2)
+    for (mon, listen, on1, on2) in [
+        ("PH", 0, true, false),
+        ("SPK", 0, false, true),
+        ("PH+SPK", 0, true, true),
+        ("SPK", 1, true, true), // the user's case: host plays mon/1
+        ("PH", 1, true, false),
+        ("PH", 2, true, true),
+    ] {
+        t.set("cfg/solo/mon", mon);
+        t.logic.set_listen(listen);
+        for strip in ["ch/1", "aux/1", "bus/2", "main/1", "mtx/1", "dca/3"] {
+            t.set(&format!("{strip}/$solo"), "1");
+            t.run(SETTLE);
+            let what = format!("{strip} solo, cfg/solo/mon {mon}, listen {listen}");
+            let want = pfl(&t, strip);
+            assert!(want.iter().any(|x| x.abs() > 1e-3), "{what}: no signal");
+            for (m, on) in [(1, on1), (2, on2)] {
+                let want = if on { want.clone() } else { t.main(Side::L) };
+                assert_gain(&want, &t.mon(m, Side::L), 1.0, &format!("{what}: mon {m}"));
+            }
+            t.set(&format!("{strip}/$solo"), "0");
+            t.run(SETTLE);
+            assert!(!t.logic.state().any_solo, "{what}: unsolo");
+            for m in [1, 2] {
+                assert_gain(&t.main(Side::L), &t.mon(m, Side::L), 1.0, "unsoloed");
+            }
+        }
+    }
+}
+
 /// A 50 Hz sine on USB 1 and a 70 Hz one on USB 2 (slow: a gain jump is a click).
 fn sines(r: &mut Rig) {
     for ch in 0..48 {
@@ -434,9 +510,21 @@ fn srcmix_mixes_source_under_solo() {
     assert_gain(&t.main(Side::L), &t.mon(2, Side::L), 1.0, "mon 2");
     t.set("cfg/solo/mon", "PH+SPK");
     t.set("cfg/mon/2/pfldim", "0");
-    t.set("ch/2/mon", "A+B");
     t.run(SETTLE);
     assert_gain(&t.pfl(1), &t.mon(2, Side::L), 1.0, "mon 2 solo");
+    // the strip's MON BUS does not gate the destination (T03G)
+    t.set("ch/2/mon", "B");
+    t.run(SETTLE);
+    assert_gain(&t.pfl(1), &t.mon(2, Side::L), 1.0, "strip mon B: mon 2");
+    let want = add(
+        &t.main(Side::L)
+            .iter()
+            .map(|x| x * lin(-10.0) as f32)
+            .collect::<Vec<_>>(),
+        &t.pfl(1),
+    );
+    assert_gain(&want, &t.mon(1, Side::L), 1.0, "strip mon B: mon 1");
+    t.set("ch/2/mon", "A");
     // srclvl only applies without solo
     t.set("ch/2/$solo", "0");
     t.set("cfg/mon/1/srclvl", "-6");

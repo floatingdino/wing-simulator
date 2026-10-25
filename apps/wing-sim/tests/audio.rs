@@ -386,6 +386,148 @@ fn monitor_level_survives_wing_edit_push() {
     assert_eq!(knobs.describe(), "mon/1 -12.0 dB, mon/2 0.0 dB");
 }
 
+/// T03G regression: the solo set sequence of the user's live WING-Edit session
+/// (`scratch/wing-sim-v0.4.log`), against their scene's solo config (`live-mix-v0.4.snap`:
+/// `cfg/solo/mon` = SPK, ch/bus/main taps AFL, mtx PFL) with the default host route `mon/1`.
+/// With SPK a WING sends solos to monitor 2 (SPEAKERS) only, so channel solo was inaudible on
+/// the host (which plays monitor 1); DCA solo "worked" because the user tried it after
+/// switching `cfg/solo/mon` to PH. The monitor the host plays now receives every solo.
+#[test]
+fn t03g_wing_edit_solo_sequence_reaches_host_monitor() {
+    const WING_EDIT: u32 = 0x5747_4544;
+    let Rig { store, mut routing } = rig();
+    let client = |path: &str, v: &str| {
+        let id = store.lookup(path).unwrap();
+        store
+            .set_text(id, v, WING_EDIT)
+            .unwrap_or_else(|e| panic!("{path} = {v}: {e:?}"));
+    };
+    // ch 1 out of the mains: monitor A (src MAIN.1) is silent unless something is soloed
+    set(&store, "ch/1/main/1/on", "0");
+    for (p, v) in [
+        ("cfg/solo/mode", "LIVE"),
+        ("cfg/solo/mon", "SPK"),
+        ("cfg/solo/chtap", "AFL"),
+        ("cfg/solo/bustap", "AFL"),
+        ("cfg/solo/maintap", "AFL"),
+        ("cfg/solo/mtxtap", "PFL"),
+        ("cfg/mon/1/src", "MAIN.1"),
+        ("cfg/mon/2/src", "MAIN.1"),
+    ] {
+        client(p, v);
+    }
+    // the user's route (the default): mon/1 -> Scarlett 1/2
+    let hcfg = HostIoConfig {
+        routes: vec![Route::parse("mon/1 -> \"Mock\" 1/2").unwrap()],
+        ..HostIoConfig::default()
+    };
+    let p = hostio::plan(&hcfg, FS, BLOCK).unwrap().pop().unwrap();
+    let _consumer = p.consumer;
+    let mut console = Console::build(
+        console_cfg(),
+        &store,
+        &mut routing,
+        None,
+        vec![(p.producer, p.taps)],
+        Arc::new(AudioStats::default()),
+    )
+    .unwrap();
+    assert_eq!(routing.logic.listen(), 1, "host plays monitor 1");
+    let ports = [1, 2].map(|m| {
+        console
+            .nodes()
+            .mix
+            .monitor_port(m, wing_engine::routing::Side::L)
+    });
+    let input_db = rms_db(&(0..1024).map(|n| sine(n, 1000.0, 0.1)).collect::<Vec<_>>());
+    let mut t = 0u64;
+    // level of monitor 1 / 2 relative to USB In 1 after the control refresh and a settle
+    let mut mon_db = |console: &mut Console, routing: &mut ConsoleControl| {
+        routing.refresh(&store);
+        routing.refresh(&store);
+        let mut x: [Vec<f32>; 2] = Default::default();
+        for c in 0..100 {
+            run_sine(console, t, 1);
+            t += BLOCK as u64;
+            if c >= 84 {
+                for m in 0..2 {
+                    x[m].extend_from_slice(console.port(ports[m]));
+                }
+            }
+        }
+        x.map(|x| rms_db(&x) - input_db)
+    };
+    // solo = ch 1 AFL: trim +6 dB, fader 0 dB, before pan
+    const SOLO_DB: f64 = 6.0;
+    #[track_caller]
+    fn soloed(db: f64, what: &str) {
+        assert!(
+            (db - SOLO_DB).abs() < 0.3,
+            "{what}: {db:.2} dB, expected solo"
+        );
+    }
+    #[track_caller]
+    fn silent(db: f64, what: &str) {
+        assert!(db < -60.0, "{what}: {db:.2} dB, expected silence");
+    }
+    let [a, _] = mon_db(&mut console, &mut routing);
+    silent(a, "start");
+
+    // [49.171s] ch/1/$solo = 1 (cfg/solo/mon = SPK)
+    client("ch/1/$solo", "1");
+    let [a, b] = mon_db(&mut console, &mut routing);
+    soloed(b, "49s ch solo, monitor 2 (SPK, the WING destination)");
+    soloed(a, "49s ch solo, monitor 1 (played by the host)");
+    client("ch/1/$solo", "0");
+    silent(mon_db(&mut console, &mut routing)[0], "50s ch unsolo");
+    for (p, v) in [
+        ("cfg/mon/2/src", "MAIN.2"),
+        ("cfg/mon/2/src", "MAIN.4"),
+        ("cfg/mon/1/src", "OFF"),
+        ("cfg/mon/1/src", "MAIN.1"),
+        ("cfg/mon/1/src", "MAIN.4"),
+        ("cfg/mon/1/src", "MAIN.1"),
+        ("bus/5/$solo", "1"),
+        ("bus/5/$solo", "0"),
+        ("cfg/solo/mon", "PH"),
+        ("cfg/mon/1/src", "MAIN.2"),
+        ("cfg/mon/1/src", "BUS.5"),
+        ("cfg/mon/1/src", "MAIN.1"),
+    ] {
+        client(p, v);
+    }
+    silent(mon_db(&mut console, &mut routing)[0], "115s");
+
+    // [145.865s] DCA solo (WING-Edit also sends $stat/solo) under PH: the case that worked
+    set(&store, "ch/1/tags", "#D1");
+    set(&store, "dca/1/fdr", "0"); // factory -oo would silence the member
+    client("dca/1/$solo", "1");
+    client("$stat/solo", "1");
+    soloed(mon_db(&mut console, &mut routing)[0], "145s DCA solo (PH)");
+    client("dca/1/$solo", "0");
+    client("$stat/solo", "0");
+    silent(mon_db(&mut console, &mut routing)[0], "147s DCA unsolo");
+    set(&store, "ch/1/tags", "");
+
+    // [233.867s] cfg/solo/mon = SPK, bus 1 solo, then [267.407s] ch/1/$solo = 1
+    client("cfg/solo/mon", "SPK");
+    client("bus/1/$solo", "1");
+    client("bus/1/$solo", "0");
+    client("ch/1/$solo", "1");
+    soloed(mon_db(&mut console, &mut routing)[0], "267s ch solo (SPK)");
+    client("ch/1/$solo", "0");
+    silent(mon_db(&mut console, &mut routing)[0], "268s ch unsolo");
+
+    // [320.138s] cfg/solo/mon = PH: plain WING routing, monitor 2 no longer gets the solo
+    client("cfg/solo/mon", "PH");
+    client("ch/1/$solo", "1");
+    let [a, b] = mon_db(&mut console, &mut routing);
+    soloed(a, "ch solo (PH)");
+    silent(b, "ch solo (PH): monitor 2");
+    client("ch/1/$solo", "0");
+    silent(mon_db(&mut console, &mut routing)[0], "end");
+}
+
 // ---- allocations --------------------------------------------------------------------------------
 
 #[test]

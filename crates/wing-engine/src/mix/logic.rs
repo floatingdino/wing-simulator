@@ -22,9 +22,21 @@
 //!   strip [I]. `$ctl/cfg/soloexcl` (EXCL SOLO, default on) makes a new solo clear every other one;
 //!   writing `$stat/solo` = 0 while a solo is active clears every solo ("clear solo"). Taps:
 //!   `chtap` (ch and aux), `bustap`, `maintap`, `mtxtap`: PFL = pre-fader, AFL = post-fader.
-//!   Which monitor a soloed strip reaches: monitor 1 (A / PH) and/or 2 (B / SPK) by the strip's
-//!   `mon` (A/B/A+B) AND `cfg/solo/mon` (PH/SPK/PH+SPK) [I]; the factory defaults (strip A, solo PH)
-//!   send every solo to monitor 1.
+//!   Which monitor a soloed strip reaches: monitor 1 (PH) and/or 2 (SPK) by `cfg/solo/mon`
+//!   (PH/SPK/PH+SPK); factory PH. The strip `mon` (MON BUS A/B/A+B) does *not* gate it (T03G):
+//!   the earlier "strip `mon` AND `cfg/solo/mon`" inference made every solo silent with SPK, as
+//!   factory strips are all `A`, yet the user's real-WING scene (`cfg/solo/mon` SPK, every strip
+//!   `A`) is a working show file. What strip `mon` does is unknown [I] (not modelled).
+//!   Monitor 1 is PH (phones) and monitor 2 SPK (speakers):
+//!   `cfg/mon/1/lvl` is labelled "PHONES" and `cfg/mon/2/lvl` "SPEAKERS" in the schema, and
+//!   WING's direct-input list names them `MON.PH` / `MON.SPK` (signal-flow.md §10) [S].
+//! * **Listened monitors** (simulator only, T03G): a real WING has phones *and* speakers, so a
+//!   solo routed to the speakers is still heard. The simulator's host bridge usually plays just
+//!   one monitor (default `mon/1`). [`MixLogic::set_listen`] names the monitors the host plays;
+//!   a solo whose WING destination (`cfg/solo/mon`) reaches neither of
+//!   the listened ones is additionally sent to the listened ones, so e.g. `cfg/solo/mon` = SPK
+//!   (the user's scene) is still audible on a host that plays `mon/1`. Without a listen mask
+//!   (0, the engine default) the routing is exactly WING's.
 //! * **Modes**: `LIVE` and `STUDIO` leave the mix untouched (solo only feeds the monitors; the
 //!   difference between the two is not known [I]). `SIP` (solo in place) additionally mutes, while
 //!   any channel/aux is soloed, every non-soloed channel/aux without `solosafe`, and while any bus
@@ -130,7 +142,6 @@ struct StripIds {
     tags: ParamId,
     solo: ParamId,
     sololed: ParamId,
-    mon: ParamId,
     solosafe: Option<ParamId>,
 }
 
@@ -175,7 +186,6 @@ impl Ids {
                     tags: id(&format!("{p}/tags")),
                     solo: id(&format!("{p}/$solo")),
                     sololed: id(&format!("{p}/$sololed")),
-                    mon: id(&format!("{p}/mon")),
                     solosafe: store.lookup(&format!("{p}/solosafe")),
                 }
             })
@@ -207,7 +217,7 @@ impl Ids {
     fn watched(&self) -> Vec<ParamId> {
         let mut v = Vec::new();
         for s in &self.strips {
-            v.extend([s.tags, s.solo, s.mon]);
+            v.extend([s.tags, s.solo]);
             v.extend(s.solosafe);
         }
         v.extend(self.dca_fdr);
@@ -292,6 +302,8 @@ pub struct MixLogic {
     last_on: Arc<AtomicU32>,
     /// `$stat/solo` value written by the last refresh.
     stat_written: Option<bool>,
+    /// Monitors the host plays (bit 0 = monitor 1, bit 1 = monitor 2), see the module docs.
+    listen: u8,
     state: LogicState,
 }
 
@@ -317,6 +329,7 @@ impl MixLogic {
             solo_btn: solo_btn.into(),
             last_on: Arc::new(AtomicU32::new(0)),
             stat_written: None,
+            listen: 0,
             state: LogicState {
                 gain_db: [0.0; STRIP_COUNT],
                 flags: [0; STRIP_COUNT],
@@ -354,6 +367,22 @@ impl MixLogic {
             }
             self.dirty.store(true, Release);
         }
+    }
+
+    /// Monitors the host outputs play (bit 0 = monitor 1 / PH, bit 1 = monitor 2 / SPK; 0 =
+    /// none, plain WING routing). A solo that reaches neither listened monitor is also sent to
+    /// them (see the module docs). Takes effect on the next [`MixLogic::refresh`].
+    pub fn set_listen(&mut self, mask: u8) {
+        let mask = mask & 3;
+        if mask != self.listen {
+            self.listen = mask;
+            self.dirty.store(true, Release);
+        }
+    }
+
+    /// The listened monitors ([`MixLogic::set_listen`]).
+    pub fn listen(&self) -> u8 {
+        self.listen
     }
 
     /// The last resolved state.
@@ -449,9 +478,10 @@ impl MixLogic {
         let any_solo = soloed.iter().any(|&s| s != 0);
         let input_solo = soloed[..48].iter().any(|&s| s != 0);
         let bus_solo = soloed[48..64].iter().any(|&s| s != 0);
+        let dest = solo_dest(solo_mon, self.listen);
         for (i, s) in ids.strips.iter().enumerate() {
             if soloed[i] != 0 {
-                let m = mon_mask(get(s.mon) as i32) & solo_mon;
+                let m = dest;
                 if m & 1 != 0 {
                     flags[i] |= flag::SOLO_MON1;
                 }
@@ -505,7 +535,17 @@ fn mask16(f: impl Fn(usize) -> bool) -> u16 {
     (0..16).fold(0u16, |m, k| m | ((f(k) as u16) << k))
 }
 
-/// `A`/`PH` = 1, `B`/`SPK` = 2, `A+B`/`PH+SPK` = 3 (enum index 0/1/2).
+/// Monitors a solo reaches: its WING destination `wing` (`cfg/solo/mon`), plus the `listen`ed
+/// monitors when it reaches monitors but none of those (T03G).
+pub fn solo_dest(wing: u8, listen: u8) -> u8 {
+    if wing != 0 && wing & listen == 0 {
+        wing | listen
+    } else {
+        wing
+    }
+}
+
+/// `PH` = 1 (monitor 1), `SPK` = 2 (monitor 2), `PH+SPK` = 3 (`cfg/solo/mon` enum index 0/1/2).
 fn mon_mask(idx: i32) -> u8 {
     match idx {
         1 => 2,
@@ -527,6 +567,28 @@ mod tests {
             (1 << 15, 1 << 7)
         );
         assert_eq!(parse_tags(""), (0, 0));
+    }
+
+    #[test]
+    fn solo_destination_follows_listened_monitor() {
+        // WING routing without a listen mask
+        for w in 0..4 {
+            assert_eq!(solo_dest(w, 0), w);
+        }
+        // host plays mon/1 (PH): PH and PH+SPK unchanged, SPK also to mon/1, none stays none
+        assert_eq!(solo_dest(1, 1), 1);
+        assert_eq!(solo_dest(3, 1), 3);
+        assert_eq!(solo_dest(2, 1), 3);
+        assert_eq!(solo_dest(0, 1), 0);
+        // host plays mon/2 (SPK)
+        assert_eq!(solo_dest(1, 2), 3);
+        assert_eq!(solo_dest(2, 2), 2);
+        // both played: nothing to add
+        assert_eq!(solo_dest(1, 3), 1);
+        assert_eq!(solo_dest(2, 3), 2);
+        assert_eq!(mon_mask(0), 1);
+        assert_eq!(mon_mask(1), 2);
+        assert_eq!(mon_mask(2), 3);
     }
 
     #[test]
