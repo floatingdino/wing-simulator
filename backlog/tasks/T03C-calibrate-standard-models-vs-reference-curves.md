@@ -2,7 +2,7 @@
 id: T03C
 title: Calibrate standard models vs WING-Edit reference curves + dynxo/key listen
 stage: S3
-status: review
+status: done
 owner: claude-T03C
 depends: [T00A, T031, T032, T033, T034]
 branch: task/T03C
