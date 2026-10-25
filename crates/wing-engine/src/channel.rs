@@ -424,10 +424,8 @@ impl ChannelStrip {
         filter.prepare(fs, max_block);
         let mut peq = PreEq::new();
         peq.prepare(fs, max_block);
-        let mut eq = slot("eq");
-        eq.set_mix_max(125.0);
-        // WING EQ mix scales the band gains (T03C), it is not a dry/wet blend.
-        eq.set_mix_in_model(true);
+        // EQ slot: WING's mix law (band-gain scale, 0..125 %) is the ModelSlot default for `*/eq` groups.
+        let eq = slot("eq");
         let mut s = Self {
             kind,
             input,

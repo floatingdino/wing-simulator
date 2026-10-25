@@ -225,6 +225,10 @@ const MAX_MODELS: usize = 64;
 /// (`out = dry * (1 - w) + w * gain * model(dry)`, `w = on * mix`). With `w = gain = 1` settled and no
 /// swap running, the model output passes untouched (bit-exact with the bare block).
 ///
+/// EQ slots (group key `*/eq`, T04J) follow WING's EQ mix law instead: `ae::Cequalizer::update` passes
+/// `mix/100` to every EQ model's `parchg`, which scales the band gains (dB); there is no dry/wet. The slot
+/// sets `w = on`, forwards `mix` (0..125 %) to every instance via [`RtModel::set_gain_scale`] and never blends.
+///
 /// Side-chain (T035; exact WING biquads since T03C): an optional key filter (`gatesc`/`dynsc` `type f q`) shapes the key the
 /// model detects on: the external key passed to [`ModelSlot::process_keyed`] or, for SELF, a copy of
 /// the input. The filtered key is kept for key-listen ([`ModelSlot::key_signal`]).
@@ -300,6 +304,8 @@ impl ModelSlot {
             }
         }
         assert!(instances.len() <= 64, "at most 64 model instances per slot");
+        // WING EQ mix law (T03C/T04J): every EQ model scales its band gains by mix/100, 0..125 %.
+        let eq = group_key.ends_with("/eq");
         let n = max_block.max(1);
         let ramp = (SLOT_RAMP_S * fs).round() as u32;
         Self {
@@ -325,14 +331,14 @@ impl ModelSlot {
             dry_r: vec![0.0; n],
             prev_l: vec![0.0; n],
             prev_r: vec![0.0; n],
-            mix_max: 100.0,
+            mix_max: if eq { 125.0 } else { 100.0 },
             fs,
             key_type: ScFilter::Off,
             key_freq: 1000.0,
             key_q: 0.707,
             key_filt: KeyFilter::default(),
             xo: DynXover::default(),
-            mix_in_model: false,
+            mix_in_model: eq,
             key_l: vec![0.0; n],
             key_r: vec![0.0; n],
             key_len: 0,
@@ -363,7 +369,8 @@ impl ModelSlot {
         self.xo.params()
     }
 
-    /// EQ slots: forward `mix` to the models as a band-gain scale (WING's EQ mix law) instead of blending.
+    /// Forward `mix` to the models as a band-gain scale (WING's EQ mix law) instead of blending. On by default
+    /// for EQ groups (`*/eq`); other block kinds keep dry/wet.
     pub fn set_mix_in_model(&mut self, on: bool) {
         self.mix_in_model = on;
         self.wrapper_dirty = true;
@@ -383,8 +390,7 @@ impl ModelSlot {
     /// (tests, offline rendering, scene start).
     pub fn settle(&mut self) {
         self.commit();
-        self.wet
-            .reset(if self.on { self.mix_pct * 0.01 } else { 0.0 });
+        self.wet.reset(self.wet_target());
         self.makeup.reset(db_to_lin(self.gain_db));
         self.fading = false;
         if self.logical != self.cur {
@@ -519,15 +525,20 @@ impl ModelSlot {
         self.wrapper_dirty = true;
     }
 
+    /// Wet share `w` of the wrapper: `on * mix` (dry/wet blocks) or `on` (EQ: mix scales the band gains).
+    fn wet_target(&self) -> f32 {
+        match (self.on, self.mix_in_model) {
+            (false, _) => 0.0,
+            (true, true) => 1.0,
+            (true, false) => self.mix_pct * 0.01,
+        }
+    }
+
     /// Apply accumulated parameter changes (block rate).
     pub fn commit(&mut self) {
         if self.wrapper_dirty {
             self.wrapper_dirty = false;
-            let w = match (self.on, self.mix_in_model) {
-                (false, _) => 0.0,
-                (true, true) => 1.0,
-                (true, false) => self.mix_pct * 0.01,
-            };
+            let w = self.wet_target();
             if self.mix_in_model {
                 let mix = self.mix_pct;
                 for (k, m) in self.instances.iter_mut().enumerate() {
