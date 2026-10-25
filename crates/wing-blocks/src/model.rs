@@ -369,6 +369,12 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "ROTARY") => Box::new(crate::models::fx_mod::Rotary::new()),
         (BlockKind::Fx, "PANNER") => Box::new(crate::models::fx_mod::Panner::new()),
         (BlockKind::Fx, "MOOD") => Box::new(crate::models::fx_mod::MoodFilter::new()),
+        (BlockKind::Fx, "ENHANCE") => Box::new(crate::models::fx_enhance::UltraEnhancer::new()),
+        (BlockKind::Fx, "EXCITER") => Box::new(crate::models::fx_enhance::Exciter::new()),
+        (BlockKind::Fx, "P-BASS") => Box::new(crate::models::fx_enhance::PsychoBass::new()),
+        (BlockKind::Fx, "SUB-M") => Box::new(crate::models::fx_enhance::SubMonster::new()),
+        (BlockKind::Fx, "V-IMG") => Box::new(crate::models::fx_enhance::VelvetImager::new()),
+        (BlockKind::Fx, "TAPE") => Box::new(crate::models::fx_enhance::TapeMachine::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -528,6 +534,7 @@ mod tests {
             "ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL",
             "ST-DL",
             "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
+            "ENHANCE", "EXCITER", "P-BASS", "SUB-M", "V-IMG", "TAPE",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);
