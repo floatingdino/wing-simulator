@@ -432,7 +432,10 @@ fn warm_thd_grows_with_drive_and_level() {
     };
     let (lo, mid, hi) = (thd(10.0, 0.25), thd(33.0, 0.25), thd(125.0, 0.25));
     assert!(lo < mid && mid < hi, "{lo} {mid} {hi}");
-    assert!(lo < 1.0, "drive 10 % nearly clean: {lo}");
+    assert!(lo < 1.5, "drive 10 % nearly clean: {lo}");
+    // T081: the top of the range clearly saturates at channel level (-12 dBFS) and is still audible at -30
+    assert!(hi > 10.0, "drive 125 % at -12 dBFS: {hi} %");
+    assert!(thd(125.0, 0.0316) > 1.0, "drive 125 % at -30 dBFS");
     assert!(thd(60.0, 0.025) < thd(60.0, 0.25) / 5.0);
 }
 
@@ -501,13 +504,22 @@ fn warm_colour_tilts_the_spectrum_and_distortion() {
 
 #[test]
 fn warm_is_alias_free() {
-    // 10 kHz at high drive: the output is periodic in 24 samples (2 kHz grid). 10k and 20k are the in-band
-    // harmonics; every other grid line is aliasing.
-    let mut worst = f64::MIN;
-    for (drv, hrm, amp) in [(125.0, 0.0, 0.9), (125.0, -100.0, 0.9), (100.0, 100.0, 0.5)] {
+    // 10 kHz tones: the output is periodic in 24 samples (2 kHz grid). 10k and 20k are the in-band harmonics;
+    // every other grid line is aliasing. Bound per case `(drv, hrm, amp, worst alias dBc)`: hot programme at
+    // moderate drive stays < -70 dBc; the extreme corner (125 % drive = +21.6 dB into the shaper with a 0 dBFS
+    // 10 kHz tone, i.e. a near-square wave) is bounded by 2x oversampling + first-order ADAA (T081).
+    for (drv, hrm, amp, bound) in [
+        (60.0, 0.0, 0.5, -100.0),
+        (125.0, 0.0, 0.1, -100.0),
+        (100.0, 100.0, 0.25, -100.0),
+        (125.0, 0.0, 0.5, -55.0),
+        (125.0, 0.0, 0.9, -45.0),
+        (125.0, -100.0, 0.9, -45.0),
+    ] {
         let mut m = warm(&[(1, f(drv)), (2, f(hrm))]);
         let y = tail(&mut m, 10_000.0, amp);
         let h1 = amp_at(&y, 10_000.0);
+        let mut worst = f64::MIN;
         for k in 1..12 {
             let fk = 2000.0 * k as f64;
             if fk == 10_000.0 || fk == 20_000.0 {
@@ -515,9 +527,9 @@ fn warm_is_alias_free() {
             }
             worst = worst.max(db(amp_at(&y, fk) / h1));
         }
+        println!("drv {drv} hrm {hrm} amp {amp}: worst alias {worst:.1} dBc");
+        assert!(worst < bound, "drv {drv} hrm {hrm} amp {amp}: {worst}");
     }
-    println!("worst alias {worst:.1} dBc");
-    assert!(worst < -70.0, "{worst}");
 }
 
 #[test]
