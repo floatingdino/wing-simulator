@@ -21,3 +21,4 @@ Diagnose with evidence (logs in scratch/wing-sim-v0.3b.log or the current wing-s
 
 ## Log
 - 2026-10-25 coordinator: created from user report.
+- 2026-10-25 user (real WING owner): DCA mute always mutes members' main sends; with cfg/dcamgrp ON it also mutes bus/pre-fader sends (acts as a mute group).
