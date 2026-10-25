@@ -2,7 +2,7 @@
 id: T04F
 title: ONEC + 3CMP multiband
 stage: S4
-status: review
+status: done
 owner: claude-agent
 depends: [T045, T034]
 branch: task/T04F
