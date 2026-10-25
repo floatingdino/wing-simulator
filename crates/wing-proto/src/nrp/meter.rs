@@ -191,6 +191,36 @@ pub struct MeterSelection {
     pub indices: Vec<u8>,
 }
 
+/// Human-readable summary of a report definition for logs (T082): kinds with 1-based index ranges, e.g.
+/// `ChannelV2 1-16, MainV2 1, Fx 5`.
+pub fn describe_selections(selections: &[MeterSelection]) -> String {
+    use std::fmt::Write;
+    let mut s = String::new();
+    for (k, sel) in selections.iter().enumerate() {
+        if k > 0 {
+            s.push_str(", ");
+        }
+        let _ = write!(s, "{:?}", sel.kind);
+        let mut i = 0;
+        while i < sel.indices.len() {
+            let a = sel.indices[i];
+            let mut j = i;
+            while j + 1 < sel.indices.len() && sel.indices[j + 1] == sel.indices[j].wrapping_add(1)
+            {
+                j += 1;
+            }
+            let sep = if i == 0 { " " } else { "," };
+            if j > i {
+                let _ = write!(s, "{sep}{}-{}", a as u32 + 1, sel.indices[j] as u32 + 1);
+            } else {
+                let _ = write!(s, "{sep}{}", a as u32 + 1);
+            }
+            i = j + 1;
+        }
+    }
+    s
+}
+
 /// A semantic meter command assembled from channel-3 tokens.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MeterCommand {
@@ -404,6 +434,28 @@ pub fn meter_to_gr(v: i16, full_scale_db: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn describe_selections_ranges() {
+        let sel = vec![
+            MeterSelection {
+                kind: MeterKind::ChannelV2,
+                indices: (0..16).collect(),
+            },
+            MeterSelection {
+                kind: MeterKind::Source,
+                indices: vec![0, 3, 4, 7],
+            },
+            MeterSelection {
+                kind: MeterKind::Fx,
+                indices: vec![4],
+            },
+        ];
+        assert_eq!(
+            describe_selections(&sel),
+            "ChannelV2 1-16, Source 1,4-5,8, Fx 5"
+        );
+    }
     use super::*;
 
     fn tokens(bytes: &[u8]) -> Vec<MeterToken> {

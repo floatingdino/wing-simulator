@@ -128,6 +128,14 @@ pub trait Model: Send {
         ModelTelemetry::default()
     }
 
+    /// Per-band / per-section gain changes for the WING meter words (dB, signed: negative = reduction), written
+    /// into `out` (at most [`crate::meter::MAX_METER_BANDS`]); returns how many were written. Dynamic EQs report
+    /// their bands' dynamic gain, multiband compressors each band's change, channel-strip FX each dynamics
+    /// stage (see [`crate::meter`]). Default: none. RT-safe.
+    fn meter_bands(&self, _out: &mut [f32]) -> usize {
+        0
+    }
+
     /// True for placeholder models that pass audio through unchanged.
     fn is_stub(&self) -> bool {
         false

@@ -43,7 +43,7 @@ use crate::channel::{
 };
 use crate::graph::NodeId;
 use crate::latency::StripAlign;
-use crate::meters::{abs_max, word, StripMeter};
+use crate::meters::{abs_max, band, word, StripMeter};
 use crate::params::std_models::{block_kind, model_factory};
 use crate::params::strip::{ModelSlot, MODEL_XFADE_S, SLOT_LAYOUT};
 use crate::params::telemetry_kind as kind;
@@ -517,6 +517,7 @@ impl MixStrip {
         if let Some(m) = &self.meter {
             m.level(word::DYN_KEY, slot_key_peak(&self.dyn_, None, dyn_in));
             m.level(word::DYN_GR, self.telem.dyn_gr_db);
+            m.slot_bands(band::DYN, &self.dyn_);
         }
     }
 

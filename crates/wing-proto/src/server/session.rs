@@ -3,10 +3,17 @@
 //!
 //! Behaviour follows the decoded WING-Edit 3.3.4 session (docs/research/wing-edit-session.md):
 //! - channel 1 is a cursor machine: `D7 h` / `DA` / `DB` / index / name tokens move the cursor,
-//!   value tokens set the current node (no echo to the setter), `DC` answers `D7 h <value> DE`,
+//!   value tokens set the current node, `DC` answers `D7 h <value> DE`,
 //!   `DD` answers definition records + `DE`, a client `DE` is ignored;
 //! - an unknown hash (including `00000000`, ~1.4k per WING-Edit push) invalidates the cursor so
 //!   the following value is dropped instead of landing on the previous node;
+//! - **echo to the setter** (T083): change fan-out skips the client that made the change, so the
+//!   session itself confirms the result to its client as a `D7 h <value>` event when the client
+//!   cannot know it: after every `D8` click / `D9` step (WING-Edit toggles strip mutes with `D8`
+//!   and only redraws the button from the console's reply), and after a value set the console
+//!   changed (clamped, rounded beyond 1 %, converted to another form such as an enum index to
+//!   its name, or a `D6` normalised value). Sets stored as sent are not echoed (WING-Edit
+//!   updates its own UI for those; its 29k-set scene push needs no reply).
 //! - channel 3 meter requests are parsed into [`MeterCommand`]s for the meter streamer;
 //! - `$syscfg/$cnsmdl = "ModelRequest"` is answered with `D7 985729a2 <model>` (no `DE`) [H];
 //! - with a scene library configured, `$ctl/lib/$action` sets go to it (see [`super::library`]).
@@ -48,6 +55,8 @@ pub struct SessionStats {
     pub defs: u64,
     /// `D8`/`D9` actions.
     pub actions: u64,
+    /// Values confirmed back to this client after its own click/step/adjusted set (T083).
+    pub echoes: u64,
     /// `$cnsmdl` model requests answered.
     pub model_requests: u64,
     /// `$ctl/lib/$action` requests passed to the scene library (T017).
@@ -238,7 +247,11 @@ impl State {
                         return;
                     }
                 }
-                self.count(apply_value(store, id, &t, self.origin), id);
+                let r = apply_value(store, id, &t, self.origin);
+                if r.is_ok() && adjusted(store, id, &t) {
+                    self.echo(store, id, out);
+                }
+                self.count(r, id);
             }
             Token::Click | Token::Step(_) => {
                 self.stats.actions += 1;
@@ -247,6 +260,9 @@ impl State {
                         Token::Step(n) => step_value(store, id, n, self.origin),
                         _ => click_value(store, id, self.origin),
                     };
+                    if r.is_ok() {
+                        self.echo(store, id, out);
+                    }
                     self.count(r, id);
                 }
             }
@@ -299,6 +315,14 @@ impl State {
         self.last_set = Some(id);
     }
 
+    /// Confirm `id`'s current value to this client (`D7 h <value>`, an event, no `DE`).
+    fn echo(&mut self, store: &ParamStore, id: NodeId, out: &mut Vec<u8>) {
+        if store.desc(id).is_some() && !store.is_inactive(id) {
+            self.stats.echoes += 1;
+            self.value_msg(store, id, false, out);
+        }
+    }
+
     fn end(&mut self, out: &mut Vec<u8>) {
         self.enc.control(&Token::End, out).expect("DE");
     }
@@ -332,6 +356,24 @@ impl State {
             }
         }
     }
+}
+
+/// Whether the value stored for `id` differs from what the client sent in `sent` (so the client
+/// must be told): numbers beyond 1 % (min 0.01 absolute, so grid rounding is not reported),
+/// strings byte for byte, any change of form (number <-> name) and every `D6` normalised value.
+fn adjusted(store: &ParamStore, id: NodeId, sent: &Token<'_>) -> bool {
+    fn num(t: &Token<'_>) -> Option<f64> {
+        match *t {
+            Token::Float(v) => Some(v as f64),
+            _ => t.as_int().map(|n| n as f64),
+        }
+    }
+    with_value_token(store, id, |cur| match (num(sent), num(&cur), sent, &cur) {
+        (Some(a), Some(b), _, _) => (a - b).abs() > 0.01 * a.abs().max(1.0),
+        (_, _, Token::Str(a), Token::Str(b)) => a != b,
+        _ => true,
+    })
+    .unwrap_or(false)
 }
 
 #[cfg(test)]

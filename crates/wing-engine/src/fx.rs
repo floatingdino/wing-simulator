@@ -77,6 +77,7 @@ use wing_blocks::model::BlockKind;
 
 use crate::channel::{InsertHost, InsertPos};
 use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
+use crate::meters::{FxMeter, LevelBank};
 use crate::params::std_models::model_factory;
 use crate::params::strip::{ModelSlot, RtModel};
 use crate::params::{BindError, BlockLayout, ParamMapBuilder, ParamMsg, TARGET_BASE};
@@ -187,6 +188,8 @@ pub struct FxSlot {
     ret_r: Vec<f32>,
     ret_len: usize,
     ret_on: bool,
+    /// In/out levels, GR and band gains for the `A6` meter block (T082).
+    meter: Option<FxMeter>,
 }
 
 impl FxSlot {
@@ -217,7 +220,13 @@ impl FxSlot {
             ret_r: vec![0.0; b],
             ret_len: 0,
             ret_on: false,
+            meter: None,
         }
+    }
+
+    /// Meter the slot into `meter` (`None` = off). Allocation-free.
+    pub fn set_meter(&mut self, meter: Option<FxMeter>) {
+        self.meter = meter;
     }
 
     /// Slot number (1..16).
@@ -285,6 +294,9 @@ impl FxSlot {
             self.feed_len = n;
             self.fed = true;
         }
+        if let Some(m) = &self.meter {
+            m.input(l, r);
+        }
         if self.ret_on && on {
             self.slot.process_keyed(
                 l,
@@ -293,6 +305,9 @@ impl FxSlot {
             );
         } else {
             self.slot.process(l, r);
+        }
+        if let Some(m) = &self.meter {
+            m.output(l, r, &self.slot);
         }
     }
 
@@ -506,6 +521,17 @@ impl FxRack {
         };
         Self {
             shared: Arc::new(shared),
+        }
+    }
+
+    /// Meter every slot into `bank` (T082: the `A6` FX meter blocks: in/out levels, GR, band gains).
+    /// Call while the rack's engine is not running (graph build). Allocates.
+    pub fn attach_meters(&self, bank: &Arc<LevelBank>) {
+        for n in 1..=FX_SLOTS as u8 {
+            // SAFETY: documented precondition: no engine cycle is running (see `with_slot`).
+            unsafe {
+                self.with_slot(n, |s| s.set_meter(Some(FxMeter::new(bank.clone(), n))));
+            }
         }
     }
 
@@ -885,5 +911,50 @@ mod tests {
         bus1.assign(InsertPos::Post, 6);
         assert_eq!(rack.owner(5), None);
         assert_eq!(rack.owner(6), Some((Strip::Bus(1), InsertPos::Post)));
+    }
+
+    /// T082: an owned slot meters its input/output levels and its model's GR into the level bank.
+    #[test]
+    fn slot_meters_levels_and_gr() {
+        use crate::meters::{fx_cell, fx_word};
+        let bank = LevelBank::shared();
+        let rack = FxRack::new(48_000.0, 64);
+        rack.attach_meters(&bank);
+        let s = Schema::get();
+        let g = s.groups().iter().find(|g| g.key == group_key(2)).unwrap();
+        let lim = s.models(g).iter().find(|m| m.name == "LIMITER").unwrap();
+        // SAFETY: no engine is running.
+        unsafe {
+            rack.with_slot(2, |slot| {
+                slot.apply(&ParamMsg::Model {
+                    block: 1,
+                    model: lim.enum_index as u16,
+                });
+                // `gin` +18 dB into the limiter
+                slot.apply(&ParamMsg::Set {
+                    block: 1,
+                    param: TARGET_BASE,
+                    value: 18.0,
+                });
+                slot.apply(&ParamMsg::Commit);
+                slot.reset();
+            });
+        }
+        let mut ch1 = rack.host(Strip::Ch(1));
+        ch1.assign(InsertPos::Pre, 2);
+        let x: Vec<f32> = (0..64)
+            .map(|i| 0.5 * (i as f32 * 0.13).sin().signum())
+            .collect();
+        for _ in 0..200 {
+            let (mut l, mut r) = (x.clone(), x.clone());
+            ch1.process_claimed(InsertPos::Pre, 2, true, &mut l, &mut r);
+        }
+        let c = |w| bank.get(fx_cell(1, w));
+        assert_eq!(c(fx_word::IN_L), 0.5);
+        assert_eq!(c(fx_word::IN_R), 0.5);
+        assert!(c(fx_word::OUT_L) > 0.5, "out {}", c(fx_word::OUT_L));
+        assert!(c(fx_word::GR) > 1.0, "GR {}", c(fx_word::GR));
+        // other slots stay silent
+        assert_eq!(bank.get(fx_cell(0, fx_word::IN_L)), 0.0);
     }
 }

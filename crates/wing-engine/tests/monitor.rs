@@ -10,7 +10,7 @@ use wing_engine::mix::{
     no_processing, InputSignal as I, MixConfig, MixLogic, MixSignal as M, MonitorLevels,
 };
 use wing_engine::routing::{Side, Strip};
-use wing_model::ParamStore;
+use wing_model::{ParamStore, Value};
 
 const SETTLE: usize = 80;
 
@@ -567,6 +567,95 @@ fn exclusive_additive_dca_solo_and_indicators() {
     assert_eq!(getf(&t.store, "dca/3/$sololed"), 1.0);
     assert_eq!(getf(&t.store, "$stat/solo"), 1.0);
     assert_gain(&t.pfl(1), &t.mon(1, Side::L), 1.0, "DCA solo");
+}
+
+/// T083: EXCL SOLO (factory on) is a surface preference: solos from remote clients (WING-Edit's
+/// native origin, OSC) add up; only local (console) presses are exclusive.
+#[test]
+fn client_solos_are_additive_with_excl_solo_on() {
+    let mut t = T::new();
+    assert_eq!(getf(&t.store, "$ctl/cfg/soloexcl"), 1.0);
+    let remote = 0x4E52_0001; // a native client origin
+    for p in ["ch/1/$solo", "ch/2/$solo", "bus/1/$solo", "dca/1/$solo"] {
+        t.store
+            .set_from(t.store.lookup(p).unwrap(), Value::Int(1), remote)
+            .unwrap();
+        t.run(1);
+    }
+    for p in ["ch/1/$solo", "ch/2/$solo", "bus/1/$solo", "dca/1/$solo"] {
+        assert_eq!(getf(&t.store, p), 1.0, "{p} additive");
+    }
+    assert_eq!(getf(&t.store, "ch/1/$sololed"), 1.0);
+    assert_eq!(getf(&t.store, "ch/2/$sololed"), 1.0);
+    // an OSC client (high-bit origin) adds up too
+    t.store
+        .set_from(
+            t.store.lookup("ch/3/$solo").unwrap(),
+            Value::Int(1),
+            0x8000_0001,
+        )
+        .unwrap();
+    t.run(1);
+    assert_eq!(getf(&t.store, "ch/1/$solo"), 1.0);
+    assert_eq!(getf(&t.store, "ch/3/$solo"), 1.0);
+    // switching one off leaves the rest
+    t.store
+        .set_from(t.store.lookup("ch/1/$solo").unwrap(), Value::Int(0), remote)
+        .unwrap();
+    t.run(1);
+    assert_eq!(getf(&t.store, "ch/2/$solo"), 1.0);
+    // a local (console) press with EXCL SOLO on clears the others
+    t.set("ch/4/$solo", "1");
+    t.run(1);
+    for p in ["ch/2/$solo", "ch/3/$solo", "bus/1/$solo", "dca/1/$solo"] {
+        assert_eq!(
+            getf(&t.store, p),
+            0.0,
+            "{p} cleared by a local exclusive solo"
+        );
+    }
+    assert_eq!(getf(&t.store, "ch/4/$solo"), 1.0);
+    // EXCL SOLO off: local presses add up as well
+    t.set("$ctl/cfg/soloexcl", "0");
+    t.set("ch/5/$solo", "1");
+    t.run(1);
+    assert_eq!(getf(&t.store, "ch/4/$solo"), 1.0);
+    assert_eq!(getf(&t.store, "ch/5/$solo"), 1.0);
+}
+
+/// T083: `*/$mute` is the strip mute indicator WING-Edit draws: 1 own mute, 2 mute group / DCA.
+#[test]
+fn mute_indicator_follows_own_and_group_mutes() {
+    let mut t = T::new();
+    assert_eq!(getf(&t.store, "ch/1/$mute"), 0.0);
+    t.set("ch/1/mute", "1");
+    t.set("bus/3/mute", "1");
+    t.run(1);
+    assert_eq!(getf(&t.store, "ch/1/$mute"), 1.0);
+    assert_eq!(getf(&t.store, "bus/3/$mute"), 1.0);
+    t.set("ch/1/mute", "0");
+    t.run(1);
+    assert_eq!(getf(&t.store, "ch/1/$mute"), 0.0);
+    // mute group member
+    t.set("ch/2/tags", "#M2");
+    t.set("mgrp/2/mute", "1");
+    t.run(1);
+    assert_eq!(getf(&t.store, "ch/2/$mute"), 2.0);
+    t.set("ch/2/mute", "1");
+    t.run(1);
+    assert_eq!(getf(&t.store, "ch/2/$mute"), 1.0, "own mute wins");
+    t.set("ch/2/mute", "0");
+    t.set("mgrp/2/mute", "0");
+    t.run(1);
+    assert_eq!(getf(&t.store, "ch/2/$mute"), 0.0);
+    // DCA mute (main-send mute with DCA MUTEGROUPS off) lights 2 as well
+    t.set("cfg/dcamgrp", "0");
+    t.set("main/2/tags", "#D4");
+    t.set("ch/6/tags", "#D4");
+    t.set("dca/4/mute", "1");
+    t.run(1);
+    assert_eq!(getf(&t.store, "ch/6/$mute"), 2.0);
+    assert_eq!(getf(&t.store, "main/2/$mute"), 2.0);
 }
 
 #[test]

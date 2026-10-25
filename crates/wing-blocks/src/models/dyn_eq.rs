@@ -720,6 +720,14 @@ impl Model for DynEq {
             engaged: g > 0.01,
         }
     }
+
+    fn meter_bands(&self, out: &mut [f32]) -> usize {
+        let n = self.band_count().min(out.len());
+        for (o, b) in out.iter_mut().zip(&self.bands[..n]) {
+            *o = b.dyn_db as f32;
+        }
+        n
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------

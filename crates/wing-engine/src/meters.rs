@@ -32,6 +32,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::Relaxed};
 use std::sync::Arc;
 
+pub use wing_blocks::meter::{DynMeterLaw, FxMeterLaw, MAX_METER_BANDS};
+
 use crate::graph::Port;
 use crate::routing::{OutAddr, SourceAddr, Strip, OUTPUT_COUNT, SOURCE_COUNT, STRIP_COUNT};
 use crate::Engine;
@@ -64,8 +66,36 @@ pub const SOURCE_BASE: usize = STRIP_COUNT * STRIP_WORDS;
 pub const OUTPUT_BASE: usize = SOURCE_BASE + SOURCE_COUNT;
 /// First solo-bus cell (L, R; T038).
 pub const SOLO_BASE: usize = OUTPUT_BASE + OUTPUT_COUNT;
+/// First band cell (T082): per strip [`BAND_WORDS`] signed band gains (dB, latest value) of the gate and
+/// dynamics models, for the dynamic-EQ meter laws (`wing_blocks::meter`).
+pub const BAND_BASE: usize = SOLO_BASE + 2;
+/// Band cells per strip: gate bands 0/1, dynamics bands 0/1 ([`band`]).
+pub const BAND_WORDS: usize = 4;
+/// First FX cell (T082): per FX slot [`FX_WORDS`] ([`fx_word`]).
+pub const FX_BASE: usize = BAND_BASE + STRIP_COUNT * BAND_WORDS;
+/// Cells per FX slot.
+pub const FX_WORDS: usize = 5 + wing_blocks::meter::MAX_METER_BANDS;
 /// Total cells.
-pub const CELLS: usize = SOLO_BASE + 2;
+pub const CELLS: usize = FX_BASE + crate::fx::FX_SLOTS * FX_WORDS;
+
+/// Band cell offsets within a strip's band cells.
+pub mod band {
+    pub const GATE: usize = 0;
+    pub const DYN: usize = 2;
+    /// Bands kept per slot.
+    pub const PER_SLOT: usize = 2;
+}
+
+/// FX slot cell offsets: in/out level peaks, the model's GR (dB, interval max) and its signed band gains
+/// (dB, latest value).
+pub mod fx_word {
+    pub const IN_L: usize = 0;
+    pub const IN_R: usize = 1;
+    pub const OUT_L: usize = 2;
+    pub const OUT_R: usize = 3;
+    pub const GR: usize = 4;
+    pub const BAND0: usize = 5;
+}
 
 /// Cell of a strip word (`strip` = [`Strip::index`]).
 #[inline]
@@ -89,6 +119,30 @@ pub fn output_cell(o: OutAddr) -> usize {
 #[inline]
 pub const fn solo_cell(side: usize) -> usize {
     SOLO_BASE + side
+}
+
+/// Band cell `w` ([`band`]) of a strip.
+#[inline]
+pub const fn band_cell(strip: usize, w: usize) -> usize {
+    BAND_BASE + strip * BAND_WORDS + w
+}
+
+/// Cell `w` ([`fx_word`]) of FX slot `slot` (0-based).
+#[inline]
+pub const fn fx_cell(slot: usize, w: usize) -> usize {
+    FX_BASE + slot * FX_WORDS + w
+}
+
+/// Cells holding a value rather than a level: gain reduction (dB, interval max) and band gains (dB, latest
+/// value). The sender shows them without level ballistics.
+pub fn is_value_cell(cell: usize) -> bool {
+    if cell < SOURCE_BASE {
+        matches!(cell % STRIP_WORDS, word::GATE_GR | word::DYN_GR)
+    } else if cell >= FX_BASE {
+        (cell - FX_BASE) % FX_WORDS >= fx_word::GR
+    } else {
+        cell >= BAND_BASE
+    }
 }
 
 /// Absolute peak of a block. Works on the IEEE bit patterns (`|x|` = sign bit cleared; for
@@ -152,6 +206,17 @@ impl LevelBank {
             if let Some(c) = self.cells.get(cell) {
                 // Non-negative IEEE floats order like their bit patterns.
                 c.fetch_max(v.to_bits(), Relaxed);
+            }
+        }
+    }
+
+    /// Store a signed value (latest-value cells: band gains). NaN and out-of-range cells are ignored.
+    /// RT-safe.
+    #[inline]
+    pub fn set(&self, cell: usize, v: f32) {
+        if !v.is_nan() {
+            if let Some(c) = self.cells.get(cell) {
+                c.store(v.to_bits(), Relaxed);
             }
         }
     }
@@ -233,6 +298,71 @@ impl StripMeter {
     pub fn stereo(&self, l_word: usize, l: &[f32], r: &[f32]) {
         self.level(l_word, abs_max(l));
         self.level(l_word + 1, abs_max(r));
+    }
+
+    /// Publish a model slot's signed band gains (`slot` = [`band::GATE`] or [`band::DYN`]); bands the model
+    /// does not report read 0. RT-safe.
+    #[inline]
+    pub fn bands(&self, slot: usize, bands: &[f32]) {
+        let strip = self.base / STRIP_WORDS;
+        for k in 0..band::PER_SLOT {
+            self.bank.set(
+                band_cell(strip, slot + k),
+                bands.get(k).copied().unwrap_or(0.0),
+            );
+        }
+    }
+
+    /// Measure a model slot's band gains and publish them (see [`StripMeter::bands`]). RT-safe.
+    #[inline]
+    pub fn slot_bands(&self, slot: usize, model: &crate::params::strip::ModelSlot) {
+        let mut b = [0.0f32; wing_blocks::meter::MAX_METER_BANDS];
+        let n = model.meter_bands(&mut b);
+        self.bands(slot, &b[..n]);
+    }
+
+    pub fn bank(&self) -> &Arc<LevelBank> {
+        &self.bank
+    }
+}
+
+/// An FX slot's cells of a [`LevelBank`] (held by the slot, T082).
+#[derive(Clone, Debug)]
+pub struct FxMeter {
+    bank: Arc<LevelBank>,
+    base: usize,
+}
+
+impl FxMeter {
+    /// FX slot `n` (1..16).
+    pub fn new(bank: Arc<LevelBank>, n: u8) -> Self {
+        let k = (n as usize).clamp(1, crate::fx::FX_SLOTS) - 1;
+        Self {
+            bank,
+            base: fx_cell(k, 0),
+        }
+    }
+
+    /// Slot input level. RT-safe.
+    #[inline]
+    pub fn input(&self, l: &[f32], r: &[f32]) {
+        self.bank.peak(self.base + fx_word::IN_L, abs_max(l));
+        self.bank.peak(self.base + fx_word::IN_R, abs_max(r));
+    }
+
+    /// Slot output level, the model's GR and band gains. RT-safe.
+    #[inline]
+    pub fn output(&self, l: &[f32], r: &[f32], model: &crate::params::strip::ModelSlot) {
+        self.bank.peak(self.base + fx_word::OUT_L, abs_max(l));
+        self.bank.peak(self.base + fx_word::OUT_R, abs_max(r));
+        self.bank
+            .peak(self.base + fx_word::GR, model.gain_reduction_db());
+        let mut b = [0.0f32; wing_blocks::meter::MAX_METER_BANDS];
+        let n = model.meter_bands(&mut b);
+        for (k, v) in b.iter().enumerate() {
+            self.bank
+                .set(self.base + fx_word::BAND0 + k, if k < n { *v } else { 0.0 });
+        }
     }
 
     pub fn bank(&self) -> &Arc<LevelBank> {
@@ -417,7 +547,16 @@ mod tests {
         assert_eq!(source_cell(last_src) + 1, OUTPUT_BASE);
         let last_out = OutAddr::new(OutGroup::Aes, 2).unwrap();
         assert_eq!(output_cell(last_out) + 1, SOLO_BASE);
-        assert_eq!(solo_cell(1) + 1, CELLS);
+        assert_eq!(solo_cell(1) + 1, BAND_BASE);
+        assert_eq!(band_cell(STRIP_COUNT - 1, BAND_WORDS - 1) + 1, FX_BASE);
+        assert_eq!(fx_cell(crate::fx::FX_SLOTS - 1, FX_WORDS - 1) + 1, CELLS);
+        assert!(is_value_cell(strip_cell(3, word::DYN_GR)));
+        assert!(!is_value_cell(strip_cell(3, word::DYN_KEY)));
+        assert!(!is_value_cell(solo_cell(1)));
+        assert!(is_value_cell(band_cell(0, band::GATE)));
+        assert!(!is_value_cell(fx_cell(2, fx_word::OUT_R)));
+        assert!(is_value_cell(fx_cell(2, fx_word::GR)));
+        assert!(is_value_cell(fx_cell(2, fx_word::BAND0 + 5)));
         let m = StripMeter::new(LevelBank::shared(), Strip::Main(1)).unwrap();
         m.stereo(word::OUT_L, &[0.5, -0.75], &[0.25]);
         assert_eq!(m.bank().get(strip_cell(64, word::OUT_L)), 0.75);

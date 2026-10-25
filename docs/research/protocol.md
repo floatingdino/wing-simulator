@@ -209,10 +209,10 @@ Hashes come from the PDF and libwing's propmap: `/ch/1/mute = F50F69F8`, `/ch/1/
 |---|---|---|
 | connect / keepalive | `DF D1` | (none) |
 | get a leaf [DOC] | `D7 BE EF AE AB DC` | `D7 BE EF AE AB 01 DE` |
-| set mute on [DOC] | `D7 F5 0F 69 F8 01` | change events to other clients: `D7 F5 0F 69 F8 01` (whether the sender gets an echo is open) |
+| set mute on [DOC] | `D7 F5 0F 69 F8 01` | change events to other clients: `D7 F5 0F 69 F8 01` (the sender: see `D8` below and §9 Q10) |
 | set ch1 fader to −3 dB [DERIVED] | `D7 38 AE 75 C2 D5 C0 40 00 00` | |
 | set ch1 fader by raw value 0.675 [DERIVED] | `D7 38 AE 75 C2 D6 3F 2C CC CD` | |
-| toggle mute [DERIVED] | `D7 F5 0F 69 F8 D8` | |
+| toggle mute [DERIVED] | `D7 F5 0F 69 F8 D8` | the new value must reach the clicking client: `D7 F5 0F 69 F8 01` (+ `$mute`) [I, T083] |
 | path navigation, same as `/ch/1/mute` get [DERIVED] | `DA C1 63 68 40 C3 6D 75 74 65 DC` (root, name "ch", index 1, name "mute", data request) | |
 | hash containing DF (`/$ctl/daw` defs) | `D7 DF DE 17 C2 42 DD` (libwing form) or `D7 DF 17 C2 42 DD` (also legal) | def records + `DE` |
 | change events seen via OSC `/*b` [DOC] | | `D7 38AE75C2 D5 C3100000  D7 7E463474 D5 C3100000` (fdr and `$fdr` = −144 dB), `D7 F50F69F8 01  D7 26855CD3 01` (mute and `$mute`) |
@@ -344,6 +344,12 @@ Value scale:
 - Levels are in **1/256 dB** (signed): `0xF100` = −15.0 dB.
 - Gate and dyn gain are scaled so that 256 ≈ 20 dB GR for most models (the standard gate is 60 dB).
 - FX band GR: dB = v × 6/2048.
+- T082 (WING-Edit 3.3.4 `nrp::MeterHandler::rxMeters`, static analysis): the gate/dyn gain word is a GR-meter
+  **position × 256** computed with the slot's selected model's law (WING-Edit `ae::*_gain_<model>`; 60 dB full
+  scale for GATE/DUCK, 20 dB for most compressors, negative for 76LA/L100/RIDE, VU-style for B160/SBUS, ...).
+  DEQ2 is special: the gain word and the following LED/state word are its two band gains `256 (g_k − 1)`.
+  FX blocks: words 0–3 levels, words 4–9 model-specific state read by a few FX pages (channel-strip FX LEDs,
+  DEQ3 bands, C5-CMB band GR, limiter/de-esser GR). The full table is in `crates/wing-blocks/src/meter.rs`.
 
 Timing: sent about every **50 ms** for 5 s after the last `D4` renew. WING-Edit has a "REDUCED METER UPDATE RATE
 (50%)" option. The UDP source port the console sends from is undocumented; use 2222. libwing parses the first 2
@@ -478,6 +484,12 @@ For **T003** (WING-Edit binary analysis):
 
 For a live capture or hardware owner:
 10. Does a real console echo a set back to the setting client? Does it require the UDP knock before TCP?
+    *Partly answered (T083, no real-console capture):* WING-Edit 3.3.4 needs no echo for plain value sets (its
+    push and DCA mute/solo buttons work without one), but it toggles strip mutes with `D8` (no `ch/N/mute` set ever
+    appears in scratch/wing-sim-v0.4.log while the user clicked them and the audio muted) and redraws the button only
+    from the console's reply; strips also carry a `$mute` indicator (int 0..2) that DCAs lack. The simulator echoes
+    the result of every `D8`/`D9` and of value sets it adjusted (clamp, form change) to the setter, and drives
+    `*/$mute`. Still open: the exact real-console behaviour.
 11. What does a node-level `DC` response look like? What is the UDP source port of meter packets?
 12. Discovery: does the real reply include a trailing NUL? Does WING-Edit require the reply's source port to be 2222?
 
