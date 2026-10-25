@@ -14,6 +14,10 @@
 //!   positions, enum by index/name, display text), model switching with per-model defaults, a
 //!   lock-free coalescing change queue for the RT engine ([`RtConsumer`]) and broadcast hooks for
 //!   protocol servers.
+//! - [`Snapshot`]: `.snap` scene load/save (T011) with firmware 1.x -> 3.x key migration (T019,
+//!   docs/research/snapshot-migration.md), unknown-key preservation and [`diff`] for scene
+//!   comparison; [`json`] is the small order-preserving JSON codec it uses. CLI:
+//!   `cargo run -p wing-model --example snap -- load <file> [--dump ch/1]` / `-- diff a b`.
 //!
 //! Model-dependent parameters share hashes by slot position (`ch/1/dyn/1` is `thr` for GATE and
 //! `ingain` for LA). Get/set validate against the active model; text paths may use the model's
@@ -21,8 +25,11 @@
 //! `python3 -I tools/schema-extract/gen_model.py` (`--check` verifies it is current).
 
 mod hash;
+pub mod json;
+mod migrate;
 mod queue;
 mod schema;
+mod snapshot;
 mod store;
 mod value;
 
@@ -30,6 +37,10 @@ pub use hash::wing_hash;
 pub use queue::BoundedQueue;
 pub use schema::{
     Children, Desc, EnumItem, Group, Model, NodeId, ParamClass, ParamType, Schema, Unit,
+};
+pub use snapshot::{
+    diff, json_eq, DiffEntry, LoadReport, MigrationNote, SnapError, Snapshot, FACTORY_SCENE,
+    KNOWN_UNMODELLED, ORIGIN_SNAPSHOT, SECTIONS,
 };
 pub use store::{Change, Hook, Origin, ParamStore, RtConsumer, ORIGIN_LOCAL};
 pub use value::{

@@ -335,6 +335,13 @@ impl ParamStore {
         self.set_with(id, origin, |d| d.encode(v))
     }
 
+    /// Store an already-encoded raw value (see the `value` module) without clamping or
+    /// quantising, e.g. a float a snapshot holds exactly. Model/inactive checks and notification
+    /// as [`ParamStore::set`]; string parameters are refused.
+    pub fn set_raw(&self, id: NodeId, raw: u32, origin: Origin) -> Result<bool, SetError> {
+        self.set_with(id, origin, |_| Ok(raw))
+    }
+
     /// Set from a normalised 0..1 position.
     pub fn set_norm(&self, id: NodeId, p: f32, origin: Origin) -> Result<bool, SetError> {
         self.set_with(id, origin, |d| d.from_norm(p))
