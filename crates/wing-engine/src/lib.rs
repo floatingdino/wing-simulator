@@ -20,8 +20,8 @@
 pub mod clock;
 pub mod dummy;
 pub mod graph;
-pub mod routing;
 pub mod params;
+pub mod routing;
 pub mod rt;
 pub mod sched;
 pub mod stats;
