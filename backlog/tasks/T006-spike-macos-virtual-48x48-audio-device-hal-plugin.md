@@ -2,7 +2,7 @@
 id: T006
 title: Spike: macOS virtual 48x48 audio device (HAL plugin)
 stage: S0
-status: blocked
+status: done
 owner: agent-T006
 depends: []
 branch: task/T006
