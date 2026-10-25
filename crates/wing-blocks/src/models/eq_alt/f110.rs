@@ -80,7 +80,7 @@ fn mid(ctx: &Ctx, f: f32, on: bool, g: f32, q: f32, m: f32) -> Bq {
     let n2 = (n2 / d) as f32;
     let ratio = -n1 / n2;
     let db = if (ratio as f64) > f64::from_bits(0x3ea0_c6f7_a0b5_ed8d) {
-        ratio.log10() * 20.0
+        log10f(ratio) * 20.0
     } else {
         -127.0
     };

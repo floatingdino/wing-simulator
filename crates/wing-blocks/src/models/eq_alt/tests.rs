@@ -198,7 +198,7 @@ fn oracle_random_settings() {
             let dmax = (0..5)
                 .map(|j| (m[j] as f64 - s[j]).abs())
                 .fold(0.0, f64::max);
-            if dmax > 1e-4 {
+            if dmax > 1e-4 || std::env::var_os("WING_EQ_ALT_VERBOSE").is_some() {
                 coef += &format!(" s{k}: ours {m:?} ref {s:?};");
             }
         }
@@ -218,6 +218,85 @@ fn oracle_random_settings() {
         fail |= *e > 0.01;
     }
     assert!(!fail);
+}
+
+/// Development oracle for the `Cbiquad` primitives: replays every traced primitive call of the oracle file
+/// with its exact float arguments and reports the max ulp distance of our coefficients.
+#[test]
+fn oracle_primitives() {
+    let Some(path) = std::env::var_os("WING_EQ_ALT_ORACLE") else {
+        return;
+    };
+    let v = json::parse(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let ctx = Ctx::new(FS);
+    let mut worst: Vec<(String, i64, String)> = Vec::new();
+    for e in v.as_arr().unwrap() {
+        let secs = e.get("sections").unwrap().as_arr().unwrap();
+        for c in e.get("calls").unwrap().as_arr().unwrap() {
+            let fname = c.get("fn").unwrap().as_str().unwrap();
+            let dst = c.get("dst").unwrap().as_f64().unwrap();
+            let s: Vec<f32> = c
+                .get("s")
+                .unwrap()
+                .as_arr()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_f64().unwrap() as f32)
+                .collect();
+            let Some(sec) = secs
+                .iter()
+                .find(|x| x.get("addr").unwrap().as_f64().unwrap() == dst)
+            else {
+                continue;
+            };
+            // Section 0 of E84/F110/PIA is rescaled by the output gain after the primitive call.
+            let model = e.get("model").unwrap().as_str().unwrap();
+            if matches!(model, "E84" | "F110" | "PIA")
+                && secs[0].get("addr").unwrap().as_f64().unwrap() == dst
+            {
+                continue;
+            }
+            let r: Vec<f32> = sec
+                .get("bq")
+                .unwrap()
+                .as_arr()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_f64().unwrap() as f32)
+                .collect();
+            let ours = match fname {
+                f if f.starts_with("5hqpeq") => prims::hqpeq(&ctx, s[0], s[1], s[2]),
+                f if f.starts_with("6ls12q2") => prims::ls12q2(&ctx, s[0], s[1], s[2], s[3]),
+                f if f.starts_with("6hs12q2") => prims::hs12q2(&ctx, s[0], s[1], s[2], s[3]),
+                _ => continue,
+            };
+            let ulps = (0..5)
+                .map(|k| ((ours[k].to_bits() as i64) - (r[k].to_bits() as i64)).abs())
+                .max()
+                .unwrap();
+            let tag = format!("args {s:?} ours {ours:?} ref {r:?}");
+            match worst.iter_mut().find(|w| w.0 == fname) {
+                Some(w) if w.1 >= ulps => {}
+                Some(w) => {
+                    w.1 = ulps;
+                    w.2 = tag;
+                }
+                None => worst.push((fname.to_string(), ulps, tag)),
+            }
+        }
+    }
+    for (f, u, t) in &worst {
+        eprintln!("PRIM {f}: max {u} ulp  {t}");
+    }
+}
+
+#[test]
+fn hq_debug_tmp() {
+    if std::env::var_os("HQDBG").is_none() {
+        return;
+    }
+    let c = Ctx::new(48_000.0);
+    eprintln!("{:?}", prims::hqpeq(&c, 1366.206, -6.1344995, 0.27658));
 }
 
 fn params_json(v: &json::Value) -> RefParams {

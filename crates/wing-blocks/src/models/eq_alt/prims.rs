@@ -50,10 +50,29 @@ pub fn db_lin_guard(g: f32) -> f32 {
     }
 }
 
+/// Float32 `tanf`, evaluated in double and rounded once (platform `tanf`s differ by an ulp; the reference
+/// curves were produced with correctly rounded float libm, see reference-curves.md §2).
+#[inline]
+pub fn tanf(x: f32) -> f32 {
+    (x as f64).tan() as f32
+}
+
+/// Float32 `logf` (double, rounded once).
+#[inline]
+pub fn logf(x: f32) -> f32 {
+    (x as f64).ln() as f32
+}
+
+/// Float32 `log10f` (double, rounded once).
+#[inline]
+pub fn log10f(x: f32) -> f32 {
+    (x as f64).log10() as f32
+}
+
 /// `tanf(pi_fs * f)` (float32 pre-warp).
 #[inline]
 pub fn tan_w(ctx: &Ctx, f: f32) -> f32 {
-    (ctx.pi_fs * f).tan()
+    tanf(ctx.pi_fs * f)
 }
 
 /// `fmadd`: `a * b + c` with a single rounding.
@@ -130,7 +149,7 @@ pub fn hqpeq(ctx: &Ctx, f: f32, g: f32, q: f32) -> Bq {
     const Q_A: f64 = f64::from_bits(0x3fd5_88c2_d97b_5355);
     const Q_B: f64 = f64::from_bits(0xbfe3_9e77_69c3_e8f8);
     const INV_LOG10_2: f64 = f64::from_bits(0x400a_93fc_9999_18c0);
-    const LN2_HALF: f64 = f64::from_bits(0x3fd6_2e42_fead_c49c);
+    const LN2_HALF: f64 = f64::from_bits(0x3fd6_2e42_fead_449c);
     const LN2: f64 = f64::from_bits(0x3fe6_2e42_ff36_b4fb);
     const HALF_PI: f64 = f64::from_bits(0x3ff9_21fb_5452_4550);
     const PI_D: f64 = f64::from_bits(0x4009_21fb_5452_4550);
@@ -181,7 +200,7 @@ pub fn hqpeq(ctx: &Ctx, f: f32, g: f32, q: f32) -> Bq {
         let s0 = up * (1.0 - t);
         let wu = ((t as f64) * 0.5).mul_add(w0d + PI_D, s0 as f64) as f32;
         let wu2 = wu * wu;
-        let nbw = (((wu2 / w0sq).ln() as f64) * LOG2E) as f32;
+        let nbw = ((logf(wu2 / w0sq) as f64) * LOG2E) as f32;
         let dw = w0 * (s12 + (-1.0 / s12));
         let s1 = ((gl + -1.0) / (g2 - gl)).sqrt() * dw;
         let s2 = gl * s1;
@@ -193,7 +212,7 @@ pub fn hqpeq(ctx: &Ctx, f: f32, g: f32, q: f32) -> Bq {
         e = (bwd * LN2_HALF).exp();
         (v * v, v * v)
     };
-    let tn = (ctx.pi_fs * f).tan();
+    let tn = tanf(ctx.pi_fs * f);
     let mut fden = (g2 - gb2).abs();
     if (fden as f64) < f64::from_bits(0x3ee4_f8b5_88e3_68f1) {
         fden = f32::from_bits(0x3727_c5ac);
@@ -218,6 +237,9 @@ pub fn hqpeq(ctx: &Ctx, f: f32, g: f32, q: f32) -> Bq {
     let d = (g01 - (g00 * g11).sqrt()) * w22;
     let aa = ((d + c) / fden).sqrt();
     let bb = (fma(g2, c, gb2_b * d) / fden).sqrt();
+    if std::env::var_os("HQDBG").is_some() {
+        eprintln!("HQ w2={w2:?} f11={f11:?} g11={g11:?} g1={g1:?} g00={g00:?} f00={f00:?} F={fden:?} d={d:?} c={c:?} aa={aa:?} bb={bb:?} dwt={dwt:?} dw={dw:?} tn={tn:?} gb2={gb2:?} gb2b={gb2_b:?} g2={g2:?}");
+    }
     let opw = w2 + 1.0;
     let norm = 1.0 / (opw + aa);
     let b0 = (g1 + w2 + bb) * norm;
