@@ -197,6 +197,11 @@ pub trait RtModel: Send {
     fn commit(&mut self);
     /// EQ `mix` forwarded as a band-gain scale (see `wing_blocks::model::Model::set_gain_scale`).
     fn set_gain_scale(&mut self, _mix_pct: f32) {}
+    /// The model's own dry/wet is the block MIX (`wing_blocks::model::Model::owns_mix`): the slot does not
+    /// blend with its `mix` on top. Constant per instance.
+    fn owns_mix(&self) -> bool {
+        false
+    }
     /// Clear signal state (detectors, filters, delay lines) before the model is faded in.
     fn reset(&mut self);
     /// Process a stereo block in place (`l.len() == r.len() <= max_block` given at construction).
@@ -231,7 +236,8 @@ const MAX_INSTANCES: usize = 64;
 
 /// A model-dependent slot (gate, dynamics, EQ, filter tool, ...): one preallocated [`RtModel`]
 /// instance per model the slot can host, crossfaded swaps and smoothed wrapper parameters
-/// (`out = dry * (1 - w) + w * gain * model(dry)`, `w = on * mix`). With `w = gain = 1` settled and no
+/// (`out = dry * (1 - w) + w * gain * model(dry)`, `w = on * mix`; `w = on` for a model whose own dry/wet
+/// is the block MIX, [`RtModel::owns_mix`], T085). With `w = gain = 1` settled and no
 /// swap running, the model output passes untouched (bit-exact with the bare block).
 ///
 /// EQ slots (group key `*/eq`, T04J) follow WING's EQ mix law instead: `ae::Cequalizer::update` passes
@@ -293,6 +299,8 @@ pub struct ModelSlot {
     xo: DynXover,
     /// EQ slots: `mix` scales the model's band gains instead of blending (WING EQ mix law).
     mix_in_model: bool,
+    /// The selected model's own dry/wet is the block MIX ([`RtModel::owns_mix`], WARM): `w = on`.
+    model_mix: bool,
     key_l: Vec<f32>,
     key_r: Vec<f32>,
     key_len: usize,
@@ -389,6 +397,7 @@ impl ModelSlot {
             key_filt: KeyFilter::default(),
             xo: DynXover::default(),
             mix_in_model: eq,
+            model_mix: false,
             key_l: vec![0.0; n],
             key_r: vec![0.0; n],
             key_len: 0,
@@ -590,6 +599,11 @@ impl ModelSlot {
         let k = self.index.get(index as usize).copied().unwrap_or(BYPASS);
         self.logical_index = index;
         self.logical = k;
+        let owns = k != BYPASS && self.instances[k as usize].owns_mix();
+        if owns != self.model_mix {
+            self.model_mix = owns;
+            self.wrapper_dirty = true;
+        }
         if k != BYPASS {
             self.instances[k as usize].load_defaults();
             if self.mix_in_model {
@@ -712,9 +726,10 @@ impl ModelSlot {
         self.wrapper_dirty = true;
     }
 
-    /// Wet share `w` of the wrapper: `on * mix` (dry/wet blocks) or `on` (EQ: mix scales the band gains).
+    /// Wet share `w` of the wrapper: `on * mix` (dry/wet blocks) or `on` (EQ: mix scales the band gains; a
+    /// model that owns its mix, WARM `wmix`, T085).
     fn wet_target(&self) -> f32 {
-        match (self.on, self.mix_in_model) {
+        match (self.on, self.mix_in_model || self.model_mix) {
             (false, _) => 0.0,
             (true, true) => 1.0,
             (true, false) => self.mix_pct * 0.01,

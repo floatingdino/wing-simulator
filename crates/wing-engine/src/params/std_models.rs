@@ -33,6 +33,10 @@ impl RtModel for Box<dyn Model> {
         Model::set_gain_scale(&mut **self, mix_pct);
     }
 
+    fn owns_mix(&self) -> bool {
+        Model::owns_mix(&**self)
+    }
+
     fn reset(&mut self) {
         Model::reset(&mut **self);
     }
