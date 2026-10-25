@@ -2,7 +2,7 @@
 id: T080
 title: BUG: dynamics/gate sidechain key source selection has no effect
 stage: S4
-status: review
+status: done
 owner: T080-agent
 depends: []
 branch: task/T080
