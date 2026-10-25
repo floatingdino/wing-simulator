@@ -9,8 +9,9 @@
 //   wing_shm_client [--name /wingsim.audio.v1] [--gain -1.0] [--seconds 0]
 //                   [--create] [--status]
 //
-// NOT production code (T020/T022 replace it): polls every 250 us instead of
-// being woken by the driver, runs on a normal-priority thread.
+// NOT production code: the Rust port (`cargo run -p wing-shm --example
+// gain_client`, T020) is the reference daemon side. This one polls every
+// 250 us instead of being woken by the driver, runs on a normal-priority thread.
 
 #include "wing_shm.h"
 
@@ -77,7 +78,7 @@ wing_shm_header* Attach(const char* name, bool create)
     }
     auto* h = static_cast<wing_shm_header*>(p);
     if (fresh) {
-        wing_shm_init_header(h, 48000);
+        wing_shm_init_header(h, 48000, mach_absolute_time(), (uint64_t)getpid());
     }
     if (int rc = wing_shm_validate_header(h, (uint64_t)st.st_size); rc != 0) {
         std::fprintf(stderr, "incompatible segment (rc=%d, version=%u, size=%lld)\n", rc,

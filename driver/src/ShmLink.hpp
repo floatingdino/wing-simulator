@@ -58,6 +58,10 @@ public:
     bool DaemonAlive() const;
 
 private:
+    // Bump cycle_seq and wake a waiting daemon (realtime: one atomic RMW, plus
+    // one os_sync wake syscall only while the daemon is blocked waiting).
+    void Signal();
+
     static bool CopyFromRing(const float* ring,
         const wing_shm_ring_ctl& ctl,
         int64_t t,
