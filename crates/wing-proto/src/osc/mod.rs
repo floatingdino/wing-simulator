@@ -16,4 +16,4 @@ pub mod service;
 
 pub use codec::{Arg, DecodeError, Message};
 pub use server::{OscAttachment, OscConfig, OscHandle, OscServer, OSC_PORT};
-pub use service::{OscService, SubMode, DEFAULT_SUB_TIMEOUT};
+pub use service::{OscService, SimExtension, SubMode, DEFAULT_SUB_TIMEOUT};

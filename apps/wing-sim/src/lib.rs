@@ -5,3 +5,5 @@
 pub mod audio;
 pub mod control;
 pub mod meters;
+pub mod record;
+pub mod wav;

@@ -18,6 +18,10 @@
 //! reload-hostio [path]  -> ok <routes>   (re-read the --hostio TOML, or switch to <path>;
 //!                                         the audio session restarts with the new bridges)
 //! hostio-off            -> ok host outputs off
+//! record start <taps> <dir> -> ok recording ... (T061; taps e.g. main/1,usb_out/1-2, dir to
+//!                                               end of line)
+//! record stop           -> ok recorded <secs> s, <n> file(s) to <dir>
+//! record status         -> ok rec ...
 //! quit                  -> ok stopping
 //! ```
 //!
@@ -75,6 +79,10 @@ pub struct DaemonStatus {
     pub hostio: String,
     /// Audio engine (`None` with `--no-audio`).
     pub audio: Option<AudioReport>,
+    /// Whether a recording (T061) is running.
+    pub recording: bool,
+    /// Recorder state line (`rec off`, `rec 12.3 s, 2 file(s) -> DIR, dropped 0`, ...).
+    pub recorder: String,
 }
 
 impl DaemonStatus {
@@ -118,6 +126,13 @@ pub enum Command {
     /// Re-read the host-output TOML (`None`: the current `--hostio` file).
     ReloadHostIo(Option<PathBuf>),
     HostIoOff,
+    /// Start recording taps into a directory (T061).
+    RecordStart {
+        taps: String,
+        dir: PathBuf,
+    },
+    RecordStop,
+    RecordStatus,
     Quit,
 }
 
@@ -153,6 +168,24 @@ impl Command {
                 (!arg.is_empty()).then(|| PathBuf::from(arg)),
             )),
             "hostio-off" => no_arg(Command::HostIoOff),
+            "record" => {
+                let (sub, rest) = match arg.split_once(char::is_whitespace) {
+                    Some((s, r)) => (s, r.trim()),
+                    None => (arg, ""),
+                };
+                match (sub, rest) {
+                    ("start", r) => match r.split_once(char::is_whitespace) {
+                        Some((taps, dir)) if !dir.trim().is_empty() => Ok(Command::RecordStart {
+                            taps: taps.into(),
+                            dir: PathBuf::from(dir.trim()),
+                        }),
+                        _ => Err("usage: record start <taps> <dir>".into()),
+                    },
+                    ("stop", "") => Ok(Command::RecordStop),
+                    ("status", "") | ("", "") => Ok(Command::RecordStatus),
+                    _ => Err("usage: record start <taps> <dir> | stop | status".into()),
+                }
+            }
             "quit" => no_arg(Command::Quit),
             "" => Err("empty command".into()),
             v => Err(format!("unknown command {v:?}")),
@@ -341,6 +374,18 @@ mod tests {
         );
         assert_eq!(Command::parse("hostio-off"), Ok(Command::HostIoOff));
         assert_eq!(Command::parse("quit"), Ok(Command::Quit));
+        assert_eq!(
+            Command::parse("record start main/1,usb_out/1-2 /tmp/My Takes"),
+            Ok(Command::RecordStart {
+                taps: "main/1,usb_out/1-2".into(),
+                dir: PathBuf::from("/tmp/My Takes")
+            })
+        );
+        assert_eq!(Command::parse("record stop"), Ok(Command::RecordStop));
+        assert_eq!(Command::parse("record status"), Ok(Command::RecordStatus));
+        assert_eq!(Command::parse("record"), Ok(Command::RecordStatus));
+        assert!(Command::parse("record start main/1").is_err());
+        assert!(Command::parse("record pause").is_err());
         assert!(Command::parse("save").is_err());
         assert_eq!(
             Command::parse("export /t/x.snap"),
@@ -458,6 +503,8 @@ mod tests {
                 }],
                 message: "audio: 48000 Hz, driver running".into(),
             }),
+            recording: true,
+            recorder: "rec 12.3 s, 2 file(s) -> /Users/x/Takes, dropped 0".into(),
         };
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("../../../fixtures/control/status.json")).unwrap();
