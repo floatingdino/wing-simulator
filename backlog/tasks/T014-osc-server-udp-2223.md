@@ -2,7 +2,7 @@
 id: T014
 title: OSC server (UDP 2223)
 stage: S1
-status: review
+status: done
 owner: T014-agent
 depends: [T010]
 branch: task/T014
