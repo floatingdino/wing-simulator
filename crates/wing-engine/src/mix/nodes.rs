@@ -315,15 +315,18 @@ impl Processor for InputStripNode {
 /// Processing of a bus/main/matrix strip between its sum and its fader (T037 fills it: inserts,
 /// EQ, dynamics, delay). Runs on RT threads: no allocation, locks or syscalls.
 pub trait StripHook: Send {
-    /// Process the summed stereo signal in place.
+    /// Process the summed stereo signal in place (sum -> pre-fader).
     fn process(&mut self, l: &mut [f32], r: &mut [f32]);
+    /// Process the strip output in place after mute, fader, width, pan and `busmono` (output
+    /// delay); PRE/PFL taps are not affected.
+    fn process_post(&mut self, _l: &mut [f32], _r: &mut [f32]) {}
     /// Parameter messages for blocks `>=` [`block::HOOK_BASE`] (and every `Commit`).
     fn set_param(&mut self, _msg: &ParamMsg) {}
     /// Telemetry (polled if the node is registered as a telemetry source).
     fn telemetry(&mut self, _out: &mut TelemetryWriter<'_>) {}
 }
 
-/// No strip processing (until T037).
+/// No strip processing (T036 behaviour; the standard hook is [`super::MixStrip`]).
 pub struct NoProcessing;
 
 impl StripHook for NoProcessing {
@@ -658,6 +661,7 @@ impl Processor for MixStripNode {
         law::gain_write(pre_r, pfl_r, g0[0], g1[0]);
         let (m0, m1) = self.post.step();
         law::matrix_write(post_l, post_r, pfl_l, pfl_r, m0, m1);
+        self.hook.process_post(post_l, post_r);
     }
 
     fn set_param(&mut self, msg: &ParamMsg) {

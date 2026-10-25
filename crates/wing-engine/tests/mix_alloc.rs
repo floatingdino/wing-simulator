@@ -1,6 +1,7 @@
-//! T036: the complete mix graph (PUBLIC.snap scene) runs without touching the heap on the RT side,
-//! including parameter changes (faders, mutes, pans, sends, modes) applied by the pipeline while a
-//! control thread keeps changing the store.
+//! T036/T037: the complete mix graph (PUBLIC.snap scene, bus/main/matrix strip processing on) runs
+//! without touching the heap on the RT side, including parameter changes (faders, mutes, pans, sends,
+//! modes, bus EQ/dyn/delay values and model swaps) applied by the pipeline while a control thread
+//! keeps changing the store.
 
 mod common;
 
@@ -73,15 +74,35 @@ fn mix_graph_is_allocation_free_on_rt_side() {
                 "main/1/pan",
                 "mtx/1/fdr",
                 "bus/1/send/5/lvl",
+                // T037 strip processing
+                "bus/3/in/set/trim",
+                "bus/5/eq/5",
+                "main/1/eq/27",
+                "mtx/2/dyn/1",
+                "main/2/dly/dly",
+                "bus/6/dynxo/f",
             ]
             .iter()
             .map(|p| id(&store, p))
             .collect();
-            let toggles: Vec<_> = ["ch/3/mute", "bus/7/busmono", "ch/12/send/3/on"]
+            let toggles: Vec<_> = [
+                "ch/3/mute",
+                "bus/7/busmono",
+                "ch/12/send/3/on",
+                "bus/2/eq/on",
+                "bus/9/dyn/on",
+                "main/3/dly/on",
+                "mtx/4/eq/on",
+                "mtx/4/in/set/inv",
+                "bus/1/preins/on",
+            ]
                 .iter()
                 .map(|p| id(&store, p))
                 .collect();
             let mode = id(&store, "ch/4/send/4/mode");
+            let bus_dyn = id(&store, "bus/9/dyn/mdl");
+            let mtx_eq = id(&store, "mtx/4/eq/mdl");
+            let dly_mode = id(&store, "main/3/dly/mode");
             let mut i = 0u32;
             while !stop.load(Relaxed) {
                 i = i.wrapping_add(1);
@@ -93,6 +114,9 @@ fn mix_graph_is_allocation_free_on_rt_side() {
                     let _ = store.set(p, Value::Int((i & 1) as i32));
                 }
                 let _ = store.set(mode, Value::Enum(i % 3));
+                let _ = store.set(bus_dyn, Value::Enum(i % 32));
+                let _ = store.set(mtx_eq, Value::Enum(i % 7));
+                let _ = store.set(dly_mode, Value::Enum(i % 4));
                 std::thread::yield_now();
             }
         })

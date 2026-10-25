@@ -14,9 +14,10 @@ use crate::routing::{
 };
 
 use super::nodes::{
-    InputSignal, InputStripNode, MixSignal, MixStripNode, NoProcessing, SlotKind, SlotSpec,
+    InputSignal, InputStripNode, MixSignal, MixStripNode, SlotKind, SlotSpec,
     INPUT_OUTPUTS, MIX_OUTPUTS,
 };
+use super::strip::{bind_mix_strip, MixStrip};
 use super::{block, param, BusOrder, MixConfig};
 
 /// Error from [`build_mix_graph`].
@@ -149,7 +150,7 @@ pub struct MixGraph {
     /// Every node added; the daemon may add more (e.g. host-bridge taps) before building.
     pub graph: GraphBuilder,
     /// Bindings of every mix and strip parameter (`ch`, `aux`, sends, `bus|main|mtx` faders);
-    /// T037 adds `bus|main|mtx` processing bindings with blocks `>=` [`block::HOOK_BASE`].
+    /// incl. `bus|main|mtx` processing (T037) at blocks `>=` [`block::HOOK_BASE`].
     pub params: ParamMapBuilder,
     pub nodes: MixNodes,
     /// Tap ports (also given to the USB output router and the feedback writer).
@@ -257,7 +258,7 @@ fn send_block(src: usize) -> u8 {
 }
 
 /// Bind every channel/aux strip (T035 blocks + fader section), every send and every
-/// bus/main/matrix fader section of `nodes`.
+/// bus/main/matrix fader section and strip processing (T037, [`bind_mix_strip`]) of `nodes`.
 pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), BindError> {
     for i in 0..INPUT_STRIPS {
         let node = nodes.inputs[i];
@@ -298,6 +299,7 @@ pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), 
         let p = format!("bus/{}", j + 1);
         let src = 48 + j;
         b.bind_block(&p, nodes.bus[j], block::OWN, &OWN_MIX)?;
+        bind_mix_strip(b, Strip::Bus(j as u8 + 1), nodes.bus[j])?;
         for m in 0..4 {
             b.bind_block(
                 &format!("{p}/main/{}", m + 1),
@@ -326,6 +328,7 @@ pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), 
     for m in 0..4 {
         let p = format!("main/{}", m + 1);
         b.bind_block(&p, nodes.main[m], block::OWN, &OWN_MIX)?;
+        bind_mix_strip(b, Strip::Main(m as u8 + 1), nodes.main[m])?;
         for k in 0..8 {
             b.bind_block(
                 &format!("{p}/send/MX{}", k + 1),
@@ -342,6 +345,7 @@ pub fn bind_mix_params(b: &mut ParamMapBuilder, nodes: &MixNodes) -> Result<(), 
             block::OWN,
             &OWN_MIX,
         )?;
+        bind_mix_strip(b, Strip::Mtx(k as u8 + 1), nodes.mtx[k])?;
     }
     Ok(())
 }
@@ -411,7 +415,7 @@ pub fn build_mix_graph(
             .collect();
         let hook = match cfg.hooks.as_mut() {
             Some(f) => f(strip),
-            None => Box::new(NoProcessing),
+            None => Box::new(MixStrip::new(strip, fs, bs)),
         };
         let node = MixStripNode::new(strip, &specs, hook, &cfg);
         debug_assert_eq!(node.num_inputs(), ports.len());
