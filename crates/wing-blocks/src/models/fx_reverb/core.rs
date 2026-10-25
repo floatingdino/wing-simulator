@@ -65,6 +65,8 @@ pub const DIFFUSERS: usize = 4;
 pub const GLIDE_S: f32 = 0.08;
 /// Crossfade time of an echo / reflection time change (s).
 pub const XFADE_S: f32 = 0.03;
+/// Longest pre-delay (ms; V-PLATE goes to 250).
+pub const MAX_PRE_MS: f32 = 250.0;
 /// Values below this are flushed to zero in recursive paths.
 const FLUSH: f32 = 1e-18;
 /// Upper bound of any per-pass loop gain (stability margin; corresponds to T60 > 400 s for a 30 ms line).
@@ -161,6 +163,8 @@ pub struct CoreParams {
     pub echo_to_tail: f32,
     /// Chorus on the tail output 0..1 (CONCERT `crs`).
     pub chorus: f32,
+    /// Bass-multiplier crossover (Hz); 0 = the character's [`Character::xover_hz`] (BPLATE `xover`).
+    pub xover_hz: f32,
 }
 
 impl Default for CoreParams {
@@ -183,21 +187,22 @@ impl Default for CoreParams {
             echo: [Echo::default(); 2],
             echo_to_tail: 0.0,
             chorus: 0.0,
+            xover_hz: 0.0,
         }
     }
 }
 
 /// One-pole glide evaluated at block rate.
 #[derive(Clone, Copy, Debug, Default)]
-struct Glide {
-    cur: f32,
-    tgt: f32,
+pub(super) struct Glide {
+    pub(super) cur: f32,
+    pub(super) tgt: f32,
 }
 
 impl Glide {
     /// Advance by one block with coefficient `a`; returns (start, end).
     #[inline]
-    fn step(&mut self, a: f32) -> (f32, f32) {
+    pub(super) fn step(&mut self, a: f32) -> (f32, f32) {
         let s = self.cur;
         let d = self.tgt - self.cur;
         if d.abs() <= 1e-6 * self.tgt.abs().max(1e-3) {
@@ -208,7 +213,7 @@ impl Glide {
         (s, self.cur)
     }
 
-    fn snap(&mut self) {
+    pub(super) fn snap(&mut self) {
         self.cur = self.tgt;
     }
 }
@@ -250,7 +255,7 @@ impl XfadeTap {
 
 /// `N` independent TDF-II biquads in structure-of-arrays layout (vectorised lane loop).
 #[derive(Clone, Copy, Debug)]
-struct LaneBiquads<const N: usize> {
+pub(super) struct LaneBiquads<const N: usize> {
     b0: [f32; N],
     b1: [f32; N],
     b2: [f32; N],
@@ -275,7 +280,7 @@ impl<const N: usize> Default for LaneBiquads<N> {
 }
 
 impl<const N: usize> LaneBiquads<N> {
-    fn set(&mut self, i: usize, c: Coeffs) {
+    pub(super) fn set(&mut self, i: usize, c: Coeffs) {
         self.b0[i] = c.b0 as f32;
         self.b1[i] = c.b1 as f32;
         self.b2[i] = c.b2 as f32;
@@ -284,7 +289,7 @@ impl<const N: usize> LaneBiquads<N> {
     }
 
     #[inline(always)]
-    fn tick(&mut self, x: &mut [f32; N]) {
+    pub(super) fn tick(&mut self, x: &mut [f32; N]) {
         for i in 0..N {
             let v = x[i];
             let y = self.b0[i] * v + self.s1[i];
@@ -294,12 +299,12 @@ impl<const N: usize> LaneBiquads<N> {
         }
     }
 
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.s1 = [0.0; N];
         self.s2 = [0.0; N];
     }
 
-    fn flush(&mut self) {
+    pub(super) fn flush(&mut self) {
         for i in 0..N {
             self.s1[i] = flush(self.s1[i]);
             self.s2[i] = flush(self.s2[i]);
@@ -321,7 +326,7 @@ const fn sign(seed: u32, i: usize) -> f32 {
 }
 
 #[inline(always)]
-fn flush(x: f32) -> f32 {
+pub(super) fn flush(x: f32) -> f32 {
     if x.abs() < FLUSH {
         0.0
     } else {
@@ -403,8 +408,9 @@ pub struct ReverbCore<const N: usize> {
     decay: Glide,
     mult: Glide,
     damp: Glide,
-    /// Decay / damping / size values the gains were last computed for.
-    gain_key: [f32; 4],
+    xover: Glide,
+    /// Decay / damping / size / crossover values the gains were last computed for.
+    gain_key: [f32; 5],
     lfo_c: [f32; N],
     lfo_s: [f32; N],
     rot_c: [f32; N],
@@ -490,7 +496,8 @@ impl<const N: usize> ReverbCore<N> {
             decay: Glide::default(),
             mult: Glide::default(),
             damp: Glide::default(),
-            gain_key: [f32::NAN; 4],
+            xover: Glide::default(),
+            gain_key: [f32::NAN; 5],
             lfo_c: [1.0; N],
             lfo_s: [0.0; N],
             rot_c: [1.0; N],
@@ -530,7 +537,7 @@ impl<const N: usize> ReverbCore<N> {
         let ms = sample_rate as f32 * 0.001;
         let ch = self.ch;
         // pre-delay ring: pre-delay + ER window + plain echo taps
-        let pre_max = (200.0 + ch.er_window_ms.1 * ch.max_scale + 5.0) * ms
+        let pre_max = (MAX_PRE_MS + ch.er_window_ms.1 * ch.max_scale + 5.0) * ms
             + if ch.echo_feedback {
                 0.0
             } else {
@@ -571,7 +578,7 @@ impl<const N: usize> ReverbCore<N> {
         self.ap_mask = ap_frames - 1;
         let chorus_len = (12.0 * ms) as usize + 4;
         self.chorus_line = [DelayLine::new(chorus_len), DelayLine::new(chorus_len)];
-        self.gain_key = [f32::NAN; 4];
+        self.gain_key = [f32::NAN; 5];
         self.rate_key = f32::NAN;
         self.filt_key = [f32::NAN; 2];
         self.reset();
@@ -660,7 +667,7 @@ impl<const N: usize> ReverbCore<N> {
         let ms = self.fs * 0.001;
         let scale = p.scale.clamp(0.05, ch.max_scale);
         self.scale.tgt = scale;
-        self.pre_d.tgt = p.pre_ms.clamp(0.0, 200.0) * ms;
+        self.pre_d.tgt = p.pre_ms.clamp(0.0, MAX_PRE_MS) * ms;
         let spread = p.spread.clamp(0.0, 1.0);
         let (w0, w1) = ch.er_window_ms;
         self.er_win.tgt = scale * (w0 + spread * (w1 - w0)) * ms;
@@ -680,6 +687,12 @@ impl<const N: usize> ReverbCore<N> {
         self.decay.tgt = p.decay_s.clamp(0.05, 200.0);
         self.mult.tgt = p.bass_mult.clamp(0.1, 10.0);
         self.damp.tgt = p.damp_hz.clamp(200.0, 0.45 * self.fs);
+        let xo = if p.xover_hz > 0.0 {
+            p.xover_hz
+        } else {
+            ch.xover_hz
+        };
+        self.xover.tgt = xo.clamp(10.0, 0.45 * self.fs);
         self.mod_rate.tgt = p.mod_rate_hz.clamp(0.0, 20.0);
         // depth never reaches the shortest line (reads stay >= 2 samples)
         let min_line = self.base_ms.iter().fold(f32::MAX, |a, &b| a.min(b)) * scale * ms;
@@ -692,7 +705,7 @@ impl<const N: usize> ReverbCore<N> {
         self.hc.tgt = p.hc_hz.clamp(100.0, 0.45 * self.fs);
     }
 
-    fn glides(&mut self) -> [&mut Glide; 20] {
+    fn glides(&mut self) -> [&mut Glide; 21] {
         let [l0, l1] = &mut self.echo_lvl;
         let [f0, f1] = &mut self.echo_fb;
         [
@@ -708,6 +721,7 @@ impl<const N: usize> ReverbCore<N> {
             &mut self.decay,
             &mut self.mult,
             &mut self.damp,
+            &mut self.xover,
             &mut self.mod_rate,
             &mut self.mod_depth,
             &mut self.er_lvl,
@@ -752,14 +766,20 @@ impl<const N: usize> ReverbCore<N> {
             }
         }
         // decay gains (3 bands per line)
-        let key = [self.decay.cur, self.mult.cur, self.damp.cur, self.scale.cur];
+        let key = [
+            self.decay.cur,
+            self.mult.cur,
+            self.damp.cur,
+            self.scale.cur,
+            self.xover.cur,
+        ];
         if key != self.gain_key {
             self.gain_key = key;
             let fs64 = fs as f64;
             let t_mid = key[0];
             let t_lo = t_mid * key[1];
             let t_hi = t_mid * self.ch.hf_ratio;
-            let xover = (self.ch.xover_hz as f64).min(fs64 * 0.45);
+            let xover = (key[4] as f64).min(fs64 * 0.45);
             let damp = key[2] as f64;
             for i in 0..N {
                 let len = self.base_ms[i] * key[3] * ms + self.ap_len[i] as f32;
@@ -836,6 +856,7 @@ impl<const N: usize> ReverbCore<N> {
             &mut self.decay,
             &mut self.mult,
             &mut self.damp,
+            &mut self.xover,
             &mut self.mod_rate,
             &mut self.lc,
             &mut self.hc,

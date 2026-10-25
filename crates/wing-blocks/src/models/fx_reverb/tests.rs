@@ -557,7 +557,7 @@ fn params_round_trip_defaults_and_clamp() {
         assert_eq!(m.param(1), Some(sp.params[0].default));
         assert_eq!(m.latency(), 0);
     }
-    assert!(create("PLATE").is_none());
+    assert!(create("GEQ").is_none());
     assert_eq!(fader_gain(-144.0), 0.0);
     assert!((fader_gain(-20.0) - 0.1).abs() < 1e-6);
 }
