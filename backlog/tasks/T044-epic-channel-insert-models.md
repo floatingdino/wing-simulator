@@ -1,10 +1,10 @@
 ---
 id: T044
-title: EPIC: channel insert models
+title: Insert points hosting FX slots + automix X/Y
 stage: S4
 status: todo
 owner: -
-depends: [T004, T035]
+depends: [T050, T035]
 branch: -
 ---
 
@@ -16,3 +16,4 @@ Coordinator decomposes into one task per model.
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 coordinator: inserts have no models of their own (host an FX slot); retitled.

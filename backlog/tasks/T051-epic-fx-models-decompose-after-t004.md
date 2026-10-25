@@ -2,7 +2,7 @@
 id: T051
 title: EPIC: FX models (decompose after T004)
 stage: S5
-status: todo
+status: done
 owner: -
 depends: [T004, T050]
 branch: -
@@ -16,3 +16,4 @@ Coordinator decomposes into one task per model family.
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 coordinator: decomposed into T045-T04H / T05x.

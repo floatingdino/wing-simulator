@@ -16,3 +16,4 @@ Standard WING gate/expander incl. sidechain source/filter, range, hold, attack/r
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 coordinator: scope = models GATE + DUCK (models.md §3.1).

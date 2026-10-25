@@ -16,3 +16,4 @@ Standard WING compressor/expander dynamics incl. knee, ratio, auto, detector mod
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 coordinator: scope = models COMP + EXP (models.md §3.2).

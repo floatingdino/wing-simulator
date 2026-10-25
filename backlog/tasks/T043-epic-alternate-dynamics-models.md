@@ -2,7 +2,7 @@
 id: T043
 title: EPIC: alternate dynamics models
 stage: S4
-status: todo
+status: done
 owner: -
 depends: [T004, T035]
 branch: -
@@ -16,3 +16,4 @@ Coordinator decomposes into one task per model.
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 coordinator: decomposed into T045-T04H / T05x.

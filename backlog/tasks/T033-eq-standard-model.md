@@ -16,3 +16,4 @@ Standard WING channel/bus/main EQ (shelves + parametric bands per models.md), in
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 coordinator: scope = model STD + 3-band pre-EQ (peq) (models.md §4).

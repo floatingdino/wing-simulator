@@ -17,3 +17,4 @@ fixtures/PUBLIC.snap (fw 1.13.9) has 1,709 keys absent from the 3.x schema (larg
 
 ## Log
 - 2026-10-25 coordinator: created from T003 coverage report.
+- 2026-10-25 coordinator: T004 alias list: WARM mix->wmix, output delay m->dly, dynxo HI6->type, solo mon A->PH, aux dyn has no mdl, missing filter slopes; plus send ind/wid.
