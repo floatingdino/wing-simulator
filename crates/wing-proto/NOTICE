@@ -1,0 +1,25 @@
+wing-proto (part of Wing Simulator)
+
+This crate contains code derived from libwing:
+
+  libwing 1.0.5 - https://github.com/dannydulai/libwing (crates.io: libwing)
+  Copyright (c) Danny Dulai and libwing contributors
+  Licensed under the Apache License, Version 2.0
+  (http://www.apache.org/licenses/LICENSE-2.0)
+
+Derived parts (marked with a "Derived from libwing" header comment):
+  - src/nrp/framing.rs : receive-side escape/channel state machine (libwing src/console.rs decode_next)
+  - src/nrp/token.rs   : channel-1 token table, integer/string value encodings (libwing src/console.rs read,
+                         set_int, set_string, format_id)
+  - src/nrp/nodedef.rs : node definition record layout (libwing src/node.rs WingNodeDef::from_bytes)
+  - src/nrp/meter.rs   : meter request byte layout and UDP meter packet layout (libwing src/console.rs
+                         request_meter, read_meters)
+  - tests/nrp_vectors.rs : a handful of raw node definition records copied from libwing src/propmap.rs as
+                         test vectors (the full propmap dataset is NOT included here)
+
+Changes relative to libwing: rewritten as a server-side, streaming, allocation-light codec; adds the
+encoder side, u32 definition lengths, D1 strings, DF escaping on all payload bytes, u32 meter report ids,
+channel-3 request decoding and validation.
+
+The protocol itself is described in "WING Remote Protocols" (P.-G. Maillot, published with Behringer's
+authorization); see docs/research/protocol.md.
