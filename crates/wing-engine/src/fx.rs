@@ -51,14 +51,23 @@
 //!   levels of the previous block (1.3 ms at 48 kHz/64; the audio itself is not delayed) - this keeps the
 //!   40 channels parallel without a cross-channel barrier and is deterministic.
 //!
-//! # Latency
+//! # Latency (T05U)
 //!
-//! Since T03E a [`ModelSlot`]'s latency is constant (the maximum of the models it hosts; the dry path and
-//! every model are aligned to it), so a slot's latency does not change with the model or the insert switch.
+//! An FX slot's latency is that of its **loaded** model ([`ModelSlot::with_dynamic_latency`]): a STD EQ adds
+//! nothing, PCORR 360 samples. It does not change with the insert's on switch (the dry path of an off slot
+//! runs at the model's latency) and a model swap crossfades the dry path between the old and new delay.
 //! [`FxRack::slot_latency`] reports it; each strip polls the latency of the slots its inserts claim and own
-//! ([`crate::channel::claimed_latency`]) at the start of every block and feeds it to its alignment
-//! (`set_insert_latency`): the pad shrinks so the strip's total stays at its family's alignment target,
-//! or the strip runs late by the excess when the inserts exceed it ([`crate::latency::StripAlign`]).
+//! ([`crate::channel::claimed_latency`]) at the start of every block.
+//!
+//! **Alignment board.** The rack also holds the engine-wide alignment targets. Every strip publishes the
+//! latency of the models loaded in its own slots ([`InsertHost::set_own_latency`], after each `Commit`);
+//! whenever that, a slot's latency or a slot's owner changes, the rack recomputes each strip's demand
+//! (`own + owned insert latency`) and the target of each strip family (input strips ch+aux, busses, mains,
+//! matrices) as the family maximum, and publishes it in atomics. This runs in the parameter phase between
+//! cycles (the only place where models and claims change), costs O(76 + 16) loads and never allocates; the
+//! cycle that follows already sees the new targets. Strips read their family target at block start
+//! ([`InsertHost::align_target`]) and their [`crate::latency::StripAlign`] pad crossfades to
+//! `target - own - inserts`, so every strip of a family stays sample-aligned at the lowest common latency.
 
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering::Relaxed};
@@ -72,6 +81,19 @@ use crate::params::std_models::model_factory;
 use crate::params::strip::{ModelSlot, RtModel};
 use crate::params::{BindError, BlockLayout, ParamMapBuilder, ParamMsg, TARGET_BASE};
 use crate::routing::{RoutingReader, Strip, STRIP_COUNT};
+
+/// Strip families aligned to a common latency: input strips (ch + aux), busses, mains, matrices.
+pub const ALIGN_FAMILIES: usize = 4;
+
+/// Alignment family of strip index `i` (0..76, [`Strip::index`]).
+fn family_of(i: usize) -> usize {
+    match i {
+        0..=47 => 0,
+        48..=63 => 1,
+        64..=67 => 2,
+        _ => 3,
+    }
+}
 
 /// Number of FX slots.
 pub const FX_SLOTS: usize = 16;
@@ -179,7 +201,8 @@ impl FxSlot {
         assert!((1..=FX_SLOTS as u8).contains(&n), "FX slot {n}");
         let mut slot = ModelSlot::from_group(group_key(n), fs, max_block, |i, name| {
             (name != "NONE").then(|| factory(i, name)).flatten()
-        });
+        })
+        .with_dynamic_latency();
         slot.select(0);
         slot.settle();
         let b = max_block.max(1);
@@ -210,7 +233,7 @@ impl FxSlot {
         &mut self.slot
     }
 
-    /// Latency of the audible model (samples).
+    /// Latency of the loaded model (samples; dynamic slot, T05U).
     pub fn latency(&self) -> usize {
         self.slot.latency()
     }
@@ -320,6 +343,10 @@ struct Shared {
     claim_of: [AtomicU8; INSERT_IDS],
     latency: [AtomicU32; FX_SLOTS],
     model: [AtomicU16; FX_SLOTS],
+    /// Alignment board: latency of each strip's own model slots.
+    own: [AtomicU32; STRIP_COUNT],
+    /// Alignment target of each strip family.
+    target: [AtomicU32; ALIGN_FAMILIES],
     instances: [u8; FX_SLOTS],
     amix_on: [AtomicBool; 2],
     amix_group: [AtomicU8; AMIX_STRIPS],
@@ -341,8 +368,34 @@ impl Shared {
     fn sync_info(&self, k: usize) {
         // SAFETY: driver thread between cycles (parameter phase).
         let s = unsafe { self.slot_mut(k) };
-        self.latency[k].store(s.latency() as u32, Relaxed);
+        let lat = s.latency() as u32;
         self.model[k].store(s.model_slot().model_index().unwrap_or(0), Relaxed);
+        if self.latency[k].swap(lat, Relaxed) != lat && self.owner[k].load(Relaxed) != NO_OWNER {
+            self.publish_targets();
+        }
+    }
+
+    /// Recompute every strip's demand (own slots + owned inserts) and publish each family's maximum as
+    /// its alignment target. Between cycles only (parameter phase); allocation-free.
+    fn publish_targets(&self) {
+        let mut demand = [0u32; STRIP_COUNT];
+        for (d, o) in demand.iter_mut().zip(self.own.iter()) {
+            *d = o.load(Relaxed);
+        }
+        for k in 0..FX_SLOTS {
+            let o = self.owner[k].load(Relaxed);
+            if o != NO_OWNER {
+                demand[o as usize / 2] += self.latency[k].load(Relaxed);
+            }
+        }
+        let mut t = [0u32; ALIGN_FAMILIES];
+        for (i, &d) in demand.iter().enumerate() {
+            let f = &mut t[family_of(i)];
+            *f = (*f).max(d);
+        }
+        for (a, v) in self.target.iter().zip(t) {
+            a.store(v, Relaxed);
+        }
     }
 
     fn recompute_owner(&self, k: usize) {
@@ -357,6 +410,7 @@ impl Shared {
         if self.owner[k].swap(owner, Relaxed) != owner {
             // SAFETY: claims change only between cycles (driver thread / construction).
             unsafe { self.slot_mut(k) }.handover();
+            self.publish_targets();
         }
     }
 
@@ -441,6 +495,8 @@ impl FxRack {
             claim_of: std::array::from_fn(|_| AtomicU8::new(0)),
             latency: std::array::from_fn(|k| AtomicU32::new(lat[k])),
             model: std::array::from_fn(|_| AtomicU16::new(0)),
+            own: std::array::from_fn(|_| AtomicU32::new(0)),
+            target: std::array::from_fn(|_| AtomicU32::new(0)),
             instances,
             amix_on: [AtomicBool::new(true), AtomicBool::new(true)],
             amix_group: std::array::from_fn(|_| AtomicU8::new(0)),
@@ -493,9 +549,17 @@ impl FxRack {
         }
     }
 
-    /// Constant latency (samples) of slot `n` (max over its models, T03E).
+    /// Latency (samples) of slot `n`: the latency of its loaded model (T05U).
     pub fn slot_latency(&self, n: u8) -> usize {
         self.shared.latency[n as usize - 1].load(Relaxed) as usize
+    }
+
+    /// Engine-wide alignment target (samples) of `strip`'s family (input strips, busses, mains, matrices):
+    /// the largest `own + insert` latency in the family (alignment board, see the module doc).
+    pub fn align_target(&self, strip: Strip) -> usize {
+        strip.index().map_or(0, |i| {
+            self.shared.target[family_of(i)].load(Relaxed) as usize
+        })
     }
 
     /// Selected model (WING enum index of the slot's group) of slot `n`.
@@ -649,6 +713,17 @@ impl InsertHost for RackHost {
         } else {
             0
         }
+    }
+
+    fn set_own_latency(&mut self, n: usize) {
+        let n = n as u32;
+        if self.shared.own[self.strip].swap(n, Relaxed) != n {
+            self.shared.publish_targets();
+        }
+    }
+
+    fn align_target(&self) -> Option<usize> {
+        Some(self.shared.target[family_of(self.strip)].load(Relaxed) as usize)
     }
 }
 

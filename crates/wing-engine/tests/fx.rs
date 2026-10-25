@@ -96,8 +96,7 @@ fn mix_latency(s: Strip) -> usize {
 }
 
 /// Strip latency once an insert whose slot has latency `ins` is engaged. `ins` is always taken from
-/// `FxRack::slot_latency` (the max latency over the models the slot hosts, e.g. T05E oversamplers, the T05Q
-/// LIMITER look-ahead), never hard-coded; the strip's alignment pad absorbs it up to `natural`.
+/// `FxRack::slot_latency` (the latency of the slot's loaded model, T05U), never hard-coded; the strip's alignment pad absorbs it up to `natural`.
 fn input_latency_ins(ins: usize) -> usize {
     let mut s = ChannelStrip::channel(48_000.0, BLOCK);
     s.set_insert_latency(ins)
@@ -407,27 +406,50 @@ impl RtModel for Lat {
     }
 }
 
-/// Slot latency is constant per slot (T03E: max over its models) and pads the strips whose inserts
-/// claim and own the slot through their latency alignment.
+/// WING enum index of FX model `name` in slot `n`'s model group.
+fn fx_model(n: u8, name: &str) -> u16 {
+    let s = wing_model::Schema::get();
+    let g = s
+        .groups()
+        .iter()
+        .find(|g| g.key == wing_engine::fx::group_key(n))
+        .unwrap();
+    s.models(g)
+        .iter()
+        .find(|m| m.name == name)
+        .unwrap()
+        .enum_index as u16
+}
+
+/// Load model `model` into slot `n` (between cycles).
+fn load(rack: &FxRack, n: u8, model: u16) {
+    unsafe {
+        rack.with_slot(n, |s| {
+            s.apply(&ParamMsg::Model { block: 0, model });
+            s.apply(&ParamMsg::Commit);
+        })
+    };
+}
+
+/// Slot latency follows the loaded model (T05U) and pads the strips whose inserts claim and own the
+/// slot through their latency alignment.
 #[test]
 fn insert_latency_reporting() {
     let rack = FxRack::with_factory(48_000.0, BLOCK, |slot, _i, name| {
         (name == "GEQ" && (slot == 4 || slot == 12))
             .then(|| Box::new(Lat(10 * slot as usize)) as Box<dyn RtModel>)
     });
+    // NONE loaded: no latency
+    assert_eq!(rack.slot_latency(4), 0);
+    load(&rack, 4, fx_model(4, "GEQ"));
+    load(&rack, 12, fx_model(12, "GEQ"));
     assert_eq!(rack.slot_latency(4), 40);
     assert_eq!(rack.slot_latency(12), 120);
     assert_eq!(rack.slot_latency(5), 0);
-    // constant: selecting another model does not change it
-    unsafe {
-        rack.with_slot(4, |s| {
-            s.apply(&ParamMsg::Model {
-                block: 0,
-                model: 19,
-            });
-            s.apply(&ParamMsg::Commit);
-        })
-    };
+    // another (zero-latency) model: the latency follows it, and back
+    load(&rack, 4, fx_model(4, "DEQ3"));
+    assert_eq!(rack.slot_latency(4), 0);
+    load(&rack, 4, fx_model(4, "GEQ"));
     assert_eq!(rack.slot_latency(4), 40);
 
     let (mut l, mut r) = (vec![0.0f32; BLOCK], vec![0.0f32; BLOCK]);

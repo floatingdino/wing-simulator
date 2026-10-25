@@ -51,7 +51,7 @@ use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
 use crate::latency::StripAlign;
 use crate::meters::{abs_max, word, StripMeter};
 use crate::params::std_models::model_factory;
-use crate::params::strip::{ModelSlot, INPUT_LAYOUT, SLOT_LAYOUT};
+use crate::params::strip::{ModelSlot, INPUT_LAYOUT, MODEL_XFADE_S, SLOT_LAYOUT};
 use crate::params::telemetry_kind as kind;
 use crate::params::{
     BindError, BlockLayout, ParamMapBuilder, ParamMsg, TelemetryWriter, TARGET_BASE,
@@ -338,10 +338,20 @@ pub trait InsertHost {
     /// Apply the automix gain of a member channel in place (`weight_db` = `postins.w`).
     fn automix(&mut self, _weight_db: f32, _l: &mut [f32], _r: &mut [f32]) {}
 
-    /// Latency (samples) the insert at `pos` claiming slot `fx` adds (constant per slot, on or off;
-    /// 0 when another insert owns the slot).
+    /// Latency (samples) the insert at `pos` claiming slot `fx` adds (the latency of the slot's loaded
+    /// model, on or off; 0 when another insert owns the slot).
     fn insert_latency(&self, _pos: InsertPos, _fx: u8) -> usize {
         0
+    }
+
+    /// Publish the latency of the models loaded in the strip's own slots (alignment board, T05U).
+    /// Called between cycles (after `Commit`).
+    fn set_own_latency(&mut self, _n: usize) {}
+
+    /// Engine-wide alignment target of the strip's family (`None` = no board: the strip pads to its
+    /// family's worst case). Read at block start.
+    fn align_target(&self) -> Option<usize> {
+        None
     }
 }
 
@@ -566,20 +576,30 @@ impl ChannelStrip {
             meter: None,
             align: StripAlign::new(0, 0),
         };
-        let natural = s.tool.latency() + s.gate.latency() + s.eq.latency() + s.dyn_.latency();
-        let own = match kind {
-            StripKind::Channel => natural,
-            StripKind::Aux => s.eq.latency() + s.dyn_.latency(),
-        };
-        s.align = StripAlign::new(own, natural);
         // Factory model choices (the pipeline's sync_all overrides them from the store).
         s.tool.select(0);
         s.gate.select(0);
         s.eq.select(0);
         let comp = if kind == StripKind::Channel { 13 } else { 0 };
         s.dyn_.select(comp);
+        // worst case of the input-strip family (aux strips pad the filter tool and gate they lack)
+        let natural =
+            s.tool.max_latency() + s.gate.max_latency() + s.eq.max_latency() + s.dyn_.max_latency();
+        s.align = StripAlign::new(s.own_latency(), natural);
+        s.align
+            .set_fade_samples((MODEL_XFADE_S * fs).round() as usize);
         s.settle();
         s
+    }
+
+    /// Latency of the strip's own model slots (constant per slot, T03E: the gate and dynamics slots stay at
+    /// their maximum so the pre-fader taps of every channel stay aligned; see crate::latency).
+    pub fn own_latency(&self) -> usize {
+        let d = self.eq.latency() + self.dyn_.latency();
+        match self.kind {
+            StripKind::Channel => self.tool.latency() + self.gate.latency() + d,
+            StripKind::Aux => d,
+        }
     }
 
     pub fn kind(&self) -> StripKind {
@@ -642,8 +662,9 @@ impl ChannelStrip {
         (self.preins, self.postins)
     }
 
-    /// Total strip latency in samples (model slots + inserts + alignment pad). Constant: it does not
-    /// depend on the selected models or block switches.
+    /// Total strip latency in samples (model slots + inserts + alignment pad) = the alignment target:
+    /// the family worst case for a standalone strip, the engine family target under an FX rack
+    /// (T05U). It does not depend on block switches.
     pub fn latency(&self) -> usize {
         self.align.total()
     }
@@ -653,8 +674,9 @@ impl ChannelStrip {
         &self.align
     }
 
-    /// Align the strip output to `target` samples (`None` = the input-strip default: sum of the channel
-    /// slot latencies). Returns the resulting total. RT-safe.
+    /// Align the strip output to `target` samples (`None` = the engine family target, else the
+    /// input-strip worst case: sum of the channel slots' maximum latencies). Returns the resulting total.
+    /// RT-safe.
     pub fn set_align_latency(&mut self, target: Option<usize>) -> usize {
         self.align.set_target(target)
     }
@@ -673,6 +695,8 @@ impl ChannelStrip {
         for s in [&mut self.tool, &mut self.gate, &mut self.eq, &mut self.dyn_] {
             s.settle();
         }
+        let own = self.own_latency();
+        self.align.set_own_latency(own);
         self.align.reset();
     }
 
@@ -877,11 +901,9 @@ impl ChannelStrip {
         fx: &mut dyn InsertHost,
     ) {
         debug_assert_eq!(l.len(), r.len());
-        // insert FX latency pads the strip (ownership only changes between cycles)
+        // own and insert FX latency and the family target set the pad (they only change between cycles)
         let il = claimed_latency(fx, &self.preins, &self.postins);
-        if il != self.align.insert_latency() {
-            self.align.set_insert_latency(il);
-        }
+        self.align.sync(self.own_latency(), il, fx.align_target());
         Model::process(&mut self.input, l, r, None);
         self.tap(Tap::In as usize, l, r);
         let gate_key = keys.gate.filter(|_| self.gate_sc.3);

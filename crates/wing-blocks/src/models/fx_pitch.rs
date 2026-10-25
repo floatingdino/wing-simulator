@@ -15,8 +15,9 @@
 //! classic dual-head delay-line shifter with correlated splice points (Lent 1989 / "SOLA"-style), own
 //! implementation; no third-party code (Signalsmith Stretch would add ~tens of ms latency, Rubber Band is GPL).
 //!
-//! **Latency.** The FX slot host pads every hostable model to the maximum [`Model::latency`] (T03E), so it is
-//! kept as small as quality allows:
+//! **Latency.** The FX slot runs at the loaded model's [`Model::latency`] and the engine aligns every strip of a
+//! family to the largest one in use (T05U), so a PCORR insert delays all input strips: it is kept as small as
+//! quality allows:
 //! * `PITCH`, `D-PITCH`, `DOUBLE`: `latency() = 0`. The dry signal is not delayed; the shifted voice is
 //!   delayed by `DELAY` plus the shifter window (between `DELAY` and `DELAY + ~31 ms` at 48 kHz, mean ~12..19
 //!   ms depending on the direction of the shift; at unison exactly `DELAY`, min 2 samples), which is part of
