@@ -66,6 +66,14 @@ pub struct ProcessCtx {
 pub trait Processor: Send {
     /// Process one block: read `io.input(i)`, write every `io.output(j)`.
     fn process(&mut self, ctx: &ProcessCtx, io: &mut NodeIo<'_>);
+
+    /// Apply a parameter message from the control->RT pipeline ([`crate::params`]). Called on
+    /// the driver thread between cycles; must be RT-safe. Default: ignore.
+    fn set_param(&mut self, _msg: &crate::params::ParamMsg) {}
+
+    /// Publish RT->control telemetry (gain reduction, ...). Called on the driver thread between
+    /// cycles for nodes registered as telemetry sources; must be RT-safe. Default: nothing.
+    fn telemetry(&mut self, _out: &mut crate::params::TelemetryWriter<'_>) {}
 }
 
 impl<F: FnMut(&ProcessCtx, &mut NodeIo<'_>) + Send> Processor for F {

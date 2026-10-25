@@ -417,6 +417,9 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "libc",
+ "wing-blocks",
+ "wing-dsp",
+ "wing-model",
 ]
 
 [[package]]
