@@ -2,7 +2,7 @@
 id: T012
 title: Discovery responder (UDP 2222)
 stage: S1
-status: todo
+status: in_progress
 owner: -
 depends: [T001, T002]
 branch: -

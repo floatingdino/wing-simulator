@@ -2,7 +2,7 @@
 id: T022
 title: Engine RT host + parallel scheduler
 stage: S2
-status: todo
+status: in_progress
 owner: -
 depends: [T001]
 branch: -

@@ -2,7 +2,7 @@
 id: T010
 title: wing-model: generated parameter tree
 stage: S1
-status: todo
+status: in_progress
 owner: -
 depends: [T001, T003]
 branch: -

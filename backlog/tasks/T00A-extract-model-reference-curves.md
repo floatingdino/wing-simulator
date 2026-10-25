@@ -2,7 +2,7 @@
 id: T00A
 title: Extract per-model response/gain-computer curves from WING-Edit
 stage: S0
-status: todo
+status: in_progress
 owner: -
 depends: [T003]
 branch: -

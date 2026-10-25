@@ -2,7 +2,7 @@
 id: T020
 title: wing-shm: shared-memory ring protocol
 stage: S2
-status: todo
+status: in_progress
 owner: -
 depends: [T001, T006]
 branch: -

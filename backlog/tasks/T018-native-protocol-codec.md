@@ -2,7 +2,7 @@
 id: T018
 title: Native protocol codec (framing, escaping, channels, tokens)
 stage: S1
-status: todo
+status: in_progress
 owner: -
 depends: [T001, T002]
 branch: -

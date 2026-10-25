@@ -7,3 +7,4 @@ WING-Edit.app/
 /scratch/
 *.wav
 !fixtures/audio/*.wav
+/PUBLIC.snap
