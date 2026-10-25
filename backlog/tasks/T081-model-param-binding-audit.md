@@ -2,7 +2,7 @@
 id: T081
 title: BUG: Soul Warmth Pre drive ineffective + audit every model's parameter binding
 stage: S4
-status: review
+status: done
 owner: claude-T081
 depends: []
 branch: task/T081
