@@ -35,3 +35,6 @@ block (name + harness = false) in crates/wing-blocks/Cargo.toml.
 
 Coordinator merge rule: `tools/merge-union.py` is only for additive files (Cargo.toml, `pub mod` lists, registration
 lines). Any conflict in real code → abort the merge and send it back to the task agent to merge `main` and resolve.
+
+Tests must not hard-code the FX slot latency (it is the max over every model a slot can host and grows as FX
+families land) — derive it from the registry (`max_latency`).
