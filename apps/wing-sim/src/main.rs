@@ -6,6 +6,8 @@
 //!          [--serial S] [--scene PATH] [--idle-timeout SECS(0=off)] [--no-meters] [--no-osc]
 //!          [--port 2222] [--osc-port 2223] [--save-on-exit PATH]
 //!          [--state-dir DIR] [--no-autosave] [--recall NAME] [--list-scenes]
+//!          [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N]
+//!          [--workers N] [--no-rt]
 //! ```
 //! Ctrl-C (SIGINT) or SIGTERM shuts down cleanly.
 //!
@@ -14,9 +16,18 @@
 //! `--scene` or `--recall` is given. `<state-dir>/scenes/` is the scene library served as
 //! `$ctl/lib` (WING-Edit's library page); `--list-scenes` prints it, `--recall NAME` (or `#N`)
 //! starts from a library scene.
+//!
+//! Audio (T026, see `wing_sim::audio`): attaches to the Wing Simulator HAL driver's shared memory
+//! and runs the console on a real-time thread (USB In 1..48 -> routing -> 40 ch + 8 aux strips ->
+//! busses, mains, matrices (T036) -> output patch -> USB Out 1..48, plus host-device bridges). Without a
+//! (compatible) driver it runs control-only and keeps retrying. `--hostio PATH` takes a
+//! wing-hostio TOML (see `crates/wing-hostio/hostio.example.toml`); by default main 1 plays on
+//! "Scarlett 2i4 USB" 1/2 when that device exists.
 
 mod library;
 mod persist;
+
+use wing_sim::audio::{self, AudioOptions, AudioService, ConsoleConfig, HostIoSetting};
 
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::path::PathBuf;
@@ -56,12 +67,19 @@ struct Args {
     autosave: bool,
     recall: Option<String>,
     list_scenes: bool,
+    audio: bool,
+    hostio: HostIoSetting,
+    shm_name: String,
+    block: usize,
+    workers: Option<usize>,
+    rt: bool,
 }
 
 const USAGE: &str = "usage: wing-sim [--name NAME] [--ip A.B.C.D] [--fw FIRMWARE] [--model MODEL] \
 [--serial SERIAL] [--scene PATH] [--idle-timeout SECS] [--no-meters] [--no-osc] [--port N] \
 [--osc-port N] [--save-on-exit PATH] [--state-dir DIR] [--no-autosave] [--recall NAME|#N] \
-[--list-scenes]";
+[--list-scenes] [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N] \
+[--workers N] [--no-rt]";
 
 fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut a = Args {
@@ -78,6 +96,12 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         autosave: true,
         recall: None,
         list_scenes: false,
+        audio: true,
+        hostio: HostIoSetting::Default,
+        shm_name: wing_shm::SHM_NAME.to_string(),
+        block: 64,
+        workers: None,
+        rt: true,
     };
     while let Some(flag) = it.next() {
         let mut val = || it.next().ok_or(format!("{flag} needs a value"));
@@ -101,6 +125,18 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--no-autosave" => a.autosave = false,
             "--recall" => a.recall = Some(val()?),
             "--list-scenes" => a.list_scenes = true,
+            "--no-audio" => a.audio = false,
+            "--hostio" => a.hostio = HostIoSetting::from_file(&val()?)?,
+            "--no-hostio" => a.hostio = HostIoSetting::Off,
+            "--shm-name" => a.shm_name = val()?,
+            "--block" => {
+                a.block = val()?.parse().map_err(|e| format!("--block: {e}"))?;
+                if !(16..=1024).contains(&a.block) {
+                    return Err("--block must be 16..1024".into());
+                }
+            }
+            "--workers" => a.workers = Some(val()?.parse().map_err(|e| format!("--workers: {e}"))?),
+            "--no-rt" => a.rt = false,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
@@ -233,6 +269,7 @@ fn run(args: Args) -> Result<(), String> {
     let hub = Hub::attach(&mut store);
     let osc_att = args.osc.then(|| OscAttachment::attach(&mut store));
     let changes = persist::ChangeCounter::attach(&mut store);
+    let routing = args.audio.then(|| audio::prepare(&mut store));
     let store = Arc::new(store);
     let logf: persist::LogFn = Arc::new(log);
     let autosaver = if args.autosave {
@@ -388,6 +425,41 @@ fn run(args: Args) -> Result<(), String> {
         args.idle
     ));
 
+    // ---- audio ----
+    let audio = match routing {
+        Some(routing) => {
+            let (hostio, note) = args.hostio.resolve();
+            log(&format!("audio: {note}"));
+            let mut console = ConsoleConfig {
+                block: args.block,
+                rt_workers: args.rt,
+                ..ConsoleConfig::default()
+            };
+            if let Some(w) = args.workers {
+                console.workers = w;
+            }
+            Some(
+                AudioService::spawn(
+                    store.clone(),
+                    routing,
+                    AudioOptions {
+                        shm_name: args.shm_name.clone(),
+                        console,
+                        rt: args.rt,
+                        hostio,
+                        ..AudioOptions::default()
+                    },
+                    logf.clone(),
+                )
+                .map_err(|e| format!("audio: {e}"))?,
+            )
+        }
+        None => {
+            log("audio: off (--no-audio)");
+            None
+        }
+    };
+
     unsafe {
         libc::signal(
             libc::SIGINT,
@@ -410,9 +482,15 @@ fn run(args: Args) -> Result<(), String> {
                 streamer.as_ref().map_or(0, |s| s.packets()),
                 discovery.replies()
             ));
+            if let Some(a) = &audio {
+                log(&a.status_line());
+            }
         }
     }
     log("shutting down");
+    if let Some(a) = audio {
+        a.stop(); // detaches: the driver falls back to loopback
+    }
     server.stop();
     if let Some(o) = osc {
         o.stop();
@@ -486,6 +564,19 @@ mod tests {
         assert_eq!(a.recall.as_deref(), Some("Verse"));
         assert!(args(&["--scene", "x.snap", "--recall", "y"]).is_err());
         assert!(args(&["--bogus"]).is_err());
+        let a = args(&[
+            "--no-audio",
+            "--no-hostio",
+            "--block",
+            "128",
+            "--workers",
+            "2",
+        ])
+        .unwrap();
+        assert!(!a.audio && a.hostio == HostIoSetting::Off && a.block == 128);
+        assert_eq!(a.workers, Some(2));
+        assert!(args(&["--block", "7"]).is_err());
+        assert!(args(&["--hostio", "/nonexistent.toml"]).is_err());
         assert!(args(&["--name", "a,b"]).is_err());
     }
 }

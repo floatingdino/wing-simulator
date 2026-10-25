@@ -9,4 +9,4 @@ Agents never run sudo or touch the user's live sessions destructively. Items her
 | 3 | Quit REAPER, then run `driver/build.sh && sudo driver/install.sh`; verify with `driver/build/wing_hal_probe` (see docs/research/driver.md) | T021, T025 | done 2026-10-25 (wing_hal_probe PASS 48x48, unity loopback) |
 | 4 | After the driver is installed: switch REAPER's audio device to "Wing Simulator" | T025 | done 2026-10-25 |
 | 5 | In REAPER disable the master track's hardware output to outs 1/2 (it would sum the whole mix into USB In 1/2 = Kick/Snare) | T025 | done 2026-10-25 |
-| 6 | Reinstall the v2 driver: quit REAPER, then `driver/build.sh && sudo driver/install.sh`, then `driver/verify.sh` (no sudo; terminal needs Microphone permission) and paste the result | T021 sign-off, T025 | open |
+| 6 | Reinstall the v2 driver: quit REAPER, then `driver/build.sh && sudo driver/install.sh`, then `driver/verify.sh` (no sudo; terminal needs Microphone permission) and paste the result | T021 sign-off, T025 | done 2026-10-25 (verify ALL PASSED) |
