@@ -20,3 +20,4 @@ wing-proto = { path = "../../crates/wing-proto" }
 wing-engine = { path = "../../crates/wing-engine" }
 wing-shm = { path = "../../crates/wing-shm" }
 wing-hostio = { path = "../../crates/wing-hostio" }
+wing-diff = { path = "../wing-diff" }

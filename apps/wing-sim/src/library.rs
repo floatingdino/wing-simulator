@@ -44,9 +44,14 @@ struct Entry {
 pub struct SceneLib {
     dir: PathBuf,
     console_model: String,
-    doc: Doc,
+    pub(crate) doc: Doc,
     entries: Mutex<Vec<Entry>>,
     active: Mutex<Option<String>>,
+    /// A/B compare slots (T062, see `ab.rs`).
+    pub(crate) ab: Mutex<crate::ab::AbState>,
+    /// Text of the scene the current state started from (T062).
+    pub(crate) loaded: Mutex<Option<String>>,
+    pub(crate) export_cfg: Mutex<crate::ab::ExportCfg>,
 }
 
 fn parse_entry(path: &Path) -> Option<Entry> {
@@ -103,6 +108,9 @@ impl SceneLib {
             doc,
             entries: Mutex::new(Vec::new()),
             active: Mutex::new(None),
+            ab: Mutex::default(),
+            loaded: Mutex::new(None),
+            export_cfg: Mutex::default(),
         };
         lib.rescan()?;
         Ok(lib)
@@ -222,6 +230,7 @@ impl SceneLib {
             set_header(&mut snap, "active_scene", &e.name);
             *doc = snap;
             drop(doc);
+            self.set_loaded(text);
             self.set_active(Some(e.name.clone()));
             self.publish(store);
             Ok((e.name, rep))
@@ -396,6 +405,8 @@ impl SceneLib {
                 let name = self.delete(store, at(index as i64)?)?;
                 Ok(format!("deleted scene {name:?}"))
             }
+            "AB" => crate::ab::run_ab(self, store, arg.unwrap_or("")),
+            "EXPORT" => crate::ab::run_export(self, store, arg.unwrap_or("")),
             "GOTAG" => Err("GOTAG: scene tags are not supported".into()),
             _ => Err(format!("unknown library action {action:?}")),
         }

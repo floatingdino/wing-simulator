@@ -39,8 +39,8 @@ pub use schema::{
     Children, Desc, EnumItem, Group, Model, NodeId, ParamClass, ParamType, Schema, Unit,
 };
 pub use snapshot::{
-    diff, json_eq, DiffEntry, LoadReport, MigrationNote, SnapError, Snapshot, FACTORY_SCENE,
-    KNOWN_UNMODELLED, ORIGIN_SNAPSHOT, SECTIONS,
+    diff, json_eq, ApplyReport, DiffEntry, LoadReport, MigrationNote, SnapError, Snapshot,
+    FACTORY_SCENE, KNOWN_UNMODELLED, ORIGIN_SNAPSHOT, SECTIONS,
 };
 pub use store::{Change, Hook, Origin, ParamStore, RtConsumer, ORIGIN_LOCAL};
 pub use value::{

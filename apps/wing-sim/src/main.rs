@@ -17,6 +17,13 @@
 //! `$ctl/lib` (WING-Edit's library page); `--list-scenes` prints it, `--recall NAME` (or `#N`)
 //! starts from a library scene.
 //!
+//! A/B and export (T062, see `ab.rs`): `/wingsim/ab/{store_a,store_b,toggle,a,b}` over OSC (or
+//! `$ctl/lib/$action` = `AB:store_a` ...) switch two in-memory scene slots through the normal
+//! set path; `/wingsim/export <path>` / `--export PATH` write a console-ready 3.x `.snap` plus a
+//! `.changes.md` wing-diff report vs the scene as loaded. `--ab-a FILE` / `--ab-b FILE` preload
+//! the slots (starting on A when given), `--export-on-exit PATH` exports at shutdown,
+//! `--export-header advertised|factory` picks the header (default: the advertised firmware).
+//!
 //! Audio (T026, see `wing_sim::audio`): attaches to the Wing Simulator HAL driver's shared memory
 //! and runs the console on a real-time thread (USB In 1..48 -> routing -> 40 ch + 8 aux strips ->
 //! busses, mains, matrices (T036) -> output patch -> USB Out 1..48, plus host-device bridges). Without a
@@ -24,6 +31,7 @@
 //! wing-hostio TOML (see `crates/wing-hostio/hostio.example.toml`); by default monitor A (`mon/1`: the monitor source, MAIN.1 by default, with solo priority) plays on
 //! "Scarlett 2i4 USB" 1/2 when that device exists.
 
+mod ab;
 mod library;
 mod persist;
 
@@ -75,13 +83,19 @@ struct Args {
     block: usize,
     workers: Option<usize>,
     rt: bool,
+    ab_a: Option<String>,
+    ab_b: Option<String>,
+    export: Option<String>,
+    export_on_exit: Option<String>,
+    export_header: ab::HeaderMode,
 }
 
 const USAGE: &str = "usage: wing-sim [--name NAME] [--ip A.B.C.D] [--fw FIRMWARE] [--model MODEL] \
 [--serial SERIAL] [--scene PATH] [--idle-timeout SECS] [--no-meters] [--no-osc] [--port N] \
 [--osc-port N] [--save-on-exit PATH] [--state-dir DIR] [--no-autosave] [--recall NAME|#N] \
 [--list-scenes] [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N] \
-[--workers N] [--no-rt]";
+[--workers N] [--no-rt] [--ab-a FILE] [--ab-b FILE] [--export PATH] [--export-on-exit PATH] \
+[--export-header advertised|factory]";
 
 fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut a = Args {
@@ -104,6 +118,11 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         block: 64,
         workers: None,
         rt: true,
+        ab_a: None,
+        ab_b: None,
+        export: None,
+        export_on_exit: None,
+        export_header: ab::HeaderMode::default(),
     };
     while let Some(flag) = it.next() {
         let mut val = || it.next().ok_or(format!("{flag} needs a value"));
@@ -139,6 +158,15 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--workers" => a.workers = Some(val()?.parse().map_err(|e| format!("--workers: {e}"))?),
             "--no-rt" => a.rt = false,
+            "--ab-a" => a.ab_a = Some(val()?),
+            "--ab-b" => a.ab_b = Some(val()?),
+            "--export" => a.export = Some(val()?),
+            "--export-on-exit" => a.export_on_exit = Some(val()?),
+            "--export-header" => {
+                let v = val()?;
+                a.export_header = ab::HeaderMode::parse(&v)
+                    .ok_or(format!("--export-header: {v:?} is not advertised|factory"))?;
+            }
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
@@ -223,6 +251,7 @@ fn run(args: Args) -> Result<(), String> {
         let (snap, rep) = Snapshot::load(&store, &text).map_err(|e| format!("--scene {p}: {e}"))?;
         report(&format!("scene {p}"), &rep);
         *doc.lock().unwrap_or_else(|e| e.into_inner()) = snap;
+        lib.set_loaded(text);
     } else if let Some(name) = &args.recall {
         let i = lib.find(name).ok_or_else(|| {
             format!(
@@ -238,11 +267,16 @@ fn run(args: Args) -> Result<(), String> {
     } else if state_file.exists() {
         let loaded = std::fs::read_to_string(&state_file)
             .map_err(|e| e.to_string())
-            .and_then(|t| Snapshot::load(&store, &t).map_err(|e| e.to_string()));
+            .and_then(|t| {
+                Snapshot::load(&store, &t)
+                    .map(|(s, r)| (s, r, t))
+                    .map_err(|e| e.to_string())
+            });
         match loaded {
-            Ok((snap, rep)) => {
+            Ok((snap, rep, text)) => {
                 report(&format!("restored {}", state_file.display()), &rep);
                 *doc.lock().unwrap_or_else(|e| e.into_inner()) = snap;
+                lib.set_loaded(text);
             }
             Err(e) => {
                 // keep the unreadable file for inspection and start from the factory scene
@@ -259,6 +293,33 @@ fn run(args: Args) -> Result<(), String> {
     }
     lib.adopt_doc_active();
     lib.publish(&store); // also sets `$syscfg/$cnsmdl`
+    lib.set_export_cfg(ab::ExportCfg {
+        mode: args.export_header,
+        firmware: args.identity.firmware.clone(),
+        console_model: console_model.into(),
+        serial: args.identity.serial.clone(),
+        name: args.identity.name.clone(),
+    });
+    // A/B slots from files (start on A when it is given)
+    for (slot, file) in [&args.ab_a, &args.ab_b].into_iter().enumerate() {
+        if let Some(p) = file {
+            let text = std::fs::read_to_string(p)
+                .map_err(|e| format!("--ab-{}: {p}: {e}", ["a", "b"][slot]))?;
+            lib.ab_set_slot(slot, text, false)
+                .map_err(|e| format!("--ab-{}: {p}: {e}", ["a", "b"][slot]))?;
+        }
+    }
+    if args.ab_a.is_some() {
+        log(&format!("A/B: {}", lib.ab_switch(&store, Some(0))?));
+    } else if args.ab_b.is_some() {
+        log(&format!("A/B: {}", lib.ab_switch(&store, Some(1))?));
+    }
+    if let Some(p) = &args.export {
+        // batch mode: export the state (after --scene/--recall/restore and A/B) and exit
+        let e = ab::run_export(&lib, &store, p)?;
+        log(&e);
+        return Ok(());
+    }
     log(&format!(
         "state dir {}: autosave {}, library {} scenes{}",
         args.state_dir.display(),
@@ -514,6 +575,12 @@ fn run(args: Args) -> Result<(), String> {
         let n = a.stop();
         log(&format!("autosave: {n} saves to {}", state_file.display()));
     }
+    if let Some(p) = &args.export_on_exit {
+        match ab::run_export(&lib, &store, p) {
+            Ok(m) => log(&m),
+            Err(e) => log(&format!("export to {p} failed: {e}")),
+        }
+    }
     if let Some(p) = &args.save_on_exit {
         match persist::save_state(&store, &doc, std::path::Path::new(p)) {
             Ok(_) => log(&format!("saved scene to {p}")),
@@ -585,5 +652,20 @@ mod tests {
         assert!(args(&["--block", "7"]).is_err());
         assert!(args(&["--hostio", "/nonexistent.toml"]).is_err());
         assert!(args(&["--name", "a,b"]).is_err());
+        let a = args(&[
+            "--ab-a",
+            "a.snap",
+            "--ab-b",
+            "b.snap",
+            "--export",
+            "o.snap",
+            "--export-header",
+            "factory",
+        ])
+        .unwrap();
+        assert_eq!(a.ab_a.as_deref(), Some("a.snap"));
+        assert_eq!(a.export.as_deref(), Some("o.snap"));
+        assert_eq!(a.export_header, ab::HeaderMode::Factory);
+        assert!(args(&["--export-header", "x"]).is_err());
     }
 }

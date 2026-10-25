@@ -543,6 +543,7 @@ name = "wing-sim"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "wing-diff",
  "wing-engine",
  "wing-hostio",
  "wing-model",

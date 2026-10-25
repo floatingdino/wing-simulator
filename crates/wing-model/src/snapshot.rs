@@ -123,6 +123,15 @@ impl LoadReport {
     }
 }
 
+/// Result of [`Snapshot::apply_diff`].
+#[derive(Clone, Debug, Default)]
+pub struct ApplyReport {
+    /// Parameters whose stored value changed.
+    pub changed: usize,
+    /// Parameters the store refused.
+    pub rejected: Vec<(String, SetError)>,
+}
+
 /// One flattened snapshot leaf during loading.
 #[derive(Clone, Debug)]
 pub(crate) struct Leaf {
@@ -445,6 +454,88 @@ impl Snapshot {
                 && (factory().mask[sel as usize] || self.extra_nodes[sel as usize]);
         }
         factory().mask[id.index()] || self.extra_nodes[id.index()]
+    }
+
+    /// Move `live` to the state of `target` by setting only the persisted parameters that differ
+    /// (`self` is the document `target` was loaded with, see [`Snapshot::load`]). This is the
+    /// A/B-compare path: no reset to factory defaults in between, so unchanged parameters are
+    /// never touched and every change goes through the normal set path (hooks, native/OSC
+    /// fan-out, RT staging) tagged with `origin`. Model selectors are switched first (the new
+    /// model's defaults, then the target's slot values). Parameters whose path starts with one of
+    /// `skip_prefixes` (console-owned state such as `$syscfg`) are left alone.
+    #[allow(clippy::needless_range_loop)]
+    pub fn apply_diff(
+        &self,
+        target: &ParamStore,
+        live: &ParamStore,
+        origin: Origin,
+        skip_prefixes: &[&str],
+    ) -> ApplyReport {
+        let s = live.schema();
+        let mut rep = ApplyReport::default();
+        let differs = |id: NodeId| -> bool {
+            let d = match live.desc(id) {
+                Some(d) => d,
+                None => return false,
+            };
+            if d.ty == ParamType::Str {
+                let a = live.with_str(id, str::to_string);
+                a != target.with_str(id, str::to_string)
+            } else {
+                live.get_raw(id) != target.get_raw(id)
+            }
+        };
+        let skipped = |id: NodeId| {
+            let p = s.path(id);
+            skip_prefixes.iter().any(|x| p.starts_with(x))
+        };
+        let apply = |id: NodeId, rep: &mut ApplyReport| {
+            if !self.persists(target, id) || !differs(id) || skipped(id) {
+                return false;
+            }
+            let r = match live.desc(id) {
+                Some(d) if d.ty == ParamType::Str => {
+                    let t = target.with_str(id, str::to_string).unwrap_or_default();
+                    live.set_str(id, &t, origin)
+                }
+                _ => live.set_raw(id, target.get_raw(id), origin),
+            };
+            match r {
+                Ok(c) => {
+                    rep.changed += c as usize;
+                    true
+                }
+                Err(e) => {
+                    rep.rejected.push((s.path(id), e));
+                    false
+                }
+            }
+        };
+        // selectors first; repeat while new ones become active (selectors inside model slots)
+        let mut done = vec![false; s.node_count()];
+        loop {
+            let mut progress = false;
+            for i in 0..s.node_count() {
+                let id = NodeId(i as u16);
+                if done[i] || s.selector_inst[i] == NONE || !s.is_param(id) || live.is_inactive(id)
+                {
+                    continue;
+                }
+                done[i] = true;
+                apply(id, &mut rep);
+                progress = true;
+            }
+            if !progress {
+                break;
+            }
+        }
+        for i in 0..s.node_count() {
+            let id = NodeId(i as u16);
+            if !done[i] && s.is_param(id) && !live.is_inactive(id) {
+                apply(id, &mut rep);
+            }
+        }
+        rep
     }
 
     /// The JSON value the console would store for a parameter.
