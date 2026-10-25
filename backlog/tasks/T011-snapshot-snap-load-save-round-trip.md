@@ -2,7 +2,7 @@
 id: T011
 title: Snapshot (.snap) load/save round-trip
 stage: S1
-status: review
+status: done
 owner: eng-agent
 depends: [T010]
 branch: task/T011-T019

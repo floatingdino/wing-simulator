@@ -2,7 +2,7 @@
 id: T019
 title: Snapshot migration: firmware 1.x keys -> 3.x schema
 stage: S1
-status: review
+status: done
 owner: eng-agent
 depends: [T011]
 branch: task/T011-T019
