@@ -2,7 +2,7 @@
 id: T084
 title: RTA support for WING-Edit ("RTA in use! Check mixer settings.")
 stage: S6
-status: review
+status: done
 owner: agent-T084
 depends: []
 branch: task/T084
