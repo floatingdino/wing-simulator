@@ -420,6 +420,35 @@ pub fn hqhs12(c: &Ctx, f: f32, g: f32) -> Bq {
     hs_core((f * c.pifs).tan(), g, q)
 }
 
+/// `Cbiquad::hqhs12q25(f, g)` (T05Q, SPKMAN tilt): the `hqhs12` design with Q 0.4 below 2.5 kHz, `f` clamped
+/// to <= 15 kHz, `g` to +-12 dB, and its own (f, 1/Q, |g|) tables above 2.5 kHz (6 rows of 2.5 kHz x 5
+/// columns of 3 dB).
+#[allow(clippy::manual_clamp)] // fmax/fmin order of the original
+pub fn hqhs12q25(c: &Ctx, f: f32, g: f32) -> Bq {
+    let f = f.min(15_000.0);
+    let g = g.max(-12.0).min(12.0);
+    let (f, g, q) = if f > 2500.0 {
+        let i = ((f as f64 * 0.0004) as i32).clamp(1, 5) as usize;
+        let fr = (((i as f32).mul_add(-2500.0, f)) as f64 * 0.0004) as f32;
+        let ga = g.abs();
+        let j = ((ga / 3.0) as i32).min(3) as usize;
+        let gf = fms(j as f32, 3.0, ga) / 3.0;
+        let ip = |t: &[[f32; 5]; 6]| {
+            let s4 = 1.0 - fr;
+            let c0 = s4.mul_add(t[i - 1][j], t[i][j] * fr);
+            let c1 = s4.mul_add(t[i - 1][j + 1], t[i][j + 1] * fr);
+            (1.0 - gf).mul_add(c0, gf * c1)
+        };
+        let ft = ip(&tables::HS12Q25_F[c.t]);
+        let q = 1.0 / ip(&tables::HS12Q25_Q[c.t]);
+        let gm = ip(&tables::HS12Q25_G[c.t]);
+        (ft, if g > 0.0 { gm } else { -gm }, q)
+    } else {
+        (f, g, f32::from_bits(0x3ecccccd))
+    };
+    hs_core((f * c.pifs).tan(), g, q)
+}
+
 /// `Cbiquad::hqls12(f, g)`: low shelf, Q 0.707 below 2.5 kHz, table-remapped above with make-up gain.
 pub fn hqls12(c: &Ctx, f: f32, g: f32) -> Bq {
     let (ft, gt, q) = if f > 2500.0 {

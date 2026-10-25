@@ -311,7 +311,7 @@ pub fn core_params(r: &[f32; PARAMS_LEN]) -> CoreParams {
         scale,
         decay_s: g(slot::DCY) * lm,
         bass_mult: g(slot::LDCY) / lm,
-        xover_hz: Some(g(slot::LXO)),
+        xover_hz: g(slot::LXO),
         mid_split: Some((g(slot::MXO), g(slot::HMDCY) / lm)),
         damp_hz: g(slot::HXO),
         hf_ratio: Some(g(slot::HDCY) / lm),

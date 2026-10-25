@@ -16,6 +16,10 @@
 //! | `V-ROOM` | [`vintage`] | 16 | Quantec QRS-style vintage room, low-SR band-limit, freeze (T05V) |
 //! | `V-REV` | [`vintage`] | 8 | EMT 250-style chorused loops, front/rear outputs, transformer (T05V) |
 //! | `VSS3` | [`vss3`] | 16 | TC VSS3-style: ER pattern generator + 4-band-decay tail (T05V) |
+//! | `PLATE` | [`plate`] | 16 | Lexicon-style plate with pre-echoes (T05P) |
+//! | `V-PLATE` | [`plate`] | 16 | EMT 140 steel plate (T05P) |
+//! | `BPLATE` | [`plate`] | 16 | "Blue Plate": modern modulated plate, own design (T05P) |
+//! | `SPRING` | [`spring`] | own | dispersive spring tank, 4 springs per side (T05P; not on the FDN core) |
 //!
 //! Common mappings ([I] = inferred, no console measurement yet): `dcy` = mid-band T60 (s); `mult` = LF T60
 //! multiplier below the model's crossover; `damp` = frequency above which the T60 falls to the model's
@@ -29,7 +33,10 @@ pub mod chamber;
 pub mod concert;
 pub mod core;
 pub mod hall;
+pub mod plate;
 pub mod room;
+pub mod special;
+pub mod spring;
 pub mod vintage;
 pub mod vss3;
 
@@ -156,6 +163,22 @@ pub fn v_rev() -> vintage::VintageReverb<8> {
 pub fn vss3() -> vss3::Vss3 {
     vss3::Vss3::new()
 }
+/// `PLATE` (16 lines).
+pub fn plate() -> Reverb<16> {
+    Reverb::new(&plate::PLATE_SPEC)
+}
+/// `V-PLATE` (16 lines).
+pub fn vplate() -> Reverb<16> {
+    Reverb::new(&plate::VPLATE_SPEC)
+}
+/// `BPLATE` (16 lines).
+pub fn bplate() -> Reverb<16> {
+    Reverb::new(&plate::BPLATE_SPEC)
+}
+/// `SPRING`.
+pub fn spring() -> spring::Spring {
+    spring::Spring::new()
+}
 
 /// Factory for the FX catalog (`None` for ids that are not reverbs of this family).
 pub fn create(id: &str) -> Option<Box<dyn Model>> {
@@ -168,6 +191,10 @@ pub fn create(id: &str) -> Option<Box<dyn Model>> {
         "V-ROOM" => Box::new(v_room()),
         "V-REV" => Box::new(v_rev()),
         "VSS3" => Box::new(vss3()),
+        "PLATE" => Box::new(plate()),
+        "V-PLATE" => Box::new(vplate()),
+        "BPLATE" => Box::new(bplate()),
+        "SPRING" => Box::new(spring()),
         _ => return None,
     })
 }
@@ -230,6 +257,10 @@ impl<const N: usize> Model for Reverb<N> {
 }
 
 #[cfg(test)]
+mod special_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_t05p;
 #[cfg(test)]
 mod tests_vintage;

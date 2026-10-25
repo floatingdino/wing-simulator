@@ -69,6 +69,8 @@ pub const DIFFUSERS: usize = 4;
 pub const GLIDE_S: f32 = 0.08;
 /// Crossfade time of an echo / reflection time change (s).
 pub const XFADE_S: f32 = 0.03;
+/// Longest pre-delay (ms; V-PLATE goes to 250).
+pub const MAX_PRE_MS: f32 = 250.0;
 /// Values below this are flushed to zero in recursive paths.
 const FLUSH: f32 = 1e-18;
 /// Upper bound of any per-pass loop gain (stability margin; T60 > 4000 s for a 30 ms line, so a V-ROOM
@@ -166,8 +168,8 @@ pub struct CoreParams {
     pub echo_to_tail: f32,
     /// Chorus on the tail output 0..1 (CONCERT `crs`).
     pub chorus: f32,
-    /// Bass-multiplier crossover override (Hz; `None` = [`Character::xover_hz`]). VSS3 `lxo`.
-    pub xover_hz: Option<f32>,
+    /// Bass-multiplier crossover (Hz); 0 = the character's [`Character::xover_hz`] (BPLATE `xover`, VSS3 `lxo`).
+    pub xover_hz: f32,
     /// HF T60 ratio override (`None` = [`Character::hf_ratio`]). V-ROOM/V-REV `hmult`, VSS3 `hdcy`.
     pub hf_ratio: Option<f32>,
     /// Optional fourth decay band (T05V, VSS3): `(split Hz, T60 ratio)`; between the split and `damp_hz` the
@@ -197,7 +199,7 @@ impl Default for CoreParams {
             echo: [Echo::default(); 2],
             echo_to_tail: 0.0,
             chorus: 0.0,
-            xover_hz: None,
+            xover_hz: 0.0,
             hf_ratio: None,
             mid_split: None,
             rear: 0.0,
@@ -207,15 +209,15 @@ impl Default for CoreParams {
 
 /// One-pole glide evaluated at block rate.
 #[derive(Clone, Copy, Debug, Default)]
-struct Glide {
-    cur: f32,
-    tgt: f32,
+pub(super) struct Glide {
+    pub(super) cur: f32,
+    pub(super) tgt: f32,
 }
 
 impl Glide {
     /// Advance by one block with coefficient `a`; returns (start, end).
     #[inline]
-    fn step(&mut self, a: f32) -> (f32, f32) {
+    pub(super) fn step(&mut self, a: f32) -> (f32, f32) {
         let s = self.cur;
         let d = self.tgt - self.cur;
         if d.abs() <= 1e-6 * self.tgt.abs().max(1e-3) {
@@ -226,7 +228,7 @@ impl Glide {
         (s, self.cur)
     }
 
-    fn snap(&mut self) {
+    pub(super) fn snap(&mut self) {
         self.cur = self.tgt;
     }
 }
@@ -268,7 +270,7 @@ impl XfadeTap {
 
 /// `N` independent TDF-II biquads in structure-of-arrays layout (vectorised lane loop).
 #[derive(Clone, Copy, Debug)]
-struct LaneBiquads<const N: usize> {
+pub(super) struct LaneBiquads<const N: usize> {
     b0: [f32; N],
     b1: [f32; N],
     b2: [f32; N],
@@ -293,7 +295,7 @@ impl<const N: usize> Default for LaneBiquads<N> {
 }
 
 impl<const N: usize> LaneBiquads<N> {
-    fn set(&mut self, i: usize, c: Coeffs) {
+    pub(super) fn set(&mut self, i: usize, c: Coeffs) {
         self.b0[i] = c.b0 as f32;
         self.b1[i] = c.b1 as f32;
         self.b2[i] = c.b2 as f32;
@@ -302,7 +304,7 @@ impl<const N: usize> LaneBiquads<N> {
     }
 
     #[inline(always)]
-    fn tick(&mut self, x: &mut [f32; N]) {
+    pub(super) fn tick(&mut self, x: &mut [f32; N]) {
         for i in 0..N {
             let v = x[i];
             let y = self.b0[i] * v + self.s1[i];
@@ -312,12 +314,12 @@ impl<const N: usize> LaneBiquads<N> {
         }
     }
 
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.s1 = [0.0; N];
         self.s2 = [0.0; N];
     }
 
-    fn flush(&mut self) {
+    pub(super) fn flush(&mut self) {
         for i in 0..N {
             self.s1[i] = flush(self.s1[i]);
             self.s2[i] = flush(self.s2[i]);
@@ -339,7 +341,7 @@ const fn sign(seed: u32, i: usize) -> f32 {
 }
 
 #[inline(always)]
-fn flush(x: f32) -> f32 {
+pub(super) fn flush(x: f32) -> f32 {
     if x.abs() < FLUSH {
         0.0
     } else {
@@ -572,7 +574,7 @@ impl<const N: usize> ReverbCore<N> {
         let ms = sample_rate as f32 * 0.001;
         let ch = self.ch;
         // pre-delay ring: pre-delay + ER window + plain echo taps
-        let pre_max = (200.0 + ch.er_window_ms.1 * ch.max_scale + 5.0) * ms
+        let pre_max = (MAX_PRE_MS + ch.er_window_ms.1 * ch.max_scale + 5.0) * ms
             + if ch.echo_feedback {
                 0.0
             } else {
@@ -710,7 +712,7 @@ impl<const N: usize> ReverbCore<N> {
         let ms = self.fs * 0.001;
         let scale = p.scale.clamp(0.05, ch.max_scale);
         self.scale.tgt = scale;
-        self.pre_d.tgt = p.pre_ms.clamp(0.0, 200.0) * ms;
+        self.pre_d.tgt = p.pre_ms.clamp(0.0, MAX_PRE_MS) * ms;
         let spread = p.spread.clamp(0.0, 1.0);
         let (w0, w1) = ch.er_window_ms;
         self.er_win.tgt = scale * (w0 + spread * (w1 - w0)) * ms;
@@ -732,7 +734,12 @@ impl<const N: usize> ReverbCore<N> {
         // shelf corners are kept ordered (xover <= split <= damp): the cascade's log-magnitude then stays
         // between the band gains (no corner overlap can push a line gain above 1)
         let nyq = 0.45 * self.fs;
-        let xo = p.xover_hz.unwrap_or(ch.xover_hz).clamp(20.0, nyq);
+        let xo = if p.xover_hz > 0.0 {
+            p.xover_hz
+        } else {
+            ch.xover_hz
+        };
+        let xo = xo.clamp(10.0, nyq);
         self.xover.tgt = xo;
         self.hf.tgt = p.hf_ratio.unwrap_or(ch.hf_ratio).clamp(0.01, 20.0);
         self.bands4 = p.mid_split.is_some();

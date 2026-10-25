@@ -11,6 +11,8 @@ use super::addr::*;
 pub const INPUT_STRIPS: usize = 48;
 /// Number of USB channels in each direction.
 pub const USB_CHANNELS: usize = 48;
+/// FX slots whose EXT model (`fx/N/mdl = EXT`) takes a return source (`egrp/ein/emode`, T05C).
+pub const EXT_SLOTS: usize = 16;
 
 /// What actually drives a resolved leg on the RT side.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -114,6 +116,8 @@ pub struct RoutingTable {
     /// Global ALT INPUT switch (`io/altsw`).
     pub altsw: bool,
     inputs: Box<[InputRoute]>,
+    /// EXT returns of FX slots 1..16 (`main` = the source, `None` = the slot is not an active EXT).
+    ext: Box<[InputRoute]>,
     outputs: Box<[Leg]>,
     pub osc: [OscParams; 2],
 }
@@ -135,6 +139,14 @@ impl RoutingTable {
     #[inline]
     pub fn input(&self, i: usize) -> &InputRoute {
         &self.inputs[i]
+    }
+
+    /// External return of FX slot `n` (1..16): legs L/R of the slot's `EXT` model; `source()` is `None`
+    /// unless the slot runs `EXT` with a return group other than OFF. `Width::Mono` for `emode` M (both
+    /// legs the same source), `Width::Stereo` for ST and M/S (the odd-aligned pair; the model decodes M/S).
+    #[inline]
+    pub fn ext(&self, n: usize) -> &InputRoute {
+        &self.ext[n - 1]
     }
 
     /// What output `addr` carries.
@@ -182,6 +194,16 @@ struct StripNodes {
 }
 
 #[derive(Clone, Copy, Default)]
+struct ExtNodes {
+    mdl: Option<ParamId>,
+    egrp: Option<ParamId>,
+    ein: Option<ParamId>,
+    emode: Option<ParamId>,
+    /// Selector enum index of `EXT` in the slot's model group.
+    ext_index: Option<i64>,
+}
+
+#[derive(Clone, Copy, Default)]
 struct OutNodes {
     grp: Option<ParamId>,
     inn: Option<ParamId>,
@@ -193,6 +215,7 @@ pub struct RoutingBuilder {
     altsw: Option<ParamId>,
     src: Box<[SrcNodes]>,
     strips: Box<[StripNodes]>,
+    ext: Box<[ExtNodes]>,
     outs: Box<[OutNodes]>,
     watch: Arc<[bool]>,
 }
@@ -262,6 +285,23 @@ impl RoutingBuilder {
             s.srcauto = look(format!("{p}/set/srcauto"));
             s.altsrc = look(format!("{p}/set/altsrc"));
         }
+        let mut ext = vec![ExtNodes::default(); EXT_SLOTS].into_boxed_slice();
+        for (i, e) in ext.iter_mut().enumerate() {
+            let n = i + 1;
+            e.mdl = look(format!("fx/{n}/mdl"));
+            // EXT params: slot 1 egrp, 2 ein, 3 emode (models.md §6)
+            e.egrp = look(format!("fx/{n}/1"));
+            e.ein = look(format!("fx/{n}/2"));
+            e.emode = look(format!("fx/{n}/3"));
+            let key = if n < 9 { "fx/1" } else { "fx/9" };
+            let schema = store.schema();
+            e.ext_index = schema
+                .groups()
+                .iter()
+                .find(|g| g.key == key)
+                .and_then(|g| schema.models(g).iter().find(|m| m.name == "EXT"))
+                .map(|m| m.enum_index as i64);
+        }
         let mut outs = vec![OutNodes::default(); OUTPUT_COUNT].into_boxed_slice();
         for (i, o) in outs.iter_mut().enumerate() {
             let a = OutAddr::from_index(i).expect("output index");
@@ -277,6 +317,7 @@ impl RoutingBuilder {
             altsw,
             src,
             strips,
+            ext,
             outs,
             watch: watch.into(),
         }
@@ -305,6 +346,7 @@ impl RoutingBuilder {
             .iter()
             .map(|s| self.input_route(store, s, altsw))
             .collect();
+        let ext = self.ext.iter().map(|e| self.ext_route(store, e)).collect();
         let outputs = self
             .outs
             .iter()
@@ -330,6 +372,7 @@ impl RoutingBuilder {
         RoutingTable {
             altsw,
             inputs,
+            ext,
             outputs,
             osc,
         }
@@ -337,6 +380,46 @@ impl RoutingBuilder {
 
     fn addr(&self, g: Option<SrcGroup>, n: i64) -> Option<SourceAddr> {
         SourceAddr::new(g?, u16::try_from(n).ok()?)
+    }
+
+    /// Return route of an FX slot running `EXT` (`egrp` != OFF), else [`InputRoute::OFF`].
+    fn ext_route(&self, store: &ParamStore, e: &ExtNodes) -> InputRoute {
+        let active = e.ext_index.is_some_and(|x| int(store, e.mdl, 0) == x);
+        let src = self.addr(
+            SrcGroup::from_index(int(store, e.egrp, 0) as u32),
+            int(store, e.ein, 1),
+        );
+        let (true, Some(src)) = (active, src.filter(|a| a.grp <= SrcGroup::Aes)) else {
+            return InputRoute::OFF;
+        };
+        let width = if int(store, e.emode, 1) == 0 {
+            Width::Mono
+        } else {
+            Width::Stereo
+        };
+        let (l, r) = match width {
+            Width::Mono => {
+                let l = self.leg(store, src, 0);
+                (l, l)
+            }
+            _ => {
+                // odd-aligned pair, as for channel sources
+                let first = SourceAddr {
+                    n: src.n - (1 - src.n % 2),
+                    ..src
+                };
+                let l = self.leg(store, first, 0);
+                let r = first.next().map_or(Leg::SILENT, |a| self.leg(store, a, 0));
+                (l, r)
+            }
+        };
+        InputRoute {
+            main: Some(src),
+            alt: None,
+            use_alt: false,
+            width,
+            legs: [l, r],
+        }
     }
 
     fn input_route(&self, store: &ParamStore, s: &StripNodes, altsw: bool) -> InputRoute {

@@ -47,3 +47,8 @@ Lexicon 224/480-/TC-style per models.md §6.
   - Proposed follow-ups: (1) compensate the interpolation HF loss in the per-line absorbent filter (core);
     (2) VSS3 preset library as data (109 presets) applied by the control layer on `load`; (3) verify ER tables /
     bandwidths / multiplier corners against a console recording.
+- 2026-10-25 claude-T05V: merged main (T05P/T05S/T05Q/T05C) into task/T05V. core.rs conflict resolved by combining
+  both extension sets: kept T05P's `CoreParams::xover_hz: f32` (0 = character; BPLATE) and `MAX_PRE_MS`, plus
+  T05V's `hf_ratio`, `mid_split`, `rear`, ordered shelf corners and freeze headroom; VSS3 now passes `lxo` as
+  that f32. Additive conflicts (Cargo.toml benches, model.rs registrations, mod.rs lists) took both sides.
+  fx_reverb lib tests 60/60 (incl. T05P's), `make check` passes. Status stays review.
