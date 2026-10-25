@@ -44,3 +44,8 @@ Each item: what was assumed, where, and how to check on a console (or via a meas
 | Comp FET | NSTR knee widths per ratio (12/12/10/6/4/2/1/0 dB); 1.5/2/3:1 opto-like release (0.5x..2x with GR), 10:1 programme-dependent; WING "1.5:1" replaces the EL8's 1:1 | T04D |
 | Comp FET | NSTR normal-mode harmonics: LF-weighted (300 Hz) 2nd + 3rd, 0.3-0.5 % at 100 Hz, < 0.04 % at 1 kHz, scaled up with ratio | T04D |
 | Comp FET | WING runs these models with 57 samples latency (2x audio / 16x control oversampling) - real console latency unknown | T04D |
+| ONEC | `gr` 0..10 -> COMP engine: thr = -3·gr dB, ratio 1.5..8:1 geometric, att 30..3 ms, rel 300..80 ms (AUTO on), knee 3; WING publishes no curve | T04F |
+| ONEC | `dag` = auto make-up switch (meaning undocumented); make-up = 0.5 x static GR at -6 dBFS, <= 12 dB | T04F |
+| 3CMP | Hidden model (no schema entry): slot order `knee lmf mhf` then per band `g thr ratio att rel` taken from models.md; ratio default 3:1 | T04F |
+| 3CMP | Crossover = LR4 (bilinear Butterworth squared) with allpass phase compensation of the low band; WING's real crossover design unknown | T04F |
+| 3CMP | Band comps = standard COMP engine (RMS, log, no AUTO); global knee 0..25 dB rounded to 7.22 dB steps; band gain applied after the comp, 10 ms smoothing; external key ignored | T04F |

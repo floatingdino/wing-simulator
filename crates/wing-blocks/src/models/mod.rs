@@ -3,6 +3,7 @@
 
 pub mod comp_console;
 pub mod comp_fet;
+pub mod comp_multi;
 pub mod comp_opto;
 pub mod comp_vca;
 pub mod dyn_eq;
