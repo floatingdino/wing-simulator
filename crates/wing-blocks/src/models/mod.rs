@@ -2,3 +2,4 @@
 //! in [`crate::model::create_model`].
 
 pub mod comp_vca;
+pub mod filter_tool;

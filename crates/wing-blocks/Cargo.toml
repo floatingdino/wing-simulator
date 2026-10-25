@@ -26,3 +26,7 @@ harness = false
 [[bench]]
 name = "comp_vca"
 harness = false
+
+[[bench]]
+name = "filter_tool"
+harness = false
