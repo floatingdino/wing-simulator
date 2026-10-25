@@ -358,6 +358,19 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Eq(_), "MACH4") => Box::new(AltEq::new(AltKind::Mach4)),
         (BlockKind::Eq(_), "PIA") => Box::new(AltEq::new(AltKind::Pia)),
         (BlockKind::Fx, "ST-DL") => Box::new(crate::models::fx_delay::StereoDelay::new()),
+        (BlockKind::Fx, "GEQ") => Box::new(crate::models::fx_eqdyn::GraphicEq::new()),
+        (BlockKind::Fx, "PIA") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::Pia)),
+        (BlockKind::Fx, "LIMITER") => Box::new(crate::models::fx_eqdyn::PrecisionLimiter::new()),
+        (BlockKind::Fx, "DE-S2") => Box::new(crate::models::fx_eqdyn::DeEsser2::new()),
+        (BlockKind::Fx, "SOUL") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::Soul)),
+        (BlockKind::Fx, "E88") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::E88)),
+        (BlockKind::Fx, "E84") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::E84)),
+        (BlockKind::Fx, "F110") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::F110)),
+        (BlockKind::Fx, "PULSAR") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::Pulsar)),
+        (BlockKind::Fx, "MACH4") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::Mach4)),
+        (BlockKind::Fx, "C5-CMB") => Box::new(crate::models::fx_eqdyn::Combinator::new()),
+        (BlockKind::Fx, "SPKMAN") => Box::new(crate::models::fx_eqdyn::SpeakerManager::new()),
+        (BlockKind::Fx, "DEQ3") => Box::new(crate::models::fx_eqdyn::TripleDeq::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -515,6 +528,7 @@ mod tests {
         let fx_implemented = [
             // One line per FX model family.
             "ST-DL",
+            "GEQ", "PIA", "LIMITER", "DE-S2", "SOUL", "E88", "E84", "F110", "PULSAR", "MACH4", "C5-CMB", "SPKMAN", "DEQ3",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);

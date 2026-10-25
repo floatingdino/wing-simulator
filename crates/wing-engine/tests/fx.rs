@@ -86,7 +86,7 @@ impl Hist {
     }
 }
 
-/// Constant latency of an input strip / a bus-main-matrix strip (zero-latency FX inserts).
+/// Constant latency of an input strip / a bus-main-matrix strip without FX inserts.
 fn input_latency() -> usize {
     ChannelStrip::channel(48_000.0, BLOCK).latency()
 }
@@ -118,7 +118,8 @@ fn channel_insert_runs_slot_with_fxmix() {
         InsertStat::Ok
     );
     assert_eq!(r.fx.owner(2), None);
-    let d = input_latency();
+    // the strip runs late by the slot's constant latency (the LIMITER look-ahead, T05Q)
+    let d = input_latency() + r.fx.slot_latency(1);
     let (mut hl, mut hr) = (Hist::default(), Hist::default());
     for k in 0..40 {
         r.cycle(&[1]);
@@ -174,32 +175,44 @@ fn channel_insert_runs_slot_with_fxmix() {
         }
     }
 
-    // insert off: crossfades to dry over the 5 ms slot ramp (no click); the SEND leg stops
+    // insert off: crossfades to dry over the 5 ms slot ramp (no click); the SEND leg stops. The ramp runs at
+    // the slot output, i.e. `lat` (slot latency) samples after the slot input it blends.
     setf(&store, "fx/1/fxmix", 100.0);
+    let lat = r.fx.slot_latency(1) as isize;
+    let mut hd = Hist(hl.0.clone()); // dry history, index-aligned with `hl` (only the last blocks matter)
     for _ in 0..10 {
         let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
         r.cycle(&[1]);
         let (mut wl, mut wr) = (x.clone(), x.clone());
         model.process(&mut wl, &mut wr, None);
         hl.push(&wl);
+        hd.push(&x);
     }
     seti(&store, "ch/1/preins/on", 0);
     let ramp = 240.0f32;
-    for k in 0..8 {
+    let t0 = hl.0.len() as isize;
+    for _ in 0..8 {
         let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
         r.cycle(&[1]);
         let (mut wl, mut wr) = (x.clone(), x.clone());
         model.process(&mut wl, &mut wr, None);
-        let expect: Vec<f32> = (0..BLOCK)
-            .map(|i| {
-                let w = (1.0 - (k * BLOCK + i + 1) as f32 / ramp).max(0.0);
-                x[i] + w * (wl[i] - x[i])
+        hl.push(&wl);
+        hd.push(&x);
+        let end = hl.0.len();
+        let expect: Vec<f32> = (end - BLOCK..end)
+            .map(|j| {
+                let n = j as isize - d as isize;
+                if n < 0 {
+                    return 0.0;
+                }
+                let w = (1.0 - (n - t0 + lat + 1) as f32 / ramp).clamp(0.0, 1.0);
+                let (wet, dry) = (hl.0[n as usize], hd.0[n as usize]);
+                dry + w * (wet - dry)
             })
             .collect();
-        hl.push(&expect);
         assert_close(
             &r.input(0, I::Pfl, Side::L),
-            &hl.delayed(d),
+            &expect,
             1e-5,
             "switch-off crossfade",
         );
@@ -239,7 +252,7 @@ fn bus_insert_send_fx_returns_to_main_and_aux() {
     let mut r = rig(&store, MixConfig::default(), 3);
     assert_eq!(r.fx.owner(2), Some((Strip::Bus(1), InsertPos::Pre)));
     let (db, dm, da) = (
-        mix_latency(Strip::Bus(1)),
+        mix_latency(Strip::Bus(1)) + r.fx.slot_latency(2),
         mix_latency(Strip::Main(1)),
         BLOCK + input_latency(),
     );
