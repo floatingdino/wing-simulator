@@ -2,7 +2,7 @@
 id: T05S
 title: Special reverbs: GATED, REVERSE, DEL/REV, SHIMMER
 stage: S5
-status: review
+status: done
 owner: engineer-T05S
 depends: [T05R, T05D]
 branch: task/T05S
