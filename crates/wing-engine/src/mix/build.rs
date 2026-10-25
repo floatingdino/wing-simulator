@@ -421,7 +421,15 @@ pub fn build_mix_graph(
             .collect();
         let hook = match cfg.hooks.as_mut() {
             Some(f) => f(strip),
-            None => Box::new(MixStrip::new(strip, fs, bs)),
+            None => {
+                let mut m = MixStrip::new(strip, fs, bs);
+                m.set_meter(
+                    cfg.meters
+                        .clone()
+                        .and_then(|b| crate::meters::StripMeter::new(b, strip)),
+                );
+                Box::new(m)
+            }
         };
         let node = MixStripNode::new(strip, &specs, hook, &cfg);
         debug_assert_eq!(node.num_inputs(), ports.len());

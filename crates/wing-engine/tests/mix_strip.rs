@@ -399,3 +399,33 @@ fn mix_strip_hook_trait_object() {
     h.process_post(&mut l, &mut r);
     assert_eq!(l[0], 0.25);
 }
+
+/// T039 hook: bus/main/matrix strips write IN, dynamics key and GR into the level bank.
+#[test]
+fn mix_strip_meters_fill_level_bank() {
+    use wing_engine::meters::{strip_cell, word, LevelBank};
+    let store = store_ch1_to("bus");
+    sett(&store, "bus/1/dyn/mdl", "COMP");
+    seti(&store, "bus/1/dyn/on", 1);
+    setf(&store, "bus/1/dyn/1", -40.0);
+    setf(&store, "bus/1/in/set/trim", -6.0);
+    seti(&store, "bus/2/dyn/on", 0);
+    let bank = LevelBank::shared();
+    let cfg = MixConfig {
+        meters: Some(bank.clone()),
+        ..MixConfig::default()
+    };
+    let mut r = rig(&store, cfg, 0);
+    r.cycles(100, &[1]);
+    let si = Strip::Bus(1).index().unwrap();
+    let cell = |w| bank.get(strip_cell(si, w));
+    assert!(cell(word::IN_L) > 1e-3 && cell(word::IN_R) > 1e-3);
+    assert!(cell(word::DYN_KEY) > 1e-3);
+    assert!(cell(word::DYN_GR) > 1.0, "GR {}", cell(word::DYN_GR));
+    assert_eq!(cell(word::GATE_GR), 0.0);
+    // bus 2 (same input, no dynamics, no trim) reads 6 dB above bus 1's trimmed input
+    let s2 = Strip::Bus(2).index().unwrap();
+    let in2 = bank.get(strip_cell(s2, word::IN_L));
+    assert!((20.0 * (in2 / cell(word::IN_L)).log10() - 6.0).abs() < 0.05);
+    assert_eq!(bank.get(strip_cell(s2, word::DYN_GR)), 0.0);
+}

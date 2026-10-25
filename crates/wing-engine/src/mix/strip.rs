@@ -21,6 +21,9 @@
 //! * **Stereo-linked**: one stereo pair; dynamics models detect on the linked key.
 //! * **Bypass**: every block has its own switch; model slots crossfade on/off and cost nothing when
 //!   off; trim at unity is skipped.
+//! * **Meters** (T039, optional [`StripMeter`]): per block the IN word (after trim, L/R peaks), the
+//!   dynamics key peak and GR go to the engine's level bank (PRE/OUT come from the graph's port
+//!   meters, [`crate::meters::PortMeters::for_mix`]). Bus/main/matrix have no gate: GATE words stay 0.
 //! * **Telemetry**: `TAP_PEAK` per [`MixTap`] (block = tap index) and `GAIN_REDUCTION_DB` at
 //!   [`hook::DYN`].
 
@@ -28,8 +31,11 @@ use wing_blocks::gate::ScFilter;
 use wing_blocks::input::{DelayMode, InputParams, InputStage, SourceMode};
 use wing_blocks::sidechain::XoverKind;
 
-use crate::channel::{InsertHost, InsertPoint, NoInserts, PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT};
+use crate::channel::{
+    slot_key_peak, InsertHost, InsertPoint, NoInserts, PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT,
+};
 use crate::graph::NodeId;
+use crate::meters::{abs_max, word, StripMeter};
 use crate::params::std_models::{block_kind, model_factory};
 use crate::params::strip::{ModelSlot, SLOT_LAYOUT};
 use crate::params::telemetry_kind as kind;
@@ -141,6 +147,7 @@ pub struct MixStrip {
     dly_dirty: bool,
     fx: Box<dyn InsertHost + Send>,
     telem: MixStripTelemetry,
+    meter: Option<StripMeter>,
 }
 
 impl MixStrip {
@@ -192,6 +199,7 @@ impl MixStrip {
             dly_dirty: false,
             fx: Box::new(NoInserts),
             telem: MixStripTelemetry::default(),
+            meter: None,
         };
         s.settle();
         s
@@ -224,6 +232,15 @@ impl MixStrip {
     /// Output delay parameters (`delay_on`, `delay`, `delay_mode`).
     pub fn delay_params(&self) -> &InputParams {
         &self.dly_p
+    }
+
+    /// Attach (or detach) the strip's meter cells. Call off the RT thread.
+    pub fn set_meter(&mut self, m: Option<StripMeter>) {
+        self.meter = m;
+    }
+
+    pub fn meter(&self) -> Option<&StripMeter> {
+        self.meter.as_ref()
     }
 
     /// Install the FX rack (off the RT thread).
@@ -386,19 +403,37 @@ impl MixStrip {
             ramp_in_place(r, g0[1], g1[1]);
         }
         self.tap(MixTap::In, l, r);
+        if let Some(m) = &self.meter {
+            m.stereo(word::IN_L, l, r);
+        }
         if let Some(n) = self.preins.engaged() {
             self.fx.process_insert(n, l, r);
         }
         self.tap(MixTap::Ins1, l, r);
         self.eq.process(l, r);
         self.tap(MixTap::Eq, l, r);
+        let dyn_in = if self.meter.is_some() {
+            abs_max(l).max(abs_max(r))
+        } else {
+            0.0
+        };
         self.dyn_.process_keyed(l, r, None);
         self.tap(MixTap::Dyn, l, r);
         if let Some(n) = self.postins.engaged() {
             self.fx.process_insert(n, l, r);
         }
         self.tap(MixTap::Pfl, l, r);
-        self.telem.dyn_gr_db = self.dyn_.gain_reduction_db();
+        // An off slot can still run its model for one wrapper-ramp after a parameter change
+        // (inaudible, wet = 0): report GR only while the slot is on.
+        self.telem.dyn_gr_db = if self.dyn_.wrapper().0 {
+            self.dyn_.gain_reduction_db()
+        } else {
+            0.0
+        };
+        if let Some(m) = &self.meter {
+            m.level(word::DYN_KEY, slot_key_peak(&self.dyn_, None, dyn_in));
+            m.level(word::DYN_GR, self.telem.dyn_gr_db);
+        }
     }
 
     /// Output delay on the post-fader/pan signal, in place (RT-safe).
