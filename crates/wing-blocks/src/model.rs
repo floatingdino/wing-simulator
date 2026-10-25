@@ -358,6 +358,13 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Eq(_), "MACH4") => Box::new(AltEq::new(AltKind::Mach4)),
         (BlockKind::Eq(_), "PIA") => Box::new(AltEq::new(AltKind::Pia)),
         (BlockKind::Fx, "ST-DL") => Box::new(crate::models::fx_delay::StereoDelay::new()),
+        (BlockKind::Fx, "DIMCRS") => Box::new(crate::models::fx_mod::DimensionChorus::new()),
+        (BlockKind::Fx, "CHORUS") => Box::new(crate::models::fx_mod::ModDelay::chorus()),
+        (BlockKind::Fx, "FLANGER") => Box::new(crate::models::fx_mod::ModDelay::flanger()),
+        (BlockKind::Fx, "PHASER") => Box::new(crate::models::fx_mod::Phaser::new()),
+        (BlockKind::Fx, "ROTARY") => Box::new(crate::models::fx_mod::Rotary::new()),
+        (BlockKind::Fx, "PANNER") => Box::new(crate::models::fx_mod::Panner::new()),
+        (BlockKind::Fx, "MOOD") => Box::new(crate::models::fx_mod::MoodFilter::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -515,6 +522,7 @@ mod tests {
         let fx_implemented = [
             // One line per FX model family.
             "ST-DL",
+            "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);
