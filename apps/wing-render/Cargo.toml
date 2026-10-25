@@ -24,3 +24,7 @@ wing-sim = { path = "../wing-sim" }
 criterion.workspace = true
 wing-shm = { path = "../../crates/wing-shm" }
 wing-hostio = { path = "../../crates/wing-hostio" }
+
+[[bench]]
+name = "perf"
+harness = false

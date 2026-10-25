@@ -640,3 +640,51 @@ impl fmt::Debug for Graph {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rebalance_orders_each_level_longest_first() {
+        let mut b = GraphBuilder::new(4, 48_000.0, 1);
+        let nop = |_: &ProcessCtx, _: &mut NodeIo<'_>| {};
+        let l0: Vec<NodeId> = (0..4)
+            .map(|i| {
+                b.add_node(format!("a{i}"), 1, &[Port::External(0)], nop)
+                    .unwrap()
+            })
+            .collect();
+        let ins: Vec<Port> = l0.iter().map(|&n| Port::node(n, 0)).collect();
+        let l1: Vec<NodeId> = (0..3)
+            .map(|i| b.add_node(format!("b{i}"), 1, &ins, nop).unwrap())
+            .collect();
+        let g = b.build().unwrap();
+        let pos = |id: NodeId| g.position[id.index()];
+        // identity until costs are known
+        assert!((0..7).all(|i| g.claim_pos(i) == i));
+        for (id, c) in l0.iter().zip([5u32, 40, 10, 40]) {
+            g.cost_ns[pos(*id)].store(c, Relaxed);
+        }
+        for (id, c) in l1.iter().zip([1u32, 2, 3]) {
+            g.cost_ns[pos(*id)].store(c, Relaxed);
+        }
+        g.rebalance();
+        let order: Vec<usize> = (0..7).map(|i| g.claim_pos(i)).collect();
+        // level 0: 40, 40 (stable: a1 before a3), 10, 5; level 1 stays within its range
+        assert_eq!(
+            order,
+            [
+                pos(l0[1]),
+                pos(l0[3]),
+                pos(l0[2]),
+                pos(l0[0]),
+                pos(l1[2]),
+                pos(l1[1]),
+                pos(l1[0])
+            ]
+        );
+        g.reset_claim_order();
+        assert!((0..7).all(|i| g.claim_pos(i) == i));
+    }
+}

@@ -1100,6 +1100,45 @@ mod tests {
         100.0 * hs.sqrt() / h1
     }
 
+    /// The vectorised static-curve pass equals the scalar `gr_target` bit for bit for every ratio
+    /// (knees incl. NSTR NUKE's zero knee; 76LA ALL takes the scalar fallback), T070.
+    #[test]
+    fn vector_targets_are_bit_exact() {
+        let mut seed = 0x0bad_5eedu32;
+        let mut rnd = || {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let u = (seed >> 8) as f32 / (1u32 << 24) as f32;
+            // magnitudes from silence (below the key floor) to +12 dBFS, either sign
+            let s = if seed & 1 == 0 { 1.0 } else { -1.0 };
+            if seed & 0x3f == 0 {
+                0.0
+            } else {
+                s * 10f32.powf(u * 14.0 - 13.0)
+            }
+        };
+        for kind in [FetKind::La76, FetKind::Nstr] {
+            for ri in 0..kind.num_ratios() {
+                let mut m = model(kind, &[(5, ParamValue::Enum(ri as u32))]);
+                let n_ctl = m.ctl.len();
+                for _ in 0..8 {
+                    for c in 0..n_ctl {
+                        m.khi[0][c] = rnd();
+                        m.khi[1][c] = rnd();
+                    }
+                    m.targets(n_ctl - 3); // odd length: scalar tail too
+                    for c in 0..n_ctl - 3 {
+                        let key = m.khi[0][c].abs().max(m.khi[1][c].abs());
+                        assert_eq!(
+                            m.ctl[c].to_bits(),
+                            m.gr_target(key).to_bits(),
+                            "{kind:?} ratio {ri} key {key}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn knob_maps_hit_published_endpoints() {
         let close = |a: f64, b: f64| (a - b).abs() < 1e-9 * b.max(1.0);
@@ -1133,7 +1172,7 @@ mod tests {
         let levels = [-50.0, -30.0, -24.0, -20.0, -18.0, -15.0, -10.0, -5.0, 0.0];
         for kind in FetKind::ALL {
             for ri in 0..kind.num_ratios() as u32 {
-                let mut m = model(kind, &[(5, ParamValue::Enum(ri))]);
+                let mut m = model(kind, &[(5, ParamValue::Enum(ri as u32))]);
                 m.set_coloration(false);
                 let meas = static_curve(&mut m, FS, &levels, 0.4);
                 for (&l, &o) in levels.iter().zip(&meas) {
