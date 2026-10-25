@@ -2,7 +2,7 @@
 id: T083
 title: BUG: mute toggles don't visually update in WING-Edit; solos exclusive instead of additive
 stage: S3
-status: review
+status: done
 owner: agent-T083
 depends: []
 branch: task/T083
