@@ -19,6 +19,8 @@
 //!   trait) and RT -> control telemetry.
 //! * [`meters`]: lock-free per-block peak metering (strip taps, gain reduction, sources,
 //!   outputs) for the WING meter transport (T039).
+//! * [`rta`]: the console RTA (T084): lock-free tap ring fed by the selected strip/port and the
+//!   non-RT semitone filter-bank analyser.
 //! * [`rt`]: macOS time-constraint policy and `os_workgroup` membership.
 //! * [`clock`]: [`LiveClock`] (external callback) and [`OfflineClock`] (free-running).
 //! * [`stats`]: per-cycle duration, load and xrun counters, readable lock-free.
@@ -34,6 +36,7 @@ pub mod mix;
 pub mod params;
 pub mod routing;
 pub mod rt;
+pub mod rta;
 pub mod sched;
 pub mod stats;
 

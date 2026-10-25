@@ -358,6 +358,28 @@ pub fn meter_to_db(v: i16) -> f32 {
     v as f32 / 256.0
 }
 
+/// RTA bins per `AA` report (protocol.md §4.2): semitones E0 (20.6 Hz) .. D#10, A4 at index 53.
+pub const RTA_BINS: usize = 120;
+/// RTA word units per dB (T084, docs/research/rta.md): WING-Edit's `MeterHandler::rxMeters`
+/// reads RTA words as 1/128 dB for every detector (PEAK: word/128; RMS/AVG: it doubles the word
+/// and then reads 1/256 dB). [M]: derived from its auto-gain code, not from a capture.
+pub const RTA_UNITS_PER_DB: f32 = 128.0;
+
+/// dB to an RTA word (1/128 dB, saturating; NaN = minimum).
+pub fn db_to_rta(db: f32) -> i16 {
+    if db.is_nan() {
+        return i16::MIN;
+    }
+    (db * RTA_UNITS_PER_DB)
+        .round()
+        .clamp(i16::MIN as f32, i16::MAX as f32) as i16
+}
+
+/// RTA word to dB.
+pub fn rta_to_db(v: i16) -> f32 {
+    v as f32 / RTA_UNITS_PER_DB
+}
+
 /// Gain-reduction full scale (dB at word 256) of most dynamics models (protocol.md §4.2).
 pub const GR_FULL_SCALE_DB: f32 = 20.0;
 /// Gain-reduction full scale of the gate slot (the standard gate's 60 dB range, protocol.md §4.2).

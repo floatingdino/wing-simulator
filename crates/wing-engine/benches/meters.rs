@@ -2,6 +2,8 @@
 //! [`LevelBank::peak`]), a channel strip (COMP on) with and without its meter, and the port pass of
 //! the daemon's console (98 ports: USB In 1..48, OSC 1/2, USB Out 1..48). Prints the estimated
 //! metering overhead per engine cycle for the full console (48 strips + mix + ports).
+//! T084 RTA: the RT side (a strip with its probe selected, i.e. one ring copy per block) and the
+//! non-RT analyser (120 bands over a 64-sample block, one 50 ms frame).
 
 use std::hint::black_box;
 use std::time::Instant;
@@ -10,6 +12,7 @@ use criterion::{criterion_group, Criterion};
 use wing_engine::channel::{block, ChannelStrip};
 use wing_engine::meters::{abs_max, LevelBank, PortMeters, StripMeter};
 use wing_engine::params::{ParamMsg, TARGET_BASE};
+use wing_engine::rta::{RtaAnalyser, RtaFeed, RtaProbe, RtaSel, RtaTap};
 use wing_engine::{GraphBuilder, Port};
 
 const N: usize = 64;
@@ -84,6 +87,28 @@ fn bench(c: &mut Criterion) {
             r.copy_from_slice(&r0);
             metered.process_stereo(&mut l, &mut r);
         })
+    });
+
+    // RTA (T084): the selected strip copies its PRE EQ block into the ring
+    let feed = RtaFeed::shared();
+    feed.request(Some(RtaSel {
+        src: 1,
+        tap: RtaTap::PreEq,
+    }));
+    feed.latch();
+    let mut probed = strip(None);
+    probed.set_rta(Some(RtaProbe::new(feed.clone(), 0)));
+    c.bench_function("rta/strip_comp_probe_selected", |b| {
+        b.iter(|| {
+            l.copy_from_slice(&l0);
+            r.copy_from_slice(&r0);
+            probed.process_stereo(&mut l, &mut r);
+        })
+    });
+    let mut an = RtaAnalyser::new(FS);
+    c.bench_function("rta/analyser_64", |b| b.iter(|| an.process(black_box(&l0))));
+    c.bench_function("rta/analyser_frame", |b| {
+        b.iter(|| black_box(an.frame(0.05)[53]))
     });
 
     // port pass: 98 externals

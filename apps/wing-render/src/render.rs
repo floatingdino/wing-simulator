@@ -108,6 +108,7 @@ pub fn build_console(
             rt_workers: false,
             workgroup: None,
             meters: None,
+            rta: None,
         },
         &store,
         &mut ctl,

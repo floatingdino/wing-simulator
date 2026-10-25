@@ -4,7 +4,7 @@
 //!   EQ) -> main 1 (T036 mix) -> USB Out 1/2 per the output patch -> host bridge (mock device
 //!   side: the bridge consumer rendered by the test).
 //! * `rt_path_does_not_allocate`: counting allocator around `Console::cycle` and the shm
-//!   `service` loop (with parameter changes and routing swaps in between).
+//!   `service` loop (with parameter changes, routing swaps and RTA tap changes in between).
 //! * `load_48_strips`: cycle time of the full console (40 ch + 8 aux, all processing on).
 //! * `service_*`: the real `AudioService` (control thread + RT thread, os_sync wakes) against
 //!   `wing_shm::sim::DriverSim` (Rust port of the driver's ring logic) on a private shm name:
@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use wing_engine::meters::LevelBank;
+use wing_engine::rta::{RtaFeed, RtaSel, RtaTap};
 use wing_hostio::{BridgeState, HostIoConfig, Route};
 use wing_model::ParamStore;
 use wing_shm::sim::DriverSim;
@@ -109,8 +110,9 @@ fn console_cfg() -> ConsoleConfig {
         workers: 2,
         rt_workers: false,
         workgroup: None,
-        // metering on: the alloc and load tests cover it (T039)
+        // metering and the RTA tap on: the alloc and load tests cover them (T039, T084)
         meters: Some(LevelBank::shared()),
+        rta: Some(RtaFeed::shared()),
     }
 }
 
@@ -587,6 +589,18 @@ fn rt_path_does_not_allocate() {
             if pass % 2 == 0 { "5" } else { "6" },
         );
         routing.refresh(&store);
+        // RTA: a strip-internal tap, then a port tap (ch 1 POST), latched by the cycle
+        let tap = if pass % 2 == 0 {
+            RtaTap::PreEq
+        } else {
+            RtaTap::Post
+        };
+        console
+            .config()
+            .rta
+            .as_ref()
+            .unwrap()
+            .request(Some(RtaSel { src: 1, tap }));
         // Pass 0 warms up lazily initialised statics.
         COUNTING.store(pass > 0, Relaxed);
         for k in 0..60i64 {
@@ -604,6 +618,10 @@ fn rt_path_does_not_allocate() {
     }
     COUNT_THIS_THREAD.with(|c| c.set(false));
     assert_eq!(ALLOCS.load(Relaxed), 0, "RT path allocated/freed");
+    assert!(
+        console.config().rta.as_ref().unwrap().written() > 0,
+        "RTA ring fed"
+    );
     drop(link);
     let _ = Segment::unlink(&name);
 }

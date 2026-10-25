@@ -28,6 +28,8 @@
 //! * **Meters** (T039, optional [`StripMeter`]): per block the IN word (after trim, L/R peaks), the
 //!   dynamics key peak and GR go to the engine's level bank (PRE/OUT come from the graph's port
 //!   meters, [`crate::meters::PortMeters::for_mix`]). Bus/main/matrix have no gate: GATE words stay 0.
+//! * **RTA** (T084, optional [`crate::rta::RtaProbe`]): IN (= FILT), PRE EQ/POST EQ, dyn key, PRE FDR
+//!   and POST of the selected strip go to the RTA ring.
 //! * **Telemetry**: `TAP_PEAK` per [`MixTap`] (block = tap index) and `GAIN_REDUCTION_DB` at
 //!   [`hook::DYN`].
 
@@ -36,8 +38,8 @@ use wing_blocks::input::{DelayMode, InputParams, InputStage, SourceMode};
 use wing_blocks::sidechain::XoverKind;
 
 use crate::channel::{
-    claimed_latency, slot_key_peak, sync_inserts, InsertHost, InsertPoint, InsertPos, NoInserts,
-    PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT,
+    claimed_latency, rta_at, slot_key_peak, sync_inserts, InsertHost, InsertPoint, InsertPos,
+    NoInserts, PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT,
 };
 use crate::graph::NodeId;
 use crate::latency::StripAlign;
@@ -49,6 +51,7 @@ use crate::params::{
     BindError, BlockLayout, ParamMapBuilder, ParamMsg, TelemetryWriter, TARGET_BASE,
 };
 use crate::routing::Strip;
+use crate::rta::{RtaProbe, RtaTap};
 
 use super::law::{self, Ramp};
 use super::nodes::StripHook;
@@ -156,6 +159,7 @@ pub struct MixStrip {
     ins_seen: (InsertPoint, InsertPoint),
     telem: MixStripTelemetry,
     meter: Option<StripMeter>,
+    rta: Option<RtaProbe>,
     align: StripAlign,
 }
 
@@ -216,6 +220,7 @@ impl MixStrip {
             ins_seen: Default::default(),
             telem: MixStripTelemetry::default(),
             meter: None,
+            rta: None,
             align,
         };
         s.settle();
@@ -258,6 +263,11 @@ impl MixStrip {
 
     pub fn meter(&self) -> Option<&StripMeter> {
         self.meter.as_ref()
+    }
+
+    /// Attach (or detach) the strip's RTA probe (T084). Call off the RT thread.
+    pub fn set_rta(&mut self, p: Option<RtaProbe>) {
+        self.rta = p;
     }
 
     /// Install the FX rack (off the RT thread); the current insert assignment is forwarded to it.
@@ -466,6 +476,9 @@ impl MixStrip {
             ramp_in_place(r, g0[1], g1[1]);
         }
         self.tap(MixTap::In, l, r);
+        let want = self.rta.as_ref().and_then(RtaProbe::wanted);
+        rta_at(&self.rta, want, RtaTap::In, l, r);
+        rta_at(&self.rta, want, RtaTap::Filt, l, r); // no filter on mix strips: FILT = IN
         if let Some(m) = &self.meter {
             m.stereo(word::IN_L, l, r);
         }
@@ -474,8 +487,12 @@ impl MixStrip {
                 .process_claimed(InsertPos::Pre, n, self.preins.on, l, r);
         }
         self.tap(MixTap::Ins1, l, r);
+        rta_at(&self.rta, want, RtaTap::PreEq, l, r);
         self.eq.process(l, r);
+        rta_at(&self.rta, want, RtaTap::PostEq, l, r);
         self.tap(MixTap::Eq, l, r);
+        rta_at(&self.rta, want, RtaTap::DynKey, l, r);
+        rta_at(&self.rta, want, RtaTap::DynXo, l, r);
         let dyn_in = if self.meter.is_some() {
             abs_max(l).max(abs_max(r))
         } else {
@@ -489,6 +506,7 @@ impl MixStrip {
         }
         self.align.process(l, r);
         self.tap(MixTap::Pfl, l, r);
+        rta_at(&self.rta, want, RtaTap::PreFdr, l, r);
         // An off slot can still run its model for one wrapper-ramp after a parameter change
         // (inaudible, wet = 0): report GR only while the slot is on.
         self.telem.dyn_gr_db = if self.dyn_.wrapper().0 {
@@ -506,6 +524,8 @@ impl MixStrip {
     pub fn process_out(&mut self, l: &mut [f32], r: &mut [f32]) {
         self.dly.process(l, r);
         self.tap(MixTap::Post, l, r);
+        let want = self.rta.as_ref().and_then(RtaProbe::wanted);
+        rta_at(&self.rta, want, RtaTap::Post, l, r);
     }
 }
 

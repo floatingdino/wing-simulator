@@ -30,7 +30,8 @@
 //! | source groups (A7) | USB 1..48, OSC 1/2, $BUS 1..32, $MAIN 1..8, $MTX 1..16 live; LCL/AUX/AES50/SC/CRD/MOD/PLAY/AES carry silence in the simulator; USR (user-signal taps) not metered yet |
 //! | output groups (A8) | USB 1..48 live; other groups are resolved by routing but not rendered: silent |
 //! | monitor (A9) | T038 monitor section: solo bus L/R (louder of the two monitors' solo busses), mon 1/2 L/R outputs |
-//! | dca, fx, rta | silent (DCA meters not derived yet; FX: T050; RTA) |
+//! | dca, fx | silent (DCA meters not derived yet; FX: T050) |
+//! | rta (AA) | `crate::rta::RtaService` (T084): the analyser of the `cfg/rta` source/tap |
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -211,7 +212,7 @@ impl RealMeters {
                 &[floor, floor, floor, floor, 0, 0, 0, 0, 0, 0],
             );
         }
-        bank.set_block(MeterKind::Rta, 0, &[floor; 120]);
+        // RTA (AA): written by the RTA service (T084, crate::rta), not here
     }
 
     /// One sender tick at `now`: update (dt since the previous tick) and fill.
