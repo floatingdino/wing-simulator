@@ -26,3 +26,7 @@ harness = false
 [[bench]]
 name = "params"
 harness = false
+
+[[bench]]
+name = "strip"
+harness = false

@@ -8,9 +8,11 @@
 //! `FaderGain` and the layouts below.
 
 use wing_blocks::filter::{FilterBlock, FilterParams, HcSlope, LcSlope};
+use wing_blocks::gate::ScFilter;
 use wing_blocks::input::{DelayMode, InputParams, InputStage, SourceMode};
 use wing_dsp::gain::db_to_lin;
 use wing_dsp::smooth::{LinearRamp, OnePoleSmoother};
+use wing_dsp::svf::{Svf, SvfMode};
 use wing_model::{Schema, FADER_MIN_DB};
 
 use super::map::{BindError, BlockLayout, ParamMapBuilder, TARGET_BASE};
@@ -196,9 +198,19 @@ pub trait RtModel: Send {
     fn reset(&mut self);
     /// Process a stereo block in place (`l.len() == r.len() <= max_block` given at construction).
     fn process(&mut self, l: &mut [f32], r: &mut [f32]);
+    /// Process with a side-chain key (already filtered by the slot; `None` = key from the input).
+    /// Default: ignore the key (models without a detector).
+    fn process_keyed(&mut self, l: &mut [f32], r: &mut [f32], key: Option<(&[f32], &[f32])>) {
+        let _ = key;
+        self.process(l, r);
+    }
     /// Gain reduction in dB (>= 0) for telemetry; 0 if not applicable.
     fn gain_reduction_db(&self) -> f32 {
         0.0
+    }
+    /// Processing latency in samples.
+    fn latency(&self) -> usize {
+        0
     }
 }
 
@@ -206,9 +218,14 @@ pub trait RtModel: Send {
 const BYPASS: u8 = u8::MAX;
 const MAX_MODELS: usize = 64;
 
-/// A model-dependent slot (gate, dynamics, ...): one preallocated [`RtModel`] instance per model
-/// the slot can host, crossfaded swaps and smoothed wrapper parameters
-/// (`out = dry * (1 - w) + w * gain * model(dry)`, `w = on * mix`).
+/// A model-dependent slot (gate, dynamics, EQ, filter tool, ...): one preallocated [`RtModel`]
+/// instance per model the slot can host, crossfaded swaps and smoothed wrapper parameters
+/// (`out = dry * (1 - w) + w * gain * model(dry)`, `w = on * mix`). With `w = gain = 1` settled and no
+/// swap running, the model output passes untouched (bit-exact with the bare block).
+///
+/// Side-chain (T035): an optional key filter (`gatesc`/`dynsc` `type f q`, TPT SVF) shapes the key the
+/// model detects on: the external key passed to [`ModelSlot::process_keyed`] or, for SELF, a copy of
+/// the input. The filtered key is kept for key-listen ([`ModelSlot::key_signal`]).
 ///
 /// Swap protocol (all RT-safe, no allocation): [`ModelSlot::select`] loads the incoming model's
 /// defaults; if nothing is fading, the incoming instance is `reset` and crossfaded in linearly over
@@ -240,6 +257,15 @@ pub struct ModelSlot {
     dry_r: Vec<f32>,
     prev_l: Vec<f32>,
     prev_r: Vec<f32>,
+    mix_max: f32,
+    fs: f64,
+    key_type: ScFilter,
+    key_freq: f32,
+    key_q: f32,
+    key_filt: [Svf; 2],
+    key_l: Vec<f32>,
+    key_r: Vec<f32>,
+    key_len: usize,
 }
 
 impl ModelSlot {
@@ -250,7 +276,7 @@ impl ModelSlot {
         group_key: &str,
         fs: f64,
         max_block: usize,
-        mut factory: impl FnMut(u16, &str) -> Option<Box<dyn RtModel>>,
+        mut factory: impl FnMut(u16, &'static str) -> Option<Box<dyn RtModel>>,
     ) -> Self {
         let mut index = [BYPASS; MAX_MODELS];
         let mut instances: Vec<Box<dyn RtModel>> = Vec::new();
@@ -293,7 +319,79 @@ impl ModelSlot {
             dry_r: vec![0.0; n],
             prev_l: vec![0.0; n],
             prev_r: vec![0.0; n],
+            mix_max: 100.0,
+            fs,
+            key_type: ScFilter::Off,
+            key_freq: 1000.0,
+            key_q: 0.707,
+            key_filt: [Svf::default(); 2],
+            key_l: vec![0.0; n],
+            key_r: vec![0.0; n],
+            key_len: 0,
         }
+    }
+
+    /// Upper limit of `mix` in % (100 for gate/dyn, 125 for EQ).
+    pub fn set_mix_max(&mut self, pct: f32) {
+        self.mix_max = pct.max(0.0);
+    }
+
+    /// Side-chain key filter (`type`, `f` 20..20k Hz, `q` 0.44..10). RT-safe.
+    pub fn set_key_filter(&mut self, kind: ScFilter, freq: f32, q: f32) {
+        self.key_type = kind;
+        self.key_freq = freq.clamp(20.0, 20_000.0);
+        self.key_q = q.clamp(0.44, 10.0);
+        let mode = match kind {
+            ScFilter::Off => return,
+            ScFilter::Lp12 => SvfMode::Lowpass,
+            ScFilter::Hp12 => SvfMode::Highpass,
+            ScFilter::Bp => SvfMode::Bandpass,
+            ScFilter::Notch => SvfMode::Notch,
+        };
+        for f in &mut self.key_filt {
+            f.set(mode, self.fs, self.key_freq as f64, self.key_q as f64, 0.0);
+        }
+    }
+
+    /// `(type, f, q)` of the key filter.
+    pub fn key_filter(&self) -> (ScFilter, f32, f32) {
+        (self.key_type, self.key_freq, self.key_q)
+    }
+
+    /// Filtered key of the last processed chunk (key listen); empty when no key was formed.
+    pub fn key_signal(&self) -> (&[f32], &[f32]) {
+        (&self.key_l[..self.key_len], &self.key_r[..self.key_len])
+    }
+
+    /// Commit pending changes and jump every ramp/fade to its target, clearing signal state
+    /// (tests, offline rendering, scene start).
+    pub fn settle(&mut self) {
+        self.commit();
+        self.wet
+            .reset(if self.on { self.mix_pct * 0.01 } else { 0.0 });
+        self.makeup.reset(db_to_lin(self.gain_db));
+        self.fading = false;
+        if self.logical != self.cur {
+            self.prev = self.cur;
+            self.cur = self.logical;
+        }
+        self.reset_instance(self.cur);
+        for f in &mut self.key_filt {
+            f.reset();
+        }
+        self.idle = self.wet.value() == 0.0;
+    }
+
+    /// Whether a model is currently being run (on, or fading).
+    pub fn is_running(&self) -> bool {
+        !self.idle
+    }
+
+    /// Latency of the audible model (samples).
+    pub fn latency(&self) -> usize {
+        self.instances
+            .get(self.cur as usize)
+            .map_or(0, |m| m.latency())
     }
 
     /// Crossfade length in samples (0 = hard switch; tests use it for the click baseline).
@@ -396,7 +494,7 @@ impl ModelSlot {
     pub fn set_wrapper(&mut self, param: u16, v: f32) {
         match param {
             0 => self.on = v != 0.0,
-            1 => self.mix_pct = v.clamp(0.0, 100.0),
+            1 => self.mix_pct = v.clamp(0.0, self.mix_max),
             2 => self.gain_db = v.clamp(-6.0, 12.0),
             _ => return,
         }
@@ -424,45 +522,90 @@ impl ModelSlot {
         self.dirty = 0;
     }
 
-    /// Gain reduction (dB, >= 0) of the audible model.
+    /// Gain reduction (dB, >= 0) of the audible model (0 while idle).
     pub fn gain_reduction_db(&self) -> f32 {
+        if self.idle {
+            return 0.0;
+        }
         self.instances
             .get(self.cur as usize)
             .map_or(0.0, |m| m.gain_reduction_db())
     }
 
-    /// Process a stereo block in place (RT-safe).
+    /// Process a stereo block in place (RT-safe), keying from the input.
     pub fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
+        self.process_keyed(l, r, None);
+    }
+
+    /// Process with an optional external side-chain key (`src` != SELF, resolved by the engine);
+    /// key samples beyond a shorter key slice read as 0. RT-safe.
+    pub fn process_keyed(&mut self, l: &mut [f32], r: &mut [f32], key: Option<(&[f32], &[f32])>) {
         let mut start = 0;
         while start < l.len() {
             let end = (start + self.max_block).min(l.len());
-            self.process_chunk(&mut l[start..end], &mut r[start..end]);
+            let k = key.map(|(a, b)| (sub(a, start, end), sub(b, start, end)));
+            self.process_chunk(&mut l[start..end], &mut r[start..end], k);
             start = end;
         }
     }
 
-    fn process_chunk(&mut self, l: &mut [f32], r: &mut [f32]) {
+    fn process_chunk(&mut self, l: &mut [f32], r: &mut [f32], key: Option<(&[f32], &[f32])>) {
         let n = l.len();
         if !self.wet.is_ramping() && self.wet.value() == 0.0 {
             self.idle = true;
+            self.key_len = 0;
             self.fading = false; // inaudible: finish instantly
             if self.logical != self.cur {
                 self.start_fade(self.logical);
             }
             return;
         }
+        if self.idle {
+            for f in &mut self.key_filt {
+                f.reset();
+            }
+        }
         self.idle = false;
-        self.dry_l[..n].copy_from_slice(l);
-        self.dry_r[..n].copy_from_slice(r);
+        let full = !self.fading
+            && !self.wet.is_ramping()
+            && self.wet.value() == 1.0
+            && !self.makeup.is_ramping()
+            && self.makeup.value() == 1.0;
+        if !full {
+            self.dry_l[..n].copy_from_slice(l);
+            self.dry_r[..n].copy_from_slice(r);
+        }
+        // ---- side-chain key ----
+        let filt = self.key_type != ScFilter::Off;
+        let use_key = filt || key.is_some();
+        if use_key {
+            let (kl, kr) = (&mut self.key_l[..n], &mut self.key_r[..n]);
+            match key {
+                Some((a, b)) => {
+                    copy_padded(kl, a);
+                    copy_padded(kr, b);
+                }
+                None => {
+                    kl.copy_from_slice(l);
+                    kr.copy_from_slice(r);
+                }
+            }
+            if filt {
+                self.key_filt[0].process_block(kl);
+                self.key_filt[1].process_block(kr);
+            }
+        }
+        self.key_len = if use_key { n } else { 0 };
+        let sc = use_key.then(|| (&self.key_l[..n], &self.key_r[..n]));
         if self.fading {
             self.prev_l[..n].copy_from_slice(l);
             self.prev_r[..n].copy_from_slice(r);
             if let Some(m) = self.instances.get_mut(self.prev as usize) {
-                m.process(&mut self.prev_l[..n], &mut self.prev_r[..n]);
+                m.process_keyed(&mut self.prev_l[..n], &mut self.prev_r[..n], sc);
             }
         }
         if let Some(m) = self.instances.get_mut(self.cur as usize) {
-            m.process(l, r);
+            m.process_keyed(l, r, sc);
         }
         if self.fading {
             let len = self.xf_len as f32;
@@ -479,13 +622,27 @@ impl ModelSlot {
                 }
             }
         }
-        for i in 0..n {
-            let w = self.wet.tick();
-            let m = self.makeup.tick();
-            l[i] = self.dry_l[i] + w * (m * l[i] - self.dry_l[i]);
-            r[i] = self.dry_r[i] + w * (m * r[i] - self.dry_r[i]);
+        if !full {
+            for i in 0..n {
+                let w = self.wet.tick();
+                let m = self.makeup.tick();
+                l[i] = self.dry_l[i] + w * (m * l[i] - self.dry_l[i]);
+                r[i] = self.dry_r[i] + w * (m * r[i] - self.dry_r[i]);
+            }
         }
     }
+}
+
+#[inline]
+fn sub(k: &[f32], s: usize, e: usize) -> &[f32] {
+    &k[s.min(k.len())..e.min(k.len())]
+}
+
+#[inline]
+fn copy_padded(dst: &mut [f32], src: &[f32]) {
+    let m = src.len().min(dst.len());
+    dst[..m].copy_from_slice(&src[..m]);
+    dst[m..].fill(0.0);
 }
 
 // ---- strip ---------------------------------------------------------------------------------

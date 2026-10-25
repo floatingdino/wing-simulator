@@ -17,6 +17,7 @@
 //! * [`clock`]: [`LiveClock`] (external callback) and [`OfflineClock`] (free-running).
 //! * [`stats`]: per-cycle duration, load and xrun counters, readable lock-free.
 
+pub mod channel;
 pub mod clock;
 pub mod dummy;
 pub mod graph;
