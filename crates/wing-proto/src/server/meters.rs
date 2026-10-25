@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 
 use wing_model::{ParamStore, Schema, Value};
 
-use crate::nrp::meter::{db_to_meter, encode_meter_packet};
+use crate::nrp::meter::{db_to_meter, db_to_rta, encode_meter_packet};
 use crate::nrp::{MeterCommand, MeterKind, MeterSelection};
 
 /// Report lifetime after a define or renew.
@@ -467,7 +467,7 @@ impl SyntheticMeters {
             let db = -60.0
                 + 30.0 * (-(k as f64 - 40.0).powi(2) / 800.0).exp()
                 + 6.0 * (t * 1.1 + k as f64 * 0.3).sin();
-            bank.set(MeterKind::Rta, 0, k, db_to_meter(db as f32));
+            bank.set(MeterKind::Rta, 0, k, db_to_rta(db as f32));
         }
     }
 

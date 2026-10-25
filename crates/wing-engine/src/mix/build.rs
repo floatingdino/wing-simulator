@@ -444,6 +444,7 @@ pub fn build_mix_graph(
                 .clone()
                 .map(|b| crate::meters::StripMeter::at(b, i)),
         );
+        strip.set_rta(cfg.rta.clone().map(|f| crate::rta::RtaProbe::new(f, i)));
         let src = [
             InputRouter::port(io.inputs, i, 0),
             InputRouter::port(io.inputs, i, 1),
@@ -489,6 +490,12 @@ pub fn build_mix_graph(
                     cfg.meters
                         .clone()
                         .and_then(|b| crate::meters::StripMeter::new(b, strip)),
+                );
+                m.set_rta(
+                    cfg.rta
+                        .clone()
+                        .zip(strip.index())
+                        .map(|(f, i)| crate::rta::RtaProbe::new(f, i)),
                 );
                 Box::new(m)
             }

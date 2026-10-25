@@ -155,6 +155,7 @@ fn realtime(plan: &InputPlan, rec_dir: &Path) -> Vec<Vec<f32>> {
                 rt_workers: false,
                 workgroup: None,
                 meters: None,
+                rta: None,
             },
             rt: false,
             hostio: None,

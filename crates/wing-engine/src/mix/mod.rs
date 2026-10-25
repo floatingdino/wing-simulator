@@ -171,6 +171,9 @@ pub struct MixConfig {
     /// (strip outs, bus/main/matrix in/out, mix-output sources) are port meters:
     /// [`crate::meters::PortMeters::for_mix`].
     pub meters: Option<std::sync::Arc<crate::meters::LevelBank>>,
+    /// RTA feed the strips' probes push the selected tap into (T084; ch/aux POST, solo, monitor
+    /// and FX taps are graph ports the caller captures: [`crate::rta`]).
+    pub rta: Option<std::sync::Arc<crate::rta::RtaFeed>>,
     /// FX rack hosting the strips' inserts (T050; `None` = a new [`crate::fx::FxRack`] with every
     /// catalog model). Tests pass one built with [`crate::fx::FxRack::with_factory`].
     pub fx_rack: Option<crate::fx::FxRack>,
@@ -192,6 +195,7 @@ impl Default for MixConfig {
             hooks: None,
             logic: None,
             meters: None,
+            rta: None,
             fx_rack: None,
             monitor_levels: None,
         }
@@ -211,6 +215,7 @@ impl std::fmt::Debug for MixConfig {
             .field("hooks", &self.hooks.is_some())
             .field("logic", &self.logic.is_some())
             .field("meters", &self.meters.is_some())
+            .field("rta", &self.rta.is_some())
             .field("fx_rack", &self.fx_rack.is_some())
             .field("monitor_levels", &self.monitor_levels)
             .finish()

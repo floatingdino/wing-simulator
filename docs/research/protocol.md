@@ -337,7 +337,7 @@ Group order (doc 3.1.2 footnotes):
 | source | n | group levels (local ins: 8 in doc 3.0.5, 24 in doc 3.1.2; oscillator 2) |
 | output | n | group levels (local outs: 8) |
 | monitor | 6 | solo L/R, mon1 L/R, mon2 L/R |
-| rta | 120 | RTA bins, semitones from E0 (20.6 Hz) to D#10; A4 at index 53 |
+| rta | 120 | RTA bins, semitones from E0 (20.6 Hz) to D#10; A4 at index 53; **1/128 dB** per word (WING-Edit, see rta.md) [M] |
 | * V2 | 11 | in L/R, out L/R, gate key, gate gain, gate LED(0/1), dyn key, dyn gain, dyn state(0/1), automix gain |
 
 Value scale:

@@ -25,9 +25,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use wing_engine::meters::{LevelBank, PortMeters};
-use wing_engine::mix::{build_mix_graph, MixConfig, MixNodes};
+use wing_engine::mix::{build_mix_graph, InputSignal, MixConfig, MixNodes};
 use wing_engine::params::{ParamMap, ParamPipeline, PipelineConfig};
 use wing_engine::routing::{Side, Strip, USB_CHANNELS};
+use wing_engine::rta::{RtaFeed, RtaSel, RtaTap};
 use wing_engine::{Engine, EngineConfig, Port, RawWorkgroup};
 use wing_hostio::{BridgeProducer, Tap, TapChannel};
 use wing_model::ParamStore;
@@ -57,6 +58,8 @@ pub struct ConsoleConfig {
     pub workgroup: Option<RawWorkgroup>,
     /// Level bank the console meters into (T039); `None`: no metering.
     pub meters: Option<Arc<LevelBank>>,
+    /// RTA feed (T084): the strips' probes and [`Console::cycle`] push the selected tap into it.
+    pub rta: Option<Arc<RtaFeed>>,
 }
 
 impl Default for ConsoleConfig {
@@ -69,6 +72,7 @@ impl Default for ConsoleConfig {
             rt_workers: d.rt_workers,
             workgroup: None,
             meters: None,
+            rta: None,
         }
     }
 }
@@ -82,6 +86,30 @@ pub struct ConsoleNodes {
 }
 
 impl ConsoleNodes {
+    /// Engine ports (L, R) of an RTA selection captured after the cycle (T084): ch/aux POST,
+    /// solo bus (monitor 1's), monitor outputs (MON.PH = monitor 1, MON.SPK = monitor 2) and FX
+    /// slot inputs (FXIN, `src` = slot). Strip-internal taps (and bus/main/matrix POST) are pushed
+    /// by the strips' probes; FXOUT is not modelled (`None` = nothing captured here).
+    pub fn rta_ports(&self, s: RtaSel) -> Option<(Port, Port)> {
+        let m = &self.mix;
+        match s.tap {
+            RtaTap::Post => {
+                let i = s.strip().filter(|&i| i < STRIPS)?;
+                Some((
+                    m.input_port(i, InputSignal::Post, Side::L),
+                    m.input_port(i, InputSignal::Post, Side::R),
+                ))
+            }
+            RtaTap::Solo => Some((m.solo_port(1, Side::L), m.solo_port(1, Side::R))),
+            RtaTap::MonPh => Some((m.monitor_port(1, Side::L), m.monitor_port(1, Side::R))),
+            RtaTap::MonSpk => Some((m.monitor_port(2, Side::L), m.monitor_port(2, Side::R))),
+            RtaTap::FxIn if (1..=16).contains(&s.src) => {
+                Some((m.send_port(2 * s.src - 1)?, m.send_port(2 * s.src)?))
+            }
+            _ => None,
+        }
+    }
+
     /// Engine port carrying a host-bridge tap lane, `None` = silence (not modelled yet).
     pub fn tap_port(&self, t: TapChannel) -> Option<Port> {
         let strip = match t.tap {
@@ -136,6 +164,7 @@ pub fn build_engine(
         sample_rate: cfg.sample_rate as f32,
         logic: Some(ctl.logic.shared()),
         meters: cfg.meters.clone(),
+        rta: cfg.rta.clone(),
         monitor_levels: Some(ctl.monitor.levels()),
         ..MixConfig::default()
     };
@@ -216,6 +245,9 @@ impl Console {
             .meters
             .clone()
             .map(|b| PortMeters::for_mix(b, &nodes.mix));
+        if let Some(f) = &cfg.rta {
+            f.set_sample_rate(cfg.sample_rate);
+        }
         Ok(Self {
             engine,
             pipeline,
@@ -296,10 +328,12 @@ impl Console {
         for ch in 0..USB_CHANNELS {
             input(ch, self.engine.external_mut(ch));
         }
+        let rta = self.cfg.rta.as_ref().and_then(|f| f.latch());
         self.engine.process_cycle();
         if let Some(m) = &self.port_meters {
             m.capture(&self.engine);
         }
+        self.capture_rta(rta);
         let c = self.engine.cycle();
         self.pipeline.publish_telemetry(&mut self.engine, c);
         let usb = self.nodes.usb_out;
@@ -330,6 +364,17 @@ impl Console {
             }
         }
         self.stats.record(t0.elapsed().as_nanos() as u64);
+    }
+
+    /// Push the selected RTA port tap of the last cycle (single producer: strip probes only
+    /// push strip-internal taps). RT-safe.
+    #[inline]
+    fn capture_rta(&self, sel: Option<RtaSel>) {
+        if let (Some(f), Some(s)) = (&self.cfg.rta, sel) {
+            if let Some((l, r)) = self.nodes.rta_ports(s) {
+                f.push_stereo(self.engine.port(l), self.engine.port(r));
+            }
+        }
     }
 
     /// End of a burst of cycles (everything one driver IO cycle made available): stamp the

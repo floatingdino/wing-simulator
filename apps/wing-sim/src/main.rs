@@ -51,10 +51,12 @@ mod library;
 mod persist;
 
 use wing_engine::meters::LevelBank;
+use wing_engine::rta::RtaFeed;
 use wing_sim::audio::{self, AudioOptions, AudioService, ConsoleConfig, HostIoSetting};
 use wing_sim::control;
 use wing_sim::meters::meter_source;
 use wing_sim::record::Recorder;
+use wing_sim::rta::RtaService;
 
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::path::PathBuf;
@@ -531,6 +533,15 @@ fn run(args: Args) -> Result<(), String> {
     } else {
         None
     };
+    // RTA (T084): the `cfg/rta/$` status WING-Edit checks, and the analyser of the engine's RTA
+    // ring (real while audio is attached; the meter source keeps a synthetic RTA otherwise)
+    let rta_feed = routing.is_some().then(RtaFeed::shared);
+    let rta = RtaService::spawn_default(
+        store.clone(),
+        rta_feed.clone(),
+        args.meters.then(|| bank.clone()),
+    )
+    .map_err(|e| format!("rta: {e}"))?;
 
     // ---- native server ----
     let schema = store.schema();
@@ -648,6 +659,7 @@ fn run(args: Args) -> Result<(), String> {
                 block: args.block,
                 rt_workers: args.rt,
                 meters: levels.clone(),
+                rta: rta_feed.clone(),
                 ..ConsoleConfig::default()
             };
             if let Some(w) = args.workers {
@@ -809,6 +821,7 @@ fn run(args: Args) -> Result<(), String> {
     if let Some(s) = streamer {
         s.stop();
     }
+    rta.stop();
     discovery.stop();
     library.stop();
     if let Some(a) = autosaver {

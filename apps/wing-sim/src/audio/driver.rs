@@ -512,6 +512,10 @@ impl Control {
                 // the meter sender uses real meters while a session runs, synthetic otherwise
                 m.set_attached(session.is_some());
             }
+            if let (Some(f), None) = (&self.opts.console.rta, &session) {
+                // the RTA analyser falls back to synthetic data (Console::build sets the rate)
+                f.set_sample_rate(0);
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
         if let Some(s) = session {
@@ -519,6 +523,9 @@ impl Control {
         }
         if let Some(m) = &self.opts.console.meters {
             m.set_attached(false);
+        }
+        if let Some(f) = &self.opts.console.rta {
+            f.set_sample_rate(0);
         }
         self.pipeline = None;
         self.wi = None;

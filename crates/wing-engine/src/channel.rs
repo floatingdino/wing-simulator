@@ -38,6 +38,9 @@
 //!   dynamics key peaks (the filtered side-chain when the slot forms one, else the slot input) and their
 //!   gain reduction are folded into the engine's [`crate::meters::LevelBank`] (lock-free, no allocation).
 //!   The post-fader words belong to the node that applies the fader.
+//! * **RTA** (T084, optional [`crate::rta::RtaProbe`]): when the latched RTA selection is this strip,
+//!   the selected tap (IN, FILT, PRE EQ/POST EQ around the EQ block, gate/dyn key, PRE FDR, PRE TAP)
+//!   is copied into the RTA ring (one block copy, no allocation).
 //! * **Latency** (T03E, [`crate::latency`]): constant, independent of models and switches. Channel and aux
 //!   strips share one latency (aux pads by the filter-tool and gate slot latency it does not run), applied
 //!   by an alignment pad at the strip output ([`ChannelStrip::latency`], [`ChannelStrip::set_align_latency`],
@@ -60,6 +63,7 @@ use crate::params::telemetry_kind as kind;
 use crate::params::{
     BindError, BlockLayout, ParamMapBuilder, ParamMsg, TelemetryWriter, TARGET_BASE,
 };
+use crate::rta::{RtaProbe, RtaTap};
 
 /// Block indices used in [`ParamMsg`]s and telemetry.
 pub mod block {
@@ -544,7 +548,34 @@ pub struct ChannelStrip {
     tap_len: usize,
     telem: StripTelemetry,
     meter: Option<StripMeter>,
+    rta: Option<RtaProbe>,
     align: StripAlign,
+}
+
+/// Push a block to the RTA when `at` is the tap wanted from this strip (T084). RT-safe.
+#[inline]
+pub(crate) fn rta_at(p: &Option<RtaProbe>, want: Option<RtaTap>, at: RtaTap, l: &[f32], r: &[f32]) {
+    if want == Some(at) {
+        if let Some(p) = p {
+            p.push(l, r);
+        }
+    }
+}
+
+/// Key tap: the external key when one is used, else the slot input `l`/`r`. RT-safe.
+#[inline]
+fn rta_key_at(
+    p: &Option<RtaProbe>,
+    want: Option<RtaTap>,
+    at: RtaTap,
+    key: Option<(&[f32], &[f32])>,
+    l: &[f32],
+    r: &[f32],
+) {
+    match key {
+        Some((kl, kr)) => rta_at(p, want, at, kl, kr),
+        None => rta_at(p, want, at, l, r),
+    }
 }
 
 pub(crate) fn sc_filter(i: u32) -> ScFilter {
@@ -663,6 +694,7 @@ impl ChannelStrip {
             tap_len: 0,
             telem: StripTelemetry::default(),
             meter: None,
+            rta: None,
             align: StripAlign::new(0, 0),
         };
         // Factory model choices (the pipeline's sync_all overrides them from the store).
@@ -702,6 +734,11 @@ impl ChannelStrip {
 
     pub fn meter(&self) -> Option<&StripMeter> {
         self.meter.as_ref()
+    }
+
+    /// Attach (or detach) the strip's RTA probe (T084). Call off the RT thread.
+    pub fn set_rta(&mut self, p: Option<RtaProbe>) {
+        self.rta = p;
     }
 
     pub fn order(&self) -> ProcOrder {
@@ -1015,6 +1052,8 @@ impl ChannelStrip {
         self.align.sync(self.own_latency(), il, fx.align_target());
         Model::process(&mut self.input, l, r, None);
         self.tap(Tap::In as usize, l, r);
+        let want = self.rta.as_ref().and_then(RtaProbe::wanted);
+        rta_at(&self.rta, want, RtaTap::In, l, r);
         let gate_key = keys.gate.filter(|_| self.gate_sc.external());
         let dyn_key = keys.dyn_.filter(|_| self.dyn_sc.external());
         let gate_listen = self.gate_sc.listen && self.kind == StripKind::Channel;
@@ -1028,6 +1067,7 @@ impl ChannelStrip {
                 }
                 self.tool.process(l, r);
                 self.tap(Tap::Filt as usize, l, r);
+                rta_at(&self.rta, want, RtaTap::Filt, l, r);
                 if let Some(n) = self.preins.claimed() {
                     fx.process_claimed(InsertPos::Pre, n, self.preins.on, l, r);
                 }
@@ -1035,6 +1075,7 @@ impl ChannelStrip {
                 for (k, b) in order.into_iter().enumerate() {
                     match b {
                         ProcBlock::Gate => {
+                            rta_key_at(&self.rta, want, RtaTap::GateKey, gate_key, l, r);
                             if metered {
                                 gate_in = abs_max(l).max(abs_max(r));
                             }
@@ -1047,10 +1088,14 @@ impl ChannelStrip {
                             }
                         }
                         ProcBlock::Eq => {
+                            rta_at(&self.rta, want, RtaTap::PreEq, l, r);
                             self.peq.process(l, r);
                             self.eq.process(l, r);
+                            rta_at(&self.rta, want, RtaTap::PostEq, l, r);
                         }
                         ProcBlock::Dyn => {
+                            rta_key_at(&self.rta, want, RtaTap::DynKey, dyn_key, l, r);
+                            rta_key_at(&self.rta, want, RtaTap::DynXo, dyn_key, l, r);
                             if metered {
                                 dyn_in = abs_max(l).max(abs_max(r));
                             }
@@ -1075,12 +1120,17 @@ impl ChannelStrip {
             }
             StripKind::Aux => {
                 self.tap(Tap::Filt as usize, l, r);
+                rta_at(&self.rta, want, RtaTap::Filt, l, r);
                 if let Some(n) = self.preins.claimed() {
                     fx.process_claimed(InsertPos::Pre, n, self.preins.on, l, r);
                 }
                 self.tap(Tap::T3 as usize, l, r);
+                rta_at(&self.rta, want, RtaTap::PreEq, l, r);
                 self.eq.process(l, r);
+                rta_at(&self.rta, want, RtaTap::PostEq, l, r);
                 self.tap(Tap::T4 as usize, l, r);
+                rta_key_at(&self.rta, want, RtaTap::DynKey, dyn_key, l, r);
+                rta_key_at(&self.rta, want, RtaTap::DynXo, dyn_key, l, r);
                 if metered {
                     dyn_in = abs_max(l).max(abs_max(r));
                 }
@@ -1096,6 +1146,17 @@ impl ChannelStrip {
             }
         }
         self.align.process(l, r);
+        rta_at(&self.rta, want, RtaTap::PreFdr, l, r);
+        if want == Some(RtaTap::PreTap) {
+            let n = self.tap_len;
+            rta_at(
+                &self.rta,
+                want,
+                RtaTap::PreTap,
+                &self.tap_l[..n],
+                &self.tap_r[..n],
+            );
+        }
         self.telem.gate_gr_db = self.gate.gain_reduction_db();
         self.telem.dyn_gr_db = self.dyn_.gain_reduction_db();
         if let Some(m) = &self.meter {

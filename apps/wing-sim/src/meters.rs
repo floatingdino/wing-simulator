@@ -36,7 +36,8 @@
 //! | output groups (A8) | USB 1..48 live; other groups are resolved by routing but not rendered: silent |
 //! | monitor (A9) | T038 monitor section: solo bus L/R (louder of the two monitors' solo busses), mon 1/2 L/R outputs |
 //! | fx 1..16 | FX slot in/out, model state words ([`FxMeterLaw`]) |
-//! | dca, rta | silent (DCA meters not derived yet; RTA) |
+//! | dca | silent (DCA meters not derived yet) |
+//! | rta (AA) | `crate::rta::RtaService` (T084): the analyser of the `cfg/rta` source/tap |
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -289,7 +290,7 @@ impl RealMeters {
             w[4..].copy_from_slice(&st);
             bank.set_block(MeterKind::Fx, i, &w);
         }
-        bank.set_block(MeterKind::Rta, 0, &[floor; 120]);
+        // RTA (AA): written by the RTA service (T084, crate::rta), not here
     }
 
     /// One sender tick at `now`: update (dt since the previous tick) and fill.

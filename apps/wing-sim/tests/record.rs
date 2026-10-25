@@ -102,6 +102,7 @@ fn console(store: &ParamStore, ctl: &mut ConsoleControl) -> Console {
             rt_workers: false,
             workgroup: None,
             meters: None,
+            rta: None,
         },
         store,
         ctl,
