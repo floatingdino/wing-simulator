@@ -457,6 +457,19 @@ impl Model for Combinator {
             engaged: self.gr_max > 0.01,
         }
     }
+
+    /// Each band's dynamic gain change (`-GR`, 0 while the band is bypassed).
+    fn meter_bands(&self, out: &mut [f32]) -> usize {
+        let n = BANDS.min(out.len());
+        for (b, o) in out.iter_mut().take(n).enumerate() {
+            *o = if self.v[20 + b] != 0.0 {
+                0.0
+            } else {
+                -self.bands[b].gr as f32
+            };
+        }
+        n
+    }
 }
 
 /// Magnitude (dB) of the summed five bands of a crossover tree at `f` Hz (all band gains 1, no dynamics).

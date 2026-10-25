@@ -211,6 +211,11 @@ pub trait RtModel: Send {
     fn gain_reduction_db(&self) -> f32 {
         0.0
     }
+    /// Signed per-band gain changes (dB) for the meter words (`wing_blocks::model::Model::meter_bands`);
+    /// returns how many were written. Default: none.
+    fn meter_bands(&self, _out: &mut [f32]) -> usize {
+        0
+    }
     /// Processing latency in samples.
     fn latency(&self) -> usize {
         0
@@ -752,6 +757,16 @@ impl ModelSlot {
         self.instances
             .get(self.cur as usize)
             .map_or(0.0, |m| m.gain_reduction_db())
+    }
+
+    /// Signed band gains (dB) of the audible model for the meter words (0 written while idle). RT-safe.
+    pub fn meter_bands(&self, out: &mut [f32]) -> usize {
+        if self.idle {
+            return 0;
+        }
+        self.instances
+            .get(self.cur as usize)
+            .map_or(0, |m| m.meter_bands(out))
     }
 
     /// Process a stereo block in place (RT-safe), keying from the input.

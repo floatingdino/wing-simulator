@@ -12,6 +12,7 @@ pub mod wingcoef;
 pub mod dynamics;
 pub mod eq;
 pub mod fidelity;
+pub mod meter;
 pub mod model;
 pub mod models;
 pub mod std_models;

@@ -56,3 +56,8 @@ User: "dynamics sidechain/key source handling doesn't seem to affect anything". 
   **Proposed follow-ups**: verify on hardware whether WING keys are latency-free (graph reordering pass for
   the acyclic cases would remove the 1-block offset); key listen interaction with exclusive solo and
   `$sololed`; exact aux/bus `tap` semantics (DYN = post-dyn?, INS2 vs PFL) and AFL pre/post pan on busses.
+- 2026-10-26 T080-agent: merged main (T082 per-model GR/key metering + band meter cells, T083 additive/echo
+  solo). One textual conflict (channel.rs imports: kept both `band` and `KeyOut`). Bus/main/mtx DYN_KEY meter
+  uses the routed external key, alongside T082's `slot_bands`. Key-listen flags sit beside T083's additive
+  solo in `MixLogic::refresh` (counts toward `$stat/solo`, not `$sololed`/exclusive). `make check` passes
+  (incl. tests/sidechain.rs key listen).

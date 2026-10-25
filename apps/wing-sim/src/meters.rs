@@ -7,12 +7,17 @@
 //!
 //! * Levels: `20 log10(peak)` dBFS in 1/256 dB, floored at [`FLOOR_DB`] (-128 dB, the i16
 //!   minimum) for silence.
-//! * Gain reduction: `256 * GR / full scale` ([`gr_to_meter`]), full scale 60 dB for the gate slot
-//!   and 20 dB for the dynamics slot (protocol.md: "256 ≈ 20 dB GR for most models, the standard
-//!   gate is 60 dB"). The value is the largest GR of the interval, no extra ballistics (the
-//!   models have their own attack/release).
-//! * V2 `gate LED` / `dyn state`: 1 while the slot reduces by more than [`ACTIVE_GR_DB`] [H].
-//!   `automix gain`: 0 (automix is not modelled).
+//! * Gain reduction (T082): `256 * m`, `m` = the GR-meter position of the slot's **selected model**
+//!   ([`DynMeterLaw`], WING-Edit's per-model `*_gain_*` law: 60 dB full scale for GATE/DUCK, 20 dB
+//!   for most compressors, capped or negative for some, DEQ/DEQ2 from their band gains). The model is
+//!   read from the parameter store (`ch/N/gate`, `ch/N/dyn`, ...), as WING-Edit decodes the word by
+//!   its own `mdl`; without a store the gate slot uses the GATE law and the dynamics slot COMP's. The
+//!   GR is the largest of the interval, no extra ballistics (the models have their own attack/release).
+//! * V2 `gate LED` / `dyn state`: 1 while the slot reduces by more than [`ACTIVE_GR_DB`] [H] (DEQ2:
+//!   band 2, see [`DynMeterLaw::words`]). `automix gain`: 0 (automix is not modelled).
+//! * FX (`A6`, T082): in L/R = slot input, out L/R = slot output (levels of the owning insert's run,
+//!   silence while no insert runs the slot), 6 state words from the model's GR and band gains through
+//!   [`FxMeterLaw`] (see `wing_blocks::meter` for which models WING-Edit reads them for).
 //!
 //! # Ballistics (choice; the protocol docs do not specify any)
 //!
@@ -30,18 +35,21 @@
 //! | source groups (A7) | USB 1..48, OSC 1/2, $BUS 1..32, $MAIN 1..8, $MTX 1..16 live; LCL/AUX/AES50/SC/CRD/MOD/PLAY/AES carry silence in the simulator; USR (user-signal taps) not metered yet |
 //! | output groups (A8) | USB 1..48 live; other groups are resolved by routing but not rendered: silent |
 //! | monitor (A9) | T038 monitor section: solo bus L/R (louder of the two monitors' solo busses), mon 1/2 L/R outputs |
-//! | dca, fx, rta | silent (DCA meters not derived yet; FX: T050; RTA) |
+//! | fx 1..16 | FX slot in/out, model state words ([`FxMeterLaw`]) |
+//! | dca, rta | silent (DCA meters not derived yet; RTA) |
 
 use std::sync::Arc;
 use std::time::Instant;
 
+use wing_engine::fx::FX_SLOTS;
 use wing_engine::meters::{
-    output_cell, solo_cell, source_cell, strip_cell, word, LevelBank, CELLS,
+    band, band_cell, fx_cell, fx_word, is_value_cell, output_cell, solo_cell, source_cell,
+    strip_cell, word, LevelBank, CELLS,
 };
-use wing_engine::meters::{SOURCE_BASE, STRIP_WORDS};
-use wing_engine::routing::{OutAddr, OutGroup, SourceAddr, SrcGroup};
-use wing_model::ParamStore;
-use wing_proto::nrp::meter::{db_to_meter, gr_to_meter, GATE_GR_FULL_SCALE_DB, GR_FULL_SCALE_DB};
+use wing_engine::meters::{DynMeterLaw, FxMeterLaw, MAX_METER_BANDS};
+use wing_engine::routing::{OutAddr, OutGroup, SourceAddr, SrcGroup, Strip, STRIP_COUNT};
+use wing_model::{NodeId, ParamStore};
+use wing_proto::nrp::meter::db_to_meter;
 use wing_proto::nrp::MeterKind;
 use wing_proto::server::{MeterBank, SyntheticMeters};
 
@@ -62,8 +70,42 @@ const STRIP_KINDS: [(MeterKind, MeterKind, usize); 5] = [
 ];
 const STRIPS_PER_KIND: [usize; 5] = [40, 8, 16, 4, 8];
 
-fn is_gr_cell(cell: usize) -> bool {
-    cell < SOURCE_BASE && matches!(cell % STRIP_WORDS, word::GATE_GR | word::DYN_GR)
+/// Model blocks whose selected model sets a meter law: per strip (gate, dyn) and per FX slot.
+struct ModelBlocks {
+    store: Arc<ParamStore>,
+    gate: Vec<Option<NodeId>>,
+    dyn_: Vec<Option<NodeId>>,
+    fx: Vec<Option<NodeId>>,
+}
+
+impl ModelBlocks {
+    fn new(store: Arc<ParamStore>) -> Self {
+        let path = |s: usize, blk: &str| {
+            let p = match Strip::from_index(s)? {
+                Strip::Ch(n) => format!("ch/{n}/{blk}"),
+                Strip::Aux(n) => format!("aux/{n}/{blk}"),
+                Strip::Bus(n) => format!("bus/{n}/{blk}"),
+                Strip::Main(n) => format!("main/{n}/{blk}"),
+                Strip::Mtx(n) => format!("mtx/{n}/{blk}"),
+            };
+            store.lookup(&p)
+        };
+        let gate = (0..STRIP_COUNT).map(|s| path(s, "gate")).collect();
+        let dyn_ = (0..STRIP_COUNT).map(|s| path(s, "dyn")).collect();
+        let fx = (1..=FX_SLOTS)
+            .map(|n| store.lookup(&format!("fx/{n}")))
+            .collect();
+        Self {
+            store,
+            gate,
+            dyn_,
+            fx,
+        }
+    }
+
+    fn model(&self, block: Option<NodeId>) -> Option<&'static str> {
+        Some(self.store.active_model(block?)?.name)
+    }
 }
 
 /// Linear level to dB, floored.
@@ -79,6 +121,7 @@ pub fn lin_to_db(v: f32) -> f32 {
 /// Converts a [`LevelBank`] into WING meter words (see the module docs).
 pub struct RealMeters {
     levels: Arc<LevelBank>,
+    models: Option<ModelBlocks>,
     /// Per cell: displayed level (dB) or, for GR cells, the interval's GR (dB).
     disp: Box<[f32]>,
     release_db_per_s: f32,
@@ -88,14 +131,38 @@ pub struct RealMeters {
 impl RealMeters {
     pub fn new(levels: Arc<LevelBank>) -> Self {
         let disp = (0..CELLS)
-            .map(|c| if is_gr_cell(c) { 0.0 } else { FLOOR_DB })
+            .map(|c| if is_value_cell(c) { 0.0 } else { FLOOR_DB })
             .collect();
         Self {
             levels,
+            models: None,
             disp,
             release_db_per_s: RELEASE_DB_PER_S,
             last: None,
         }
+    }
+
+    /// Resolve the gate/dynamics/FX meter laws from the models selected in `store` (see the module docs).
+    pub fn with_store(mut self, store: Arc<ParamStore>) -> Self {
+        self.models = Some(ModelBlocks::new(store));
+        self
+    }
+
+    /// GR-meter law of strip `s`'s gate (`gate`) or dynamics slot.
+    fn dyn_law(&self, s: usize, gate: bool) -> DynMeterLaw {
+        let id = self
+            .models
+            .as_ref()
+            .and_then(|m| m.model(*(if gate { &m.gate } else { &m.dyn_ }).get(s)?));
+        DynMeterLaw::for_model(id.unwrap_or(if gate { "GATE" } else { "COMP" }))
+    }
+
+    /// State-word law of FX slot `k` (0-based).
+    fn fx_law(&self, k: usize) -> FxMeterLaw {
+        self.models
+            .as_ref()
+            .and_then(|m| m.model(*m.fx.get(k)?))
+            .map_or(FxMeterLaw::None, FxMeterLaw::for_model)
     }
 
     pub fn levels(&self) -> &Arc<LevelBank> {
@@ -110,7 +177,7 @@ impl RealMeters {
     /// Forget the ballistic state and any stale peaks.
     pub fn reset(&mut self) {
         for (c, d) in self.disp.iter_mut().enumerate() {
-            *d = if is_gr_cell(c) { 0.0 } else { FLOOR_DB };
+            *d = if is_value_cell(c) { 0.0 } else { FLOOR_DB };
         }
         self.levels.clear();
         self.last = None;
@@ -121,7 +188,7 @@ impl RealMeters {
         let fall = self.release_db_per_s * dt.max(0.0);
         for (c, d) in self.disp.iter_mut().enumerate() {
             let v = self.levels.take(c);
-            if is_gr_cell(c) {
+            if is_value_cell(c) {
                 *d = v;
             } else {
                 let p = lin_to_db(v);
@@ -151,11 +218,14 @@ impl RealMeters {
                 let (in_l, in_r) = (self.lvl(c(word::IN_L)), self.lvl(c(word::IN_R)));
                 let (out_l, out_r) = (self.lvl(c(word::OUT_L)), self.lvl(c(word::OUT_R)));
                 let (gkey, dkey) = (self.lvl(c(word::GATE_KEY)), self.lvl(c(word::DYN_KEY)));
-                let gg = gr_to_meter(ggr, GATE_GR_FULL_SCALE_DB);
-                let dg = gr_to_meter(dgr, GR_FULL_SCALE_DB);
+                let bands = |slot: usize| [0, 1].map(|k| self.value(band_cell(s, slot + k)));
+                let (gg, gled) =
+                    self.dyn_law(s, true)
+                        .words(ggr, &bands(band::GATE), ggr > ACTIVE_GR_DB);
+                let (dg, dstate) =
+                    self.dyn_law(s, false)
+                        .words(dgr, &bands(band::DYN), dgr > ACTIVE_GR_DB);
                 bank.set_block(v1, i, &[in_l, in_r, out_l, out_r, gkey, gg, dkey, dg]);
-                let gled = (ggr > ACTIVE_GR_DB) as i16;
-                let dstate = (dgr > ACTIVE_GR_DB) as i16;
                 bank.set_block(
                     v2,
                     i,
@@ -204,12 +274,20 @@ impl RealMeters {
         for i in 0..lay.count(MeterKind::Dca) {
             bank.set_block(MeterKind::Dca, i, &[floor; 4]);
         }
-        for i in 0..lay.count(MeterKind::Fx) {
-            bank.set_block(
-                MeterKind::Fx,
-                i,
-                &[floor, floor, floor, floor, 0, 0, 0, 0, 0, 0],
-            );
+        for i in 0..lay.count(MeterKind::Fx).min(FX_SLOTS) {
+            let c = |w| fx_cell(i, w);
+            let bands: [f32; MAX_METER_BANDS] =
+                std::array::from_fn(|k| self.value(c(fx_word::BAND0 + k)));
+            let st = self.fx_law(i).words(self.value(c(fx_word::GR)), &bands);
+            let mut w = [floor; 10];
+            for (k, wk) in [fx_word::IN_L, fx_word::IN_R, fx_word::OUT_L, fx_word::OUT_R]
+                .into_iter()
+                .enumerate()
+            {
+                w[k] = self.lvl(c(wk));
+            }
+            w[4..].copy_from_slice(&st);
+            bank.set_block(MeterKind::Fx, i, &w);
         }
         bank.set_block(MeterKind::Rta, 0, &[floor; 120]);
     }
@@ -231,7 +309,13 @@ pub fn meter_source(
     levels: Option<Arc<LevelBank>>,
     store: Option<Arc<ParamStore>>,
 ) -> impl FnMut(&MeterBank) + Send + 'static {
-    let mut real = levels.map(RealMeters::new);
+    let mut real = levels.map(|l| {
+        let r = RealMeters::new(l);
+        match &store {
+            Some(s) => r.with_store(s.clone()),
+            None => r,
+        }
+    });
     let mut was_real = false;
     let t0 = Instant::now();
     move |bank| match &mut real {
@@ -287,5 +371,60 @@ mod tests {
         }
         rm.fill(&bank);
         assert_eq!(w(MeterKind::ChannelV2, 1, 0), i16::MIN);
+    }
+
+    /// T082: GR words follow the selected model's law; FX blocks carry slot levels and state words.
+    #[test]
+    fn per_model_gr_laws_and_fx_blocks() {
+        use wing_engine::meters::FxMeter;
+        let store = Arc::new(ParamStore::new());
+        let set = |path: &str, name: &str| {
+            let id = store.lookup(path).unwrap();
+            store.set_enum_name(id, name, 0).unwrap();
+        };
+        set("ch/2/dyn/mdl", "76LA");
+        set("ch/2/gate/mdl", "COMP");
+        set("ch/3/dyn/mdl", "DEQ2");
+        set("bus/1/dyn/mdl", "E88");
+        set("fx/1/mdl", "*SOUL*");
+        set("fx/2/mdl", "C5-CMB");
+        let lv = LevelBank::shared();
+        let mut rm = RealMeters::new(lv.clone()).with_store(store.clone());
+        let bank = MeterBank::for_schema();
+        let ch2 = StripMeter::at(lv.clone(), 1);
+        ch2.level(word::DYN_GR, 10.0);
+        ch2.level(word::GATE_GR, 10.0);
+        let ch3 = StripMeter::at(lv.clone(), 2);
+        ch3.bands(band::DYN, &[-6.0206, 0.0]);
+        StripMeter::at(lv.clone(), 48).level(word::DYN_GR, 40.0);
+        let fx1 = FxMeter::new(lv.clone(), 1);
+        fx1.input(&[0.5], &[0.25]);
+        lv.set(fx_cell(1, fx_word::BAND0), -3.0);
+        rm.update(0.05);
+        rm.fill(&bank);
+        let w = |k, i, j| bank.get(k, i, j).unwrap();
+        // 76LA: needle deflects the other way, -GR/20
+        assert_eq!(w(MeterKind::ChannelV2, 1, 8), -128);
+        assert_eq!(w(MeterKind::Channel, 1, 7), -128);
+        // a compressor in the gate slot uses the compressor law (20 dB), not the gate's 60 dB
+        assert_eq!(w(MeterKind::ChannelV2, 1, 5), 128);
+        assert_eq!(w(MeterKind::ChannelV2, 1, 6), 1);
+        // DEQ2: band 1 at -6 dB in the gain word, band 2 in the state word
+        assert_eq!(w(MeterKind::ChannelV2, 2, 8), -128);
+        assert_eq!(w(MeterKind::ChannelV2, 2, 9), 0);
+        // bus 1 E88: GR/20 capped at 2.5
+        assert_eq!(w(MeterKind::BusV2, 0, 8), 512);
+        // FX 1 (*SOUL*): levels, LEDs off (g = 1 -> 2048)
+        assert!((meter_to_db(w(MeterKind::Fx, 0, 0)) + 6.02).abs() < 0.01);
+        assert!((meter_to_db(w(MeterKind::Fx, 0, 1)) + 12.04).abs() < 0.01);
+        assert_eq!(w(MeterKind::Fx, 0, 2), i16::MIN);
+        assert_eq!(w(MeterKind::Fx, 0, 4), 2048);
+        assert_eq!(w(MeterKind::Fx, 0, 6), 2048);
+        // FX 2 (C5-CMB): band 1 at -3 dB
+        assert_eq!(w(MeterKind::Fx, 1, 4), -1024);
+        assert_eq!(w(MeterKind::Fx, 1, 5), 0);
+        // FX 3 (no model): silent levels, no state
+        assert_eq!(w(MeterKind::Fx, 2, 0), i16::MIN);
+        assert_eq!(w(MeterKind::Fx, 2, 4), 0);
     }
 }

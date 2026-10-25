@@ -185,4 +185,12 @@ impl Model for TripleDeq {
             engaged: g > 0.01,
         }
     }
+
+    fn meter_bands(&self, out: &mut [f32]) -> usize {
+        let n = self.bands.len().min(out.len());
+        for (o, b) in out.iter_mut().zip(&self.bands[..n]) {
+            *o = b.dynamic_gain_db();
+        }
+        n
+    }
 }

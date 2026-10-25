@@ -422,6 +422,9 @@ pub fn build_mix_graph(
     let tiers = bus_tiers(store, cfg.bus_order);
     let logic = cfg.logic.clone().unwrap_or_default();
     let rack = cfg.fx_rack.take().unwrap_or_else(|| FxRack::new(fs, bs));
+    if let Some(bank) = &cfg.meters {
+        rack.attach_meters(bank);
+    }
     let mut g = GraphBuilder::new(bs, cfg.sample_rate, USB_CHANNELS as u32);
     let fb = TapFeedback::new(bs);
     // side-chain keys (T080): every strip publishes/reads keys here, one block late

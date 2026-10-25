@@ -385,7 +385,10 @@ impl ClientCtx {
                             {
                                 meter_ids_logged.push(*id);
                                 let n: usize = selections.iter().map(|s| s.indices.len()).sum();
-                                Some(format!("report {id} defined ({n} meters)"))
+                                Some(format!(
+                                    "report {id} defined ({n} meters: {})",
+                                    crate::nrp::meter::describe_selections(selections)
+                                ))
                             }
                             _ => None,
                         };

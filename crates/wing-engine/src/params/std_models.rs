@@ -51,6 +51,10 @@ impl RtModel for Box<dyn Model> {
         self.telemetry().gain_reduction_db
     }
 
+    fn meter_bands(&self, out: &mut [f32]) -> usize {
+        Model::meter_bands(&**self, out)
+    }
+
     fn latency(&self) -> usize {
         Model::latency(&**self)
     }
