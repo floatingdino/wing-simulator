@@ -13,6 +13,9 @@
 //! | `CHAMBER` | [`chamber`] | 8 | Lexicon-style chamber with echo taps + levels |
 //! | `CONCERT` | [`concert`] | 16 | Lexicon-style concert hall with reflections, depth, chorus |
 //! | `AMBI` | [`ambi`] | 8 | TC/Lexicon-style ambience (ER-dominant, short) |
+//! | `V-ROOM` | [`vintage`] | 16 | Quantec QRS-style vintage room, low-SR band-limit, freeze (T05V) |
+//! | `V-REV` | [`vintage`] | 8 | EMT 250-style chorused loops, front/rear outputs, transformer (T05V) |
+//! | `VSS3` | [`vss3`] | 16 | TC VSS3-style: ER pattern generator + 4-band-decay tail (T05V) |
 //!
 //! Common mappings ([I] = inferred, no console measurement yet): `dcy` = mid-band T60 (s); `mult` = LF T60
 //! multiplier below the model's crossover; `damp` = frequency above which the T60 falls to the model's
@@ -27,6 +30,8 @@ pub mod concert;
 pub mod core;
 pub mod hall;
 pub mod room;
+pub mod vintage;
+pub mod vss3;
 
 use self::core::{Character, CoreParams, ReverbCore};
 use crate::model::{Model, ParamValue};
@@ -139,6 +144,19 @@ pub fn ambi() -> Reverb<8> {
     Reverb::new(&ambi::SPEC)
 }
 
+/// `V-ROOM` (16 lines).
+pub fn v_room() -> vintage::VintageReverb<16> {
+    vintage::VintageReverb::new(&vintage::V_ROOM)
+}
+/// `V-REV` (8 lines).
+pub fn v_rev() -> vintage::VintageReverb<8> {
+    vintage::VintageReverb::new(&vintage::V_REV)
+}
+/// `VSS3`.
+pub fn vss3() -> vss3::Vss3 {
+    vss3::Vss3::new()
+}
+
 /// Factory for the FX catalog (`None` for ids that are not reverbs of this family).
 pub fn create(id: &str) -> Option<Box<dyn Model>> {
     Some(match id {
@@ -147,6 +165,9 @@ pub fn create(id: &str) -> Option<Box<dyn Model>> {
         "CHAMBER" => Box::new(chamber()),
         "CONCERT" => Box::new(concert()),
         "AMBI" => Box::new(ambi()),
+        "V-ROOM" => Box::new(v_room()),
+        "V-REV" => Box::new(v_rev()),
+        "VSS3" => Box::new(vss3()),
         _ => return None,
     })
 }
@@ -210,3 +231,5 @@ impl<const N: usize> Model for Reverb<N> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_vintage;

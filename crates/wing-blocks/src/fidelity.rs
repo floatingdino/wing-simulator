@@ -645,7 +645,7 @@ mod tests {
 
     #[test]
     fn stub_is_flat_and_cascade_eval() {
-        let mut s = create_model(BlockKind::Fx, "V-REV");
+        let mut s = create_model(BlockKind::Fx, "NONE");
         let m = magnitude_response(&mut *s, 48_000.0, &[100.0, 1000.0], 256);
         assert!(m.iter().all(|d| d.abs() < 1e-9));
         // unity and a pure gain section

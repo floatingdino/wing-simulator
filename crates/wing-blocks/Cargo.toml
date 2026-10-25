@@ -83,3 +83,7 @@ harness = false
 [[bench]]
 name = "fx_reverb"
 harness = false
+
+[[bench]]
+name = "fx_reverb_vintage"
+harness = false

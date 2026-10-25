@@ -18,6 +18,10 @@
 //!  wet = ER x er_level + echo + tail x tail_level (CONCERT: + modulated chorus of the tail) -> LO CUT -> HI CUT
 //! ```
 //!
+//! T05V extensions (V-ROOM / V-REV / VSS3, all optional, defaults keep the T05R behaviour): per-preset
+//! crossover and HF-ratio overrides, a fourth decay band (one more high shelf per line, VSS3's 4-band decay
+//! multipliers) and a second, orthogonal output tap set crossfaded by `rear` (EMT 250-style rear outputs).
+//!
 //! Design sources (algorithms only, no code copied; all permissive / public):
 //! - Feedback delay network with a unitary feedback matrix and per-line absorbent gains
 //!   `g_i = 10^(-3 L_i / (fs T60))` (L_i = loop length of line i in samples) so every path decays at the same
@@ -67,8 +71,9 @@ pub const GLIDE_S: f32 = 0.08;
 pub const XFADE_S: f32 = 0.03;
 /// Values below this are flushed to zero in recursive paths.
 const FLUSH: f32 = 1e-18;
-/// Upper bound of any per-pass loop gain (stability margin; corresponds to T60 > 400 s for a 30 ms line).
-const MAX_GAIN: f32 = 0.9995;
+/// Upper bound of any per-pass loop gain (stability margin; T60 > 4000 s for a 30 ms line, so a V-ROOM
+/// freeze holds).
+const MAX_GAIN: f32 = 0.999_95;
 /// `ln(1000)`: T60 is a 60 dB (x1000 amplitude) decay.
 const LN_1000: f32 = 6.907_755;
 
@@ -161,6 +166,15 @@ pub struct CoreParams {
     pub echo_to_tail: f32,
     /// Chorus on the tail output 0..1 (CONCERT `crs`).
     pub chorus: f32,
+    /// Bass-multiplier crossover override (Hz; `None` = [`Character::xover_hz`]). VSS3 `lxo`.
+    pub xover_hz: Option<f32>,
+    /// HF T60 ratio override (`None` = [`Character::hf_ratio`]). V-ROOM/V-REV `hmult`, VSS3 `hdcy`.
+    pub hf_ratio: Option<f32>,
+    /// Optional fourth decay band (T05V, VSS3): `(split Hz, T60 ratio)`; between the split and `damp_hz` the
+    /// T60 is `decay_s x ratio` (an extra high shelf per line; `hf_ratio` still applies above `damp_hz`).
+    pub mid_split: Option<(f32, f32)>,
+    /// Output tap-set crossfade, 0 = front pair (default), 1 = rear pair (T05V, V-REV `out`).
+    pub rear: f32,
 }
 
 impl Default for CoreParams {
@@ -183,6 +197,10 @@ impl Default for CoreParams {
             echo: [Echo::default(); 2],
             echo_to_tail: 0.0,
             chorus: 0.0,
+            xover_hz: None,
+            hf_ratio: None,
+            mid_split: None,
+            rear: 0.0,
         }
     }
 }
@@ -400,11 +418,18 @@ pub struct ReverbCore<const N: usize> {
     gm: [f32; N],
     ls: LaneBiquads<N>,
     hs: LaneBiquads<N>,
+    /// Optional 4th-band shelf ([`CoreParams::mid_split`]); only run when `bands4`.
+    hs2: LaneBiquads<N>,
+    bands4: bool,
     decay: Glide,
     mult: Glide,
     damp: Glide,
-    /// Decay / damping / size values the gains were last computed for.
-    gain_key: [f32; 4],
+    xover: Glide,
+    hf: Glide,
+    mid_hz: Glide,
+    mid_ratio: Glide,
+    /// Decay / bass mult / damping / size / crossover / hf ratio / split / split ratio the gains were computed for.
+    gain_key: [f32; 8],
     lfo_c: [f32; N],
     lfo_s: [f32; N],
     rot_c: [f32; N],
@@ -416,6 +441,10 @@ pub struct ReverbCore<const N: usize> {
     in_r: [f32; N],
     out_l: [f32; N],
     out_r: [f32; N],
+    /// Rear output tap vectors ([`CoreParams::rear`]).
+    out_l2: [f32; N],
+    out_r2: [f32; N],
+    rear: Glide,
 
     // ---- output
     er_lvl: Glide,
@@ -449,7 +478,11 @@ impl<const N: usize> ReverbCore<N> {
         let mut in_r = [0.0; N];
         let mut out_l = [0.0; N];
         let mut out_r = [0.0; N];
+        let mut out_l2 = [0.0; N];
+        let mut out_r2 = [0.0; N];
         for i in 0..N {
+            out_l2[i] = sign(71, i) * norm;
+            out_r2[i] = sign(89, i) * norm;
             in_l[i] = sign(11, i) * norm;
             in_r[i] = sign(23, i) * norm;
             out_l[i] = sign(37, i) * norm;
@@ -487,10 +520,16 @@ impl<const N: usize> ReverbCore<N> {
             gm: [0.0; N],
             ls: LaneBiquads::default(),
             hs: LaneBiquads::default(),
+            hs2: LaneBiquads::default(),
+            bands4: false,
             decay: Glide::default(),
             mult: Glide::default(),
             damp: Glide::default(),
-            gain_key: [f32::NAN; 4],
+            xover: Glide::default(),
+            hf: Glide::default(),
+            mid_hz: Glide::default(),
+            mid_ratio: Glide::default(),
+            gain_key: [f32::NAN; 8],
             lfo_c: [1.0; N],
             lfo_s: [0.0; N],
             rot_c: [1.0; N],
@@ -502,6 +541,9 @@ impl<const N: usize> ReverbCore<N> {
             in_r,
             out_l,
             out_r,
+            out_l2,
+            out_r2,
+            rear: Glide::default(),
             er_lvl: Glide::default(),
             tail_lvl: Glide::default(),
             to_tail: Glide::default(),
@@ -571,7 +613,7 @@ impl<const N: usize> ReverbCore<N> {
         self.ap_mask = ap_frames - 1;
         let chorus_len = (12.0 * ms) as usize + 4;
         self.chorus_line = [DelayLine::new(chorus_len), DelayLine::new(chorus_len)];
-        self.gain_key = [f32::NAN; 4];
+        self.gain_key = [f32::NAN; 8];
         self.rate_key = f32::NAN;
         self.filt_key = [f32::NAN; 2];
         self.reset();
@@ -603,6 +645,7 @@ impl<const N: usize> ReverbCore<N> {
         }
         self.ls.reset();
         self.hs.reset();
+        self.hs2.reset();
         for i in 0..N {
             let ph = i as f32 * 2.399_963; // golden angle
             self.lfo_c[i] = ph.cos();
@@ -629,7 +672,14 @@ impl<const N: usize> ReverbCore<N> {
         self.buf.iter().flatten().for_each(|&x| chk(x));
         self.ap_buf.iter().flatten().for_each(|&x| chk(x));
         self.pre.iter().flatten().for_each(|&x| chk(x));
-        for v in [&self.ls.s1, &self.ls.s2, &self.hs.s1, &self.hs.s2] {
+        for v in [
+            &self.ls.s1,
+            &self.ls.s2,
+            &self.hs.s1,
+            &self.hs.s2,
+            &self.hs2.s1,
+            &self.hs2.s2,
+        ] {
             v.iter().for_each(|&x| chk(x));
         }
         for side in &self.diff {
@@ -677,9 +727,22 @@ impl<const N: usize> ReverbCore<N> {
             self.echo_fb[c].tgt = e.feedback.clamp(-0.98, 0.98);
         }
         self.diffusion.tgt = p.diffusion.clamp(0.0, 1.0);
-        self.decay.tgt = p.decay_s.clamp(0.05, 200.0);
+        self.decay.tgt = p.decay_s.clamp(0.05, 5000.0);
         self.mult.tgt = p.bass_mult.clamp(0.1, 10.0);
-        self.damp.tgt = p.damp_hz.clamp(200.0, 0.45 * self.fs);
+        // shelf corners are kept ordered (xover <= split <= damp): the cascade's log-magnitude then stays
+        // between the band gains (no corner overlap can push a line gain above 1)
+        let nyq = 0.45 * self.fs;
+        let xo = p.xover_hz.unwrap_or(ch.xover_hz).clamp(20.0, nyq);
+        self.xover.tgt = xo;
+        self.hf.tgt = p.hf_ratio.unwrap_or(ch.hf_ratio).clamp(0.01, 20.0);
+        self.bands4 = p.mid_split.is_some();
+        let (mh, mr) = p.mid_split.unwrap_or((1000.0, 1.0));
+        let mid = mh.clamp(xo, nyq);
+        self.mid_hz.tgt = mid;
+        self.mid_ratio.tgt = mr.clamp(0.01, 20.0);
+        let lowest_damp = if self.bands4 { mid } else { xo };
+        self.damp.tgt = p.damp_hz.clamp(200.0, nyq).max(lowest_damp);
+        self.rear.tgt = p.rear.clamp(0.0, 1.0);
         self.mod_rate.tgt = p.mod_rate_hz.clamp(0.0, 20.0);
         // depth never reaches the shortest line (reads stay >= 2 samples)
         let min_line = self.base_ms.iter().fold(f32::MAX, |a, &b| a.min(b)) * scale * ms;
@@ -692,7 +755,7 @@ impl<const N: usize> ReverbCore<N> {
         self.hc.tgt = p.hc_hz.clamp(100.0, 0.45 * self.fs);
     }
 
-    fn glides(&mut self) -> [&mut Glide; 20] {
+    fn glides(&mut self) -> [&mut Glide; 25] {
         let [l0, l1] = &mut self.echo_lvl;
         let [f0, f1] = &mut self.echo_fb;
         [
@@ -708,6 +771,11 @@ impl<const N: usize> ReverbCore<N> {
             &mut self.decay,
             &mut self.mult,
             &mut self.damp,
+            &mut self.xover,
+            &mut self.hf,
+            &mut self.mid_hz,
+            &mut self.mid_ratio,
+            &mut self.rear,
             &mut self.mod_rate,
             &mut self.mod_depth,
             &mut self.er_lvl,
@@ -752,27 +820,45 @@ impl<const N: usize> ReverbCore<N> {
             }
         }
         // decay gains (3 bands per line)
-        let key = [self.decay.cur, self.mult.cur, self.damp.cur, self.scale.cur];
+        let key = [
+            self.decay.cur,
+            self.mult.cur,
+            self.damp.cur,
+            self.scale.cur,
+            self.xover.cur,
+            self.hf.cur,
+            self.mid_hz.cur,
+            self.mid_ratio.cur,
+        ];
         if key != self.gain_key {
             self.gain_key = key;
             let fs64 = fs as f64;
             let t_mid = key[0];
             let t_lo = t_mid * key[1];
-            let t_hi = t_mid * self.ch.hf_ratio;
-            let xover = (self.ch.xover_hz as f64).min(fs64 * 0.45);
+            let t_hi = t_mid * key[5];
+            let xover = key[4] as f64;
             let damp = key[2] as f64;
+            // 4-band: the shelf at `damp` steps from the split band's gain (not the mid gain) to the HF gain
+            let t_split = t_mid * if self.bands4 { key[7] } else { 1.0 };
             for i in 0..N {
                 let len = self.base_ms[i] * key[3] * ms + self.ap_len[i] as f32;
                 let k = -LN_1000 * len / fs;
                 let gm = (k / t_mid).exp().min(MAX_GAIN);
                 let gl = (k / t_lo).exp().min(MAX_GAIN);
                 let gh = (k / t_hi).exp().min(MAX_GAIN);
+                let gs = (k / t_split).exp().min(MAX_GAIN);
                 self.gm[i] = gm;
-                let db = |g: f32| 20.0 * (g / gm).log10() as f64;
+                let db = |g: f32, r: f32| 20.0 * (g / r).log10() as f64;
                 self.ls
-                    .set(i, Coeffs::low_shelf_slope(fs64, xover, 1.0, db(gl)));
+                    .set(i, Coeffs::low_shelf_slope(fs64, xover, 1.0, db(gl, gm)));
                 self.hs
-                    .set(i, Coeffs::high_shelf_slope(fs64, damp, 1.0, db(gh)));
+                    .set(i, Coeffs::high_shelf_slope(fs64, damp, 1.0, db(gh, gs)));
+                if self.bands4 {
+                    self.hs2.set(
+                        i,
+                        Coeffs::high_shelf_slope(fs64, key[6] as f64, 1.0, db(gs, gm)),
+                    );
+                }
             }
         }
         // LFO rotation per line
@@ -829,6 +915,9 @@ impl<const N: usize> ReverbCore<N> {
         let (mut tt, tt_i) = ramp(&mut self.to_tail);
         let (mut cr, cr_i) = ramp(&mut self.chorus);
         let (mut depth, depth_i) = ramp(&mut self.mod_depth);
+        let (mut rr, rr_i) = ramp(&mut self.rear);
+        let rear_on = rr > 0.0 || self.rear.cur > 0.0;
+        let bands4 = self.bands4;
         let (sc0, sc1) = self.scale.step(a);
         for g in [
             &mut self.shape,
@@ -836,6 +925,10 @@ impl<const N: usize> ReverbCore<N> {
             &mut self.decay,
             &mut self.mult,
             &mut self.damp,
+            &mut self.xover,
+            &mut self.hf,
+            &mut self.mid_hz,
+            &mut self.mid_ratio,
             &mut self.mod_rate,
             &mut self.lc,
             &mut self.hc,
@@ -969,6 +1062,9 @@ impl<const N: usize> ReverbCore<N> {
             }
             self.ls.tick(&mut f);
             self.hs.tick(&mut f);
+            if bands4 {
+                self.hs2.tick(&mut f);
+            }
             for i in 0..N {
                 let f = f[i];
                 let s = self.ap_buf[aw.wrapping_sub(self.ap_len[i]) & apm][i];
@@ -982,6 +1078,16 @@ impl<const N: usize> ReverbCore<N> {
             for i in 0..N {
                 ol += self.out_l[i] * a[i];
                 or += self.out_r[i] * a[i];
+            }
+            if rear_on {
+                rr += rr_i;
+                let (mut ol2, mut or2) = (0.0, 0.0);
+                for i in 0..N {
+                    ol2 += self.out_l2[i] * a[i];
+                    or2 += self.out_r2[i] * a[i];
+                }
+                ol += rr * (ol2 - ol);
+                or += rr * (or2 - or);
             }
             hadamard(&mut a);
             let mut wv = [0.0f32; N];
@@ -1030,6 +1136,7 @@ impl<const N: usize> ReverbCore<N> {
         }
         self.ls.flush();
         self.hs.flush();
+        self.hs2.flush();
         for b in self.out_hp.iter_mut().chain(self.out_lp.iter_mut()) {
             b.flush_denormals();
         }
