@@ -34,6 +34,7 @@ use wing_model::ParamStore;
 
 use super::stats::AudioStats;
 use super::ConsoleControl;
+use crate::record::{RecordSlot, RecordTap};
 
 /// Input channels and aux channels.
 pub const CHANNELS: usize = 40;
@@ -164,6 +165,9 @@ pub struct Console {
     stats: Arc<AudioStats>,
     port_meters: Option<PortMeters>,
     cfg: ConsoleConfig,
+    /// Recorder hand-over slot (T061) and the tap being recorded.
+    rec_slot: Option<Arc<RecordSlot>>,
+    rec: Option<Box<RecordTap>>,
 }
 
 impl Console {
@@ -206,7 +210,16 @@ impl Console {
             stats,
             port_meters,
             cfg,
+            rec_slot: None,
+            rec: None,
         })
+    }
+
+    /// Poll `slot` for recordings (T061) from now on; publishes this console's rate to it.
+    /// Control thread.
+    pub fn attach_recorder(&mut self, slot: Arc<RecordSlot>) {
+        slot.set_sample_rate(self.cfg.sample_rate);
+        self.rec_slot = Some(slot);
     }
 
     /// Give back the pipeline (to rebuild at another rate).
@@ -250,7 +263,7 @@ impl Console {
     }
 
     /// One engine cycle: apply queued parameter changes, fill USB In 1..48 with `input(ch, buf)`,
-    /// process, meter the ports, hand USB Out 1..48 to `output(ch, buf)`, feed the host bridges, publish
+    /// process, meter the ports, hand USB Out 1..48 to `output(ch, buf)`, feed the recorder (T061) and the host bridges, publish
     /// telemetry and record the cycle time. RT-safe (no allocation, locks or syscalls).
     #[inline]
     pub fn cycle(
@@ -272,6 +285,17 @@ impl Console {
         let usb = self.nodes.usb_out;
         for ch in 0..USB_CHANNELS {
             output(ch, self.engine.port(Port::node(usb, ch as u32)));
+        }
+        if let Some(slot) = &self.rec_slot {
+            if slot.poll(&mut self.rec) {
+                if let Some(r) = &mut self.rec {
+                    r.resolve(&self.nodes);
+                }
+            }
+            if let Some(r) = &mut self.rec {
+                let engine = &self.engine;
+                r.push(self.cfg.block, &self.silence, |p| engine.port(p));
+            }
         }
         if !self.feeds.is_empty() {
             // Unstamped: the burst is stamped once by `end_burst` (T027).

@@ -52,3 +52,7 @@ FX-rack versions reuse channel EQ/dyn blocks where identical.
     (per-model FX slot latency or engine align target); (2) `fx_eqdyn.py`'s post hook works for every
     `fx_parchg_*` - other FX tasks can record exact parameter mappings the same way; (3) record the DE-S2 /
     C5-CMB / LIMITER / DEQ3 posted constants over parameter grids to pin down ranges/scales.
+- 2026-10-25 agent-T05Q: merged main (T05D/T05M/T05E/T05R). Conflicts: additive lines in model.rs, models/mod.rs,
+  Cargo.toml (union); `crates/wing-engine/tests/fx.rs` taken from main, whose expectations already derive every
+  insert delay from `FxRack::slot_latency` (= max latency over the slot's registered models) - no hard-coded slot
+  latency left (doc comment de-numbered). Slot latency is now max(T05E 46, LIMITER 50) = 50. `make check` passes.

@@ -3,7 +3,8 @@
 See docs/ARCHITECTURE.md for the design and backlog/README.md for the task protocol.
 
 ## Commands
-- `make check`: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test` (must pass before review)
+- `make check`: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test` (fast set; ~2 min; run routinely, must pass before review)
+- `make check-full`: same plus `cargo test --workspace --release -- --include-ignored` (~2 min incl. build); run before finishing a DSP task. Keep `make check` under 5 min: any test slower than ~10 s in dev must be `#[ignore = "slow: run with make check-full"]` with a sampled fast variant covering the same path. (wing-blocks/wing-hostio build at opt-level 2 in dev, see Cargo.toml.)
 - `make bench`: criterion benches (`cargo bench -p wing-dsp`)
 - `make fmt`: format; `make build`: release build
 - `make app`: WingSimMenu menu-bar app (Swift, `apps/WingSimMenu/build.sh`), its Swift tests and a launch/quit smoke test (not part of `make check`)

@@ -23,7 +23,8 @@ Rules for engineering agents
 5. If you discover new required work, do not expand scope: add a `Proposed follow-ups` list in the Log.
 6. Never commit WING-Edit.app, firmware binaries, or large audio. Never run sudo; if something needs root,
    write the exact command into the Log and set `status: blocked`.
-7. RT code rules: no alloc/lock/syscall/logging on audio threads; every DSP block has a unit test and a bench.
+7. Run `make check` routinely (fast, ~2 min) and `make check-full` (release, includes `#[ignore = "slow: ..."]` tests) before setting `status: review` on a DSP task. Heavy tests must be `#[ignore]`d with a sampled fast variant so `make check` stays < 5 min.
+8. RT code rules: no alloc/lock/syscall/logging on audio threads; every DSP block has a unit test and a bench.
 
 Coordinator rule: the coordinator never edits a task file on `main` while that task's branch is in flight (it causes
 merge conflicts); in-flight status is tracked by the coordinator outside the file until merge.
@@ -34,3 +35,6 @@ block (name + harness = false) in crates/wing-blocks/Cargo.toml.
 
 Coordinator merge rule: `tools/merge-union.py` is only for additive files (Cargo.toml, `pub mod` lists, registration
 lines). Any conflict in real code → abort the merge and send it back to the task agent to merge `main` and resolve.
+
+Tests must not hard-code the FX slot latency (it is the max over every model a slot can host and grows as FX
+families land) — derive it from the registry (`max_latency`).

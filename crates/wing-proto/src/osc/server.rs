@@ -16,7 +16,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 use wing_model::{Change, ParamStore};
 
 use super::codec::MAX_PACKET;
-use super::service::{OscService, SubState, DEFAULT_SUB_TIMEOUT};
+use super::service::{OscService, SimExtension, SubState, DEFAULT_SUB_TIMEOUT};
 use crate::discovery::Identity;
 use crate::server::SceneLibrary;
 
@@ -36,6 +36,9 @@ pub struct OscConfig {
     /// Scene library behind `$ctl/lib/$action` and `/wingsim/scene...` (T017/T065); `None`:
     /// the `$ctl/lib` leaves are plain parameters and `/wingsim/` answers `NODE NOT FOUND`.
     pub library: Option<Arc<dyn SceneLibrary>>,
+    /// Other `/wingsim/...` commands (e.g. the daemon's recorder, T061), tried before the
+    /// library's.
+    pub extension: Option<Arc<dyn SimExtension>>,
 }
 
 impl std::fmt::Debug for OscConfig {
@@ -46,6 +49,7 @@ impl std::fmt::Debug for OscConfig {
             .field("advertise_ip", &self.advertise_ip)
             .field("sub_timeout", &self.sub_timeout)
             .field("library", &self.library.is_some())
+            .field("extension", &self.extension.is_some())
             .finish()
     }
 }
@@ -58,6 +62,7 @@ impl Default for OscConfig {
             advertise_ip: None,
             sub_timeout: DEFAULT_SUB_TIMEOUT,
             library: None,
+            extension: None,
         }
     }
 }
@@ -112,7 +117,8 @@ impl OscServer {
                 cfg.sub_timeout,
                 att.subs,
             )
-            .with_library(cfg.library),
+            .with_library(cfg.library)
+            .with_extension(cfg.extension),
         );
         Ok(OscServer {
             sock: s.into(),

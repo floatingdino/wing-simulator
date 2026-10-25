@@ -371,6 +371,28 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "C5-CMB") => Box::new(crate::models::fx_eqdyn::Combinator::new()),
         (BlockKind::Fx, "SPKMAN") => Box::new(crate::models::fx_eqdyn::SpeakerManager::new()),
         (BlockKind::Fx, "DEQ3") => Box::new(crate::models::fx_eqdyn::TripleDeq::new()),
+        (BlockKind::Fx, "TAP-DL") => Box::new(crate::models::fx_delay::TapDelay::new()),
+        (BlockKind::Fx, "TAPE-DL") => Box::new(crate::models::fx_delay::TapeDelay::new()),
+        (BlockKind::Fx, "OILCAN") => Box::new(crate::models::fx_delay::Oilcan::new()),
+        (BlockKind::Fx, "BBD-DL") => Box::new(crate::models::fx_delay::BbdDelay::new()),
+        (BlockKind::Fx, "DIMCRS") => Box::new(crate::models::fx_mod::DimensionChorus::new()),
+        (BlockKind::Fx, "CHORUS") => Box::new(crate::models::fx_mod::ModDelay::chorus()),
+        (BlockKind::Fx, "FLANGER") => Box::new(crate::models::fx_mod::ModDelay::flanger()),
+        (BlockKind::Fx, "PHASER") => Box::new(crate::models::fx_mod::Phaser::new()),
+        (BlockKind::Fx, "ROTARY") => Box::new(crate::models::fx_mod::Rotary::new()),
+        (BlockKind::Fx, "PANNER") => Box::new(crate::models::fx_mod::Panner::new()),
+        (BlockKind::Fx, "MOOD") => Box::new(crate::models::fx_mod::MoodFilter::new()),
+        (BlockKind::Fx, "ENHANCE") => Box::new(crate::models::fx_enhance::UltraEnhancer::new()),
+        (BlockKind::Fx, "EXCITER") => Box::new(crate::models::fx_enhance::Exciter::new()),
+        (BlockKind::Fx, "P-BASS") => Box::new(crate::models::fx_enhance::PsychoBass::new()),
+        (BlockKind::Fx, "SUB-M") => Box::new(crate::models::fx_enhance::SubMonster::new()),
+        (BlockKind::Fx, "V-IMG") => Box::new(crate::models::fx_enhance::VelvetImager::new()),
+        (BlockKind::Fx, "TAPE") => Box::new(crate::models::fx_enhance::TapeMachine::new()),
+        (BlockKind::Fx, "HALL") => Box::new(crate::models::fx_reverb::hall()),
+        (BlockKind::Fx, "ROOM") => Box::new(crate::models::fx_reverb::room()),
+        (BlockKind::Fx, "CHAMBER") => Box::new(crate::models::fx_reverb::chamber()),
+        (BlockKind::Fx, "CONCERT") => Box::new(crate::models::fx_reverb::concert()),
+        (BlockKind::Fx, "AMBI") => Box::new(crate::models::fx_reverb::ambi()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -527,8 +549,12 @@ mod tests {
         }
         let fx_implemented = [
             // One line per FX model family.
+            "ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL",
             "ST-DL",
             "GEQ", "PIA", "LIMITER", "DE-S2", "SOUL", "E88", "E84", "F110", "PULSAR", "MACH4", "C5-CMB", "SPKMAN", "DEQ3",
+            "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
+            "ENHANCE", "EXCITER", "P-BASS", "SUB-M", "V-IMG", "TAPE",
+            "HALL", "ROOM", "CHAMBER", "CONCERT", "AMBI",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);
@@ -541,7 +567,7 @@ mod tests {
     #[test]
     fn stub_is_passthrough() {
         // Every dynamics model is implemented now; FX models are still stubs (T05x).
-        let mut m = create_model(BlockKind::Fx, "HALL");
+        let mut m = create_model(BlockKind::Fx, "V-REV");
         m.prepare(48_000.0, 64);
         m.set_param(1, ParamValue::Float(12.0));
         let mut l: Vec<f32> = (0..64).map(|i| (i as f32 * 0.1).sin()).collect();

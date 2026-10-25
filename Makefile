@@ -1,9 +1,15 @@
-.PHONY: check fmt build bench app
+.PHONY: check check-full fmt build bench app
 
 check:
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cargo test --workspace
+
+# Everything: fast set plus #[ignore = "slow: ..."] tests, in release (T074). Run before finishing a DSP task.
+check-full:
+	cargo fmt --all --check
+	cargo clippy --workspace --all-targets -- -D warnings
+	cargo test --workspace --release -- --include-ignored
 
 fmt:
 	cargo fmt --all

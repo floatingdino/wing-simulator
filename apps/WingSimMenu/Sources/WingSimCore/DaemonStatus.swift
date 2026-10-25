@@ -17,6 +17,9 @@ public struct DaemonStatus: Codable, Equatable, Sendable {
     public var hostioPath: String?
     public var hostio: String
     public var audio: AudioReport?
+    /// Recorder (T061); optional so documents from older daemons still decode.
+    public var recording: Bool?
+    public var recorder: String?
 
     /// Decode the JSON document the daemon writes.
     public static func decode(_ data: Data) throws -> DaemonStatus {

@@ -43,6 +43,7 @@ use super::stats::{AudioStats, Snapshot};
 use super::workgroup::WorkInterval;
 use super::ConsoleControl;
 use super::LogFn;
+use crate::record::Recorder;
 
 /// How long the RT thread blocks waiting for a driver cycle before re-checking its flags.
 pub const WAIT_TIMEOUT: Duration = Duration::from_millis(10);
@@ -81,6 +82,10 @@ impl Default for AudioOptions {
 /// Process every complete engine block the driver has made available: USB In → console →
 /// USB Out → commit, then stamp the host bridges once for the whole burst (T027). Partial
 /// blocks wait for the next driver cycle. Returns frames processed. RT-safe.
+///
+/// The daemon heartbeat is refreshed per block (one `mach_absolute_time` + relaxed store), so a
+/// long burst (a console slower than realtime fed continuously, or a large backlog) never looks
+/// like a dead daemon to the driver, which would drop to loopback after 100 ms.
 #[inline]
 pub fn service(link: &mut DaemonLink, console: &mut Console) -> usize {
     let block = console.block();
@@ -89,6 +94,7 @@ pub fn service(link: &mut DaemonLink, console: &mut Console) -> usize {
         if b.frames < block {
             break;
         }
+        link.heartbeat();
         let l = &*link;
         console.cycle(
             |ch, buf| l.read_input(&b, ch, buf),
@@ -269,6 +275,7 @@ pub struct AudioService {
     report: Arc<Mutex<AudioReport>>,
     pending_hostio: PendingHostIo,
     stats: Arc<AudioStats>,
+    recorder: Arc<Recorder>,
 }
 
 impl AudioService {
@@ -279,6 +286,18 @@ impl AudioService {
         routing: ConsoleControl,
         opts: AudioOptions,
         log: LogFn,
+    ) -> std::io::Result<Self> {
+        Self::spawn_with_recorder(store, routing, opts, log, Recorder::new())
+    }
+
+    /// [`spawn`](Self::spawn) with a recorder (T061) shared with e.g. the OSC server: every
+    /// console the service builds polls its slot.
+    pub fn spawn_with_recorder(
+        store: Arc<ParamStore>,
+        routing: ConsoleControl,
+        opts: AudioOptions,
+        log: LogFn,
+        recorder: Arc<Recorder>,
     ) -> std::io::Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
         let status = Arc::new(Mutex::new("audio: starting".to_string()));
@@ -303,6 +322,7 @@ impl AudioService {
             wi: None,
             last_snap: Snapshot::default(),
             last_status: Instant::now(),
+            recorder: recorder.clone(),
         };
         let thread = std::thread::Builder::new()
             .name("wing-audio".into())
@@ -314,7 +334,13 @@ impl AudioService {
             report,
             pending_hostio,
             stats,
+            recorder,
         })
+    }
+
+    /// The recorder (T061).
+    pub fn recorder(&self) -> &Arc<Recorder> {
+        &self.recorder
     }
 
     /// The latest machine-readable status.
@@ -403,6 +429,7 @@ struct Control {
     wi: Option<Arc<WorkInterval>>,
     last_snap: Snapshot,
     last_status: Instant,
+    recorder: Arc<Recorder>,
 }
 
 impl Control {
@@ -564,6 +591,7 @@ impl Control {
             feeds,
             self.stats.clone(),
         )?;
+        console.attach_recorder(self.recorder.slot().clone());
         // Prime: fault in buffers and wake the workers before the first driver cycle.
         let built_ms = t0.elapsed().as_secs_f64() * 1e3;
         console.warm_up(SESSION_WARM_UP_CYCLES);
@@ -728,7 +756,7 @@ impl Control {
         let over = st.to_daemon.overruns.wrapping_sub(s.base_overruns);
         let message = format!(
             "audio: {} Hz, driver {driver}, load {:.1}% (peak {:.1}%), cycle p50 {} us p99 {} us, \
-             xruns {} (driver underruns {under}, overruns {over}), slow cycles {}, {policy}{}, {}",
+             xruns {} (driver underruns {under}, overruns {over}), slow cycles {}, {policy}{}, {}, {}",
             s.rate,
             d.load_pct(),
             d.peak_load_pct(),
@@ -741,7 +769,8 @@ impl Control {
             } else {
                 ""
             },
-            s.hosts.status(s.rate, upstream_ms)
+            s.hosts.status(s.rate, upstream_ms),
+            self.recorder.status()
         );
         AudioReport {
             attached: true,
