@@ -9,3 +9,5 @@ WING-Edit.app/
 !fixtures/audio/*.wav
 /PUBLIC.snap
 __pycache__/
+.build/
+.swiftpm/

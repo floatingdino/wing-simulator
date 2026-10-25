@@ -621,6 +621,47 @@ fn service_attaches_processes_follows_rate_and_detaches() {
     assert!(log.contains("falls back to loopback"), "{log}");
 }
 
+/// T064 live reload: `set_hostio` restarts the session with the new bridges, and the
+/// machine-readable report follows (the device does not exist: its bridge stays stopped).
+#[test]
+fn service_reloads_host_outputs_live() {
+    let shm = TmpShm::new("hio");
+    let create = OpenOptions {
+        create: true,
+        ..Default::default()
+    };
+    let drv = DriverSim::new(Segment::open(&shm.0, &create).unwrap(), FS);
+    let Rig { store, routing } = rig();
+    let (svc, lines) = spawn_service(&shm.0, store, routing);
+    wait_for("attach", Duration::from_secs(60), || {
+        let r = svc.report();
+        drv.daemon_alive() && r.attached && r.rate == 48_000
+    });
+    assert!(svc.report().bridges.is_empty());
+    let dev = "WingSim T064 No Such Device";
+    svc.set_hostio(Some(HostIoConfig {
+        routes: vec![Route::parse(&format!("usb_out/1-2 -> \"{dev}\" 1/2")).unwrap()],
+        ..HostIoConfig::default()
+    }));
+    wait_for("bridge added", Duration::from_secs(60), || {
+        let r = svc.report();
+        r.attached && r.bridges.len() == 1
+    });
+    let r = svc.report();
+    assert_eq!(r.bridges[0].device, dev);
+    assert!(r.bridges[0].e2e_ms.is_none(), "{r:?}");
+    assert!(r.message.contains(dev), "{}", r.message);
+    svc.set_hostio(None);
+    wait_for("bridge removed", Duration::from_secs(60), || {
+        let r = svc.report();
+        r.attached && r.bridges.is_empty() && drv.daemon_alive()
+    });
+    svc.stop();
+    assert!(!drv.daemon_alive());
+    let log = lines.lock().unwrap().join("\n");
+    assert!(log.contains("host outputs reconfigured"), "{log}");
+}
+
 #[test]
 fn service_reports_incompatible_driver_then_reattaches_after_reinstall() {
     let shm = TmpShm::new("v1");

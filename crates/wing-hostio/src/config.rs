@@ -440,6 +440,35 @@ mod tests {
         TapChannel { tap, lane }
     }
 
+    /// The TOML WingSimMenu writes (T064; its Swift tests assert they generate exactly this
+    /// file) is accepted with the intended meaning.
+    #[test]
+    fn parses_wingsimmenu_output() {
+        let c =
+            HostIoConfig::from_toml_str(include_str!("../../../fixtures/hostio/wingsimmenu.toml"))
+                .unwrap();
+        assert_eq!(c.latency, Duration::from_millis(5));
+        assert_eq!(c.buffer_frames, Some(256));
+        assert_eq!(c.routes.len(), 4);
+        assert_eq!(c.routes[1].sources, vec![tc(Tap::Bus(3), LEFT)]);
+        assert_eq!(c.routes[1].device_channels, vec![2]);
+        assert_eq!(c.routes[1].latency, Some(Duration::from_micros(8500)));
+        assert_eq!(
+            c.routes[2].sources,
+            vec![tc(Tap::UsbOut, 45), tc(Tap::UsbOut, 46)]
+        );
+        assert_eq!(
+            c.routes[3]
+                .sources
+                .iter()
+                .map(|s| s.lane)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3, 5]
+        );
+        assert_eq!(c.routes[3].device_channels, vec![1, 2, 3, 4]);
+        assert_eq!(c.devices().unwrap().len(), 3);
+    }
+
     #[test]
     fn parses_tap_references() {
         let r = Route::parse(r#"mon/1 -> "Scarlett 2i4 USB" 1/2"#).unwrap();
