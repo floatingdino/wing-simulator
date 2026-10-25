@@ -422,6 +422,9 @@ dependencies = [
 [[package]]
 name = "wing-model"
 version = "0.1.0"
+dependencies = [
+ "criterion",
+]
 
 [[package]]
 name = "wing-proto"
