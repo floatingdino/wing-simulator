@@ -2,7 +2,7 @@
 id: T017
 title: State persistence + scene library
 stage: S1
-status: review
+status: done
 owner: engineering-agent
 depends: [T011, T013]
 branch: task/T017
