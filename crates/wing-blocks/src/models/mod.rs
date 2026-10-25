@@ -15,5 +15,6 @@ pub mod fx_enhance;
 pub mod fx_eqdyn;
 pub mod fx_mod;
 pub mod fx_reverb;
+pub mod fx_strip;
 pub mod gate_vintage;
 pub mod pse;

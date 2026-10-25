@@ -30,6 +30,7 @@ use crate::models::dyn_eq::{DeEsser902, DynEq};
 use crate::models::dyn_special::{AutoRider, TransientDesigner, WarmthPre};
 use crate::models::eq_alt::{AltEq, AltKind};
 use crate::models::filter_tool::FilterToolModel;
+use crate::models::fx_strip::{ChannelStrip, ExternalLoop, StripKind};
 use crate::models::gate_vintage::{VintageGate, VintageGateKind};
 use crate::models::pse::{PseKind, SourceExtractor};
 use crate::std_models::{DynModel, GateModel, StdEqModel};
@@ -382,6 +383,12 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "ROTARY") => Box::new(crate::models::fx_mod::Rotary::new()),
         (BlockKind::Fx, "PANNER") => Box::new(crate::models::fx_mod::Panner::new()),
         (BlockKind::Fx, "MOOD") => Box::new(crate::models::fx_mod::MoodFilter::new()),
+        (BlockKind::Fx, "*EVEN*") => Box::new(ChannelStrip::new(StripKind::Even)),
+        (BlockKind::Fx, "*SOUL*") => Box::new(ChannelStrip::new(StripKind::Soul)),
+        (BlockKind::Fx, "*VINTAGE*") => Box::new(ChannelStrip::new(StripKind::Vintage)),
+        (BlockKind::Fx, "*BUS*") => Box::new(ChannelStrip::new(StripKind::Bus)),
+        (BlockKind::Fx, "*MASTER*") => Box::new(ChannelStrip::new(StripKind::Master)),
+        (BlockKind::Fx, "EXT") => Box::new(ExternalLoop::new()),
         (BlockKind::Fx, "ENHANCE") => Box::new(crate::models::fx_enhance::UltraEnhancer::new()),
         (BlockKind::Fx, "EXCITER") => Box::new(crate::models::fx_enhance::Exciter::new()),
         (BlockKind::Fx, "P-BASS") => Box::new(crate::models::fx_enhance::PsychoBass::new()),
@@ -553,6 +560,7 @@ mod tests {
             "ST-DL",
             "GEQ", "PIA", "LIMITER", "DE-S2", "SOUL", "E88", "E84", "F110", "PULSAR", "MACH4", "C5-CMB", "SPKMAN", "DEQ3",
             "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
+            "*EVEN*", "*SOUL*", "*VINTAGE*", "*BUS*", "*MASTER*", "EXT",
             "ENHANCE", "EXCITER", "P-BASS", "SUB-M", "V-IMG", "TAPE",
             "HALL", "ROOM", "CHAMBER", "CONCERT", "AMBI",
         ];
