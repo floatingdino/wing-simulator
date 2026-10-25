@@ -2,7 +2,7 @@
 id: T05U
 title: FX slot latency follows the loaded model (not max over all models)
 stage: S5
-status: review
+status: done
 owner: agent-T05U
 depends: [T05T]
 branch: task/T05U
