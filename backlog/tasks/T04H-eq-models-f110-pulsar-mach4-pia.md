@@ -2,7 +2,7 @@
 id: T04H
 title: EQ models: F110, PULSAR, MACH4, PIA
 stage: S4
-status: review
+status: done
 owner: T04G/T04H agent
 depends: [T045, T033]
 branch: task/T04G-T04H

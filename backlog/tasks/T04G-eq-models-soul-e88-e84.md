@@ -2,7 +2,7 @@
 id: T04G
 title: EQ models: SOUL, E88, E84
 stage: S4
-status: review
+status: done
 owner: T04G/T04H agent
 depends: [T045, T033]
 branch: task/T04G-T04H
