@@ -4,7 +4,7 @@ title: Fidelity test suite
 stage: S7
 status: todo
 owner: -
-depends: [T03B]
+depends: [T03C]
 branch: -
 ---
 

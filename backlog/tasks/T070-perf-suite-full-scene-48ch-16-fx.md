@@ -4,7 +4,7 @@ title: Perf suite: full scene 48ch + 16 FX
 stage: S7
 status: todo
 owner: -
-depends: [T03B, T051]
+depends: [T03E, T050]
 branch: -
 ---
 
