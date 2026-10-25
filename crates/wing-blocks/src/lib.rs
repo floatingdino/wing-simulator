@@ -11,6 +11,7 @@ pub mod dynamics;
 pub mod eq;
 pub mod fidelity;
 pub mod model;
+pub mod models;
 pub mod std_models;
 
 #[cfg(test)]

@@ -22,3 +22,7 @@ harness = false
 [[bench]]
 name = "eq"
 harness = false
+
+[[bench]]
+name = "filter_tool"
+harness = false

@@ -21,6 +21,7 @@
 //! [`Model::todo`]) so the whole catalog is selectable today; S4/S5 tasks replace them in [`create_model`].
 
 use crate::eq::EqVariant;
+use crate::models::filter_tool::FilterToolModel;
 use crate::std_models::{DynModel, GateModel, StdEqModel};
 
 /// A parameter value in engineering units (see module doc for the encoding).
@@ -293,6 +294,10 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "COMP") => Box::new(DynModel::comp()),
         (BlockKind::Dynamics, "EXP") => Box::new(DynModel::exp()),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
+        (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
+        (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
+        (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
+        (BlockKind::FilterTool, "AP2") => Box::new(FilterToolModel::ap2()),
         _ => {
             let task = if catalog(kind).contains(&id) {
                 owning_task(kind, id)
@@ -427,13 +432,11 @@ mod tests {
             let m = create_model(BlockKind::Eq(EqVariant::Channel), id);
             assert_eq!(m.is_stub(), id != "STD");
         }
-        for id in FILTER_TOOL_IDS.iter().chain(FX_IDS.iter()) {
-            let kind = if FILTER_TOOL_IDS.contains(id) {
-                BlockKind::FilterTool
-            } else {
-                BlockKind::Fx
-            };
-            assert!(create_model(kind, id).is_stub());
+        for id in FILTER_TOOL_IDS {
+            assert!(!create_model(BlockKind::FilterTool, id).is_stub());
+        }
+        for id in FX_IDS {
+            assert!(create_model(BlockKind::Fx, id).is_stub());
         }
         assert_eq!(create_model(BlockKind::Fx, "NEWFX").todo(), Some("unknown"));
     }
