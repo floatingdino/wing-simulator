@@ -336,6 +336,7 @@ ShmLink::Stats ShmLink::GetStats() const
     s.underrunBlocks = underrunBlocks_.load(std::memory_order_relaxed);
     s.resyncs = resyncs_.load(std::memory_order_relaxed);
     s.gapFills = gapFills_.load(std::memory_order_relaxed);
+    s.minSlack = minSlack_.load(std::memory_order_relaxed);
     return s;
 }
 
@@ -489,6 +490,12 @@ void ShmLink::ReadInput(int64_t t, float* out, uint32_t frames, uint32_t channel
         }
     }
     WING_STORE_RLX(&hdr_->loopback_active, target_ ? 0u : 1u);
+    if (target_ && blockOk && src >= 0) {
+        const int64_t slack = dwt - srcEnd;
+        if (slack < minSlack_.load(std::memory_order_relaxed)) {
+            minSlack_.store(slack, std::memory_order_relaxed);
+        }
+    }
 
     // ---- render ----
     const float* fromRing = wing_shm_ring(base_, WING_SHM_HEADER_BYTES + WING_SHM_RING_BYTES);

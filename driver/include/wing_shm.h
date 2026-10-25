@@ -109,7 +109,7 @@ extern "C" {
 #define WING_SHM_RING_FRAMES 8192u /* power of two; ~170 ms at 48 kHz */
 #define WING_SHM_HEADER_BYTES 4096u
 #define WING_SHM_CACHE_LINE 128u
-#define WING_SHM_DEFAULT_INPUT_DELAY_FRAMES 256u
+#define WING_SHM_DEFAULT_INPUT_DELAY_FRAMES 128u /* T021: see driver.md 9.2 */
 #define WING_SHM_HEARTBEAT_TIMEOUT_NS 100000000ull /* 100 ms */
 /* Frames at the old end of a ring a consumer must not read: the producer may
  * already be overwriting them. */

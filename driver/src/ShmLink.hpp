@@ -54,6 +54,11 @@ public:
         uint64_t underrunBlocks = 0; // blocks the daemon was relied on but late
         uint64_t resyncs = 0;       // daemon data discontinuities detected
         uint64_t gapFills = 0;      // output gaps zero-filled in to_daemon
+        // Smallest margin (frames) by which daemon data was ahead of what a
+        // ReadInput needed while the daemon was the source, since
+        // ResetMinSlack(). delay - minSlack is the delay actually consumed;
+        // INT64_MAX if not measured.
+        int64_t minSlack = INT64_MAX;
     };
 
     ShmLink();
@@ -90,6 +95,7 @@ public:
     wing_shm_header* Header() const { return hdr_; }
     uint32_t InputDelayFrames() const { return delay_; }
     Stats GetStats() const;
+    void ResetMinSlack() { minSlack_.store(INT64_MAX, std::memory_order_relaxed); }
 
     // ---- realtime (no alloc / locks / syscalls except the os_sync wake) ----
 
@@ -144,6 +150,7 @@ private:
     std::atomic<uint64_t> underrunBlocks_{0};
     std::atomic<uint64_t> resyncs_{0};
     std::atomic<uint64_t> gapFills_{0};
+    std::atomic<int64_t> minSlack_{INT64_MAX};
 };
 
 } // namespace wingsim

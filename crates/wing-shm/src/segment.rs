@@ -19,8 +19,8 @@ pub struct OpenOptions {
     pub create: bool,
     /// If an existing segment is incompatible (other version/size), unlink it
     /// and create a fresh one, like the driver does. A driver still mapping
-    /// the old segment keeps using it until coreaudiod restarts, so the
-    /// daemon only does this when asked.
+    /// the old segment keeps using it until its next IO start (when it
+    /// re-attaches by name, T021), so the daemon only does this when asked.
     pub replace_incompatible: bool,
     /// Nominal rate stored when creating.
     pub sample_rate: u32,

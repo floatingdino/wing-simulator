@@ -35,7 +35,10 @@ namespace {
 
 constexpr UInt32 kChannels = WING_SHM_CHANNELS;
 constexpr UInt32 kDefaultRate = 48000;
-// Minimum glitch-free input delay measured with the selftest sweep (T021).
+// Default input delay (frames). The selftest sweep measured 0 extra frames
+// needed with a time-constraint daemon; 128 is headroom for real DSP time and
+// the DAW's share of the cycle (docs/research/driver.md 9.2). Overridden by
+// InputDelayFrames in WINGSIM_CONFIG_PATH.
 constexpr UInt32 kDefaultInputDelayFrames = WING_SHM_DEFAULT_INPUT_DELAY_FRAMES;
 constexpr UInt32 kDeviceLatencyFrames = 0;
 constexpr UInt32 kSafetyOffsetFrames = 0;
@@ -269,6 +272,7 @@ public:
             link_.BeginEpoch(rate);
         }
         link_.SetRunning(true);
+        link_.ResetMinSlack();
         os_log(Log(), "Wing Simulator: StartIO rate=%u delay=%u shared=%d daemon=%d", rate,
             link_.InputDelayFrames(), link_.IsShared() ? 1 : 0, link_.DaemonAlive() ? 1 : 0);
         return kAudioHardwareNoError;
@@ -280,11 +284,14 @@ public:
         const auto s = link_.GetStats();
         os_log(Log(),
             "Wing Simulator: StopIO; totals: to-fallback %llu, to-daemon %llu, "
-            "daemon-late blocks %llu, daemon resyncs %llu",
+            "daemon-late blocks %llu, daemon resyncs %llu; this session: min daemon slack "
+            "%lld of %u delay frames",
             static_cast<unsigned long long>(s.toFallback),
             static_cast<unsigned long long>(s.toDaemon),
             static_cast<unsigned long long>(s.underrunBlocks),
-            static_cast<unsigned long long>(s.resyncs));
+            static_cast<unsigned long long>(s.resyncs),
+            static_cast<long long>(s.minSlack == INT64_MAX ? -1 : s.minSlack),
+            link_.InputDelayFrames());
     }
 
     // RT: DAW playback mix (all clients mixed by HAL) -> to_daemon ring.

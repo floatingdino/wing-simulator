@@ -22,7 +22,7 @@ pub const HEADER_BYTES: usize = 4096;
 /// on separate lines.
 pub const CACHE_LINE: usize = 128;
 /// Default `input_delay_frames` (reported to the HAL as input latency).
-pub const DEFAULT_INPUT_DELAY_FRAMES: u32 = 256;
+pub const DEFAULT_INPUT_DELAY_FRAMES: u32 = 128;
 /// The driver treats the daemon as gone if its heartbeat is older than this.
 pub const HEARTBEAT_TIMEOUT_NS: u64 = 100_000_000;
 /// Frames at the old end of a ring a consumer must not read.
