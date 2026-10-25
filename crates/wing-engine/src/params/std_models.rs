@@ -1,213 +1,108 @@
-//! [`RtModel`] adapters for the standard models implemented in wing-blocks today (GATE, DUCK,
-//! COMP, EXP). Interim glue: T045's per-block model registry is expected to provide `RtModel`
-//! instances for every model and replace [`std_factory`].
+//! Glue between wing-blocks' model framework (T045: [`wing_blocks::model::Model`], catalogs, stubs) and the
+//! engine's model-swap host ([`RtModel`] / [`super::strip::ModelSlot`]).
+//!
+//! `Box<dyn Model>` implements [`RtModel`]: 0-based target positions map to 1-based schema slots and the
+//! pipeline's `f32` engineering values are passed as [`ParamValue::Float`] (wing-blocks' adapters accept
+//! enum indices and float-enum values in that form). [`model_factory`] creates one instance per model of
+//! a wing-model group, implemented models and passthrough stubs alike, so the whole catalog is selectable.
 
-use wing_blocks::dynamics::{Detector, DynParams, Dynamics, Envelope};
-use wing_blocks::gate::{Gate, GateParams, GateRatio};
+use wing_blocks::eq::EqVariant;
+use wing_blocks::model::{create_model, BlockKind, Model, ParamValue};
 
 use super::strip::RtModel;
 
-/// GATE / DUCK (`wing_blocks::gate::Gate`). Positions: thr, range, att, hld, rel, acc, ratio.
-pub struct GateModel {
-    block: Gate,
-    p: GateParams,
-    defaults: GateParams,
-    dirty: bool,
-}
-
-impl GateModel {
-    pub fn new(defaults: GateParams, fs: f64, max_block: usize) -> Self {
-        let mut block = Gate::new();
-        block.prepare(fs, max_block);
-        block.set_params(&defaults);
-        Self {
-            block,
-            p: defaults,
-            defaults,
-            dirty: false,
-        }
-    }
-
-    pub fn params(&self) -> &GateParams {
-        &self.p
-    }
-}
-
-impl RtModel for GateModel {
+impl RtModel for Box<dyn Model> {
     fn load_defaults(&mut self) {
-        self.p = self.defaults;
-        self.dirty = true;
+        Model::load_defaults(&mut **self);
     }
 
-    fn set_param(&mut self, pos: u16, v: f32) {
-        let p = &mut self.p;
-        match pos {
-            0 => p.threshold_db = v,
-            1 => p.range_db = v,
-            2 => p.attack_ms = v,
-            3 => p.hold_ms = v,
-            4 => p.release_ms = v,
-            5 => p.accent_pct = v,
-            6 => {
-                p.ratio = match v as u32 {
-                    0 => GateRatio::R1_5,
-                    1 => GateRatio::R2,
-                    2 => GateRatio::R3,
-                    3 => GateRatio::R4,
-                    _ => GateRatio::Gate,
-                }
-            }
-            _ => return,
-        }
-        self.dirty = true;
+    #[inline]
+    fn set_param(&mut self, pos: u16, value: f32) {
+        Model::set_param(&mut **self, pos + 1, ParamValue::Float(value));
     }
 
     fn param(&self, pos: u16) -> Option<f32> {
-        let p = &self.p;
-        Some(match pos {
-            0 => p.threshold_db,
-            1 => p.range_db,
-            2 => p.attack_ms,
-            3 => p.hold_ms,
-            4 => p.release_ms,
-            5 => p.accent_pct,
-            6 => p.ratio as u32 as f32,
-            _ => return None,
-        })
+        Model::param(&**self, pos + 1)
     }
 
     fn commit(&mut self) {
-        if self.dirty {
-            self.block.set_params(&self.p);
-            self.dirty = false;
-        }
+        Model::commit(&mut **self);
     }
 
     fn reset(&mut self) {
-        self.block.reset();
+        Model::reset(&mut **self);
     }
 
+    #[inline]
     fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
-        self.block.process(l, r, None);
+        Model::process(&mut **self, l, r, None);
+    }
+
+    #[inline]
+    fn process_keyed(&mut self, l: &mut [f32], r: &mut [f32], key: Option<(&[f32], &[f32])>) {
+        Model::process(&mut **self, l, r, key);
     }
 
     fn gain_reduction_db(&self) -> f32 {
-        -self.block.gain_db()
+        self.telemetry().gain_reduction_db
+    }
+
+    fn latency(&self) -> usize {
+        Model::latency(&**self)
     }
 }
 
-/// COMP / EXP (`wing_blocks::dynamics::Dynamics`, stereo-linked, fully wet: the slot applies
-/// mix/makeup). Positions: thr, ratio, knee, det, att, hld, rel, env, auto.
-pub struct DynModel {
-    block: Dynamics,
-    p: DynParams,
-    defaults: DynParams,
-    dirty: bool,
+/// Block kind of a wing-model group key (`ch/*/dyn`, `aux/*/eq`, `ch/*/flt`, `fx/1`, ...).
+pub fn block_kind(group_key: &str) -> Option<BlockKind> {
+    let (strip, rest) = group_key.split_once('/')?;
+    let block = rest.rsplit('/').next()?;
+    Some(match block {
+        "gate" | "dyn" => BlockKind::Dynamics,
+        "flt" => BlockKind::FilterTool,
+        "eq" => BlockKind::Eq(match strip {
+            "ch" => EqVariant::Channel,
+            "aux" => EqVariant::Aux,
+            _ => EqVariant::Bus,
+        }),
+        _ if strip == "fx" => BlockKind::Fx,
+        _ => return None,
+    })
 }
 
-impl DynModel {
-    pub fn new(defaults: DynParams, fs: f64) -> Self {
-        let defaults = DynParams {
-            mix_pct: 100.0,
-            gain_db: 0.0,
-            ..defaults
-        };
-        let mut block = Dynamics::new(defaults);
-        block.prepare(fs, 2);
-        Self {
-            block,
-            p: defaults,
-            defaults,
-            dirty: false,
-        }
-    }
-
-    pub fn params(&self) -> &DynParams {
-        &self.p
-    }
-}
-
-impl RtModel for DynModel {
-    fn load_defaults(&mut self) {
-        self.p = self.defaults;
-        self.dirty = true;
-    }
-
-    fn set_param(&mut self, pos: u16, v: f32) {
-        let p = &mut self.p;
-        match pos {
-            0 => p.thr_db = v,
-            1 => p.ratio = v,
-            2 => p.knee = v.clamp(0.0, 5.0) as u8,
-            3 => {
-                p.det = if v as u32 == 0 {
-                    Detector::Peak
-                } else {
-                    Detector::Rms
-                }
-            }
-            4 => p.att_ms = v,
-            5 => p.hld_ms = v,
-            6 => p.rel_ms = v,
-            7 => {
-                p.env = if v as u32 == 0 {
-                    Envelope::Lin
-                } else {
-                    Envelope::Log
-                }
-            }
-            8 => p.auto = v != 0.0,
-            _ => return,
-        }
-        self.dirty = true;
-    }
-
-    fn param(&self, pos: u16) -> Option<f32> {
-        let p = &self.p;
-        Some(match pos {
-            0 => p.thr_db,
-            1 => p.ratio,
-            2 => p.knee as f32,
-            3 => (p.det == Detector::Rms) as u32 as f32,
-            4 => p.att_ms,
-            5 => p.hld_ms,
-            6 => p.rel_ms,
-            7 => (p.env == Envelope::Log) as u32 as f32,
-            8 => p.auto as u32 as f32,
-            _ => return None,
-        })
-    }
-
-    fn commit(&mut self) {
-        if self.dirty {
-            self.block.set_params(&self.p);
-            self.dirty = false;
-        }
-    }
-
-    fn reset(&mut self) {
-        self.block.reset();
-    }
-
-    fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
-        self.block.process(&mut [l, r], None);
-    }
-
-    fn gain_reduction_db(&self) -> f32 {
-        self.block.gain_reduction_db()
+/// Factory for [`super::strip::ModelSlot::from_group`]: a prepared wing-blocks model (or stub) for every
+/// model of the group.
+pub fn model_factory(
+    kind: BlockKind,
+    fs: f64,
+    max_block: usize,
+) -> impl FnMut(u16, &'static str) -> Option<Box<dyn RtModel>> {
+    move |_index, name| {
+        let mut m = create_model(kind, name);
+        m.prepare(fs, max_block);
+        Some(Box::new(m) as Box<dyn RtModel>)
     }
 }
 
-/// Factory for [`super::strip::ModelSlot::from_group`]: instances for GATE, DUCK, COMP and EXP;
-/// every other model is pass-through.
-pub fn std_factory(fs: f64, max_block: usize) -> impl FnMut(u16, &str) -> Option<Box<dyn RtModel>> {
-    move |_index, name| -> Option<Box<dyn RtModel>> {
-        Some(match name {
-            "GATE" => Box::new(GateModel::new(GateParams::gate_default(), fs, max_block)),
-            "DUCK" => Box::new(GateModel::new(GateParams::duck_default(), fs, max_block)),
-            "COMP" => Box::new(DynModel::new(DynParams::comp(), fs)),
-            "EXP" => Box::new(DynModel::new(DynParams::exp(), fs)),
-            _ => return None,
-        })
+/// Gate/dynamics factory (kept for [`super::strip::ParamStrip`]).
+pub fn std_factory(
+    fs: f64,
+    max_block: usize,
+) -> impl FnMut(u16, &'static str) -> Option<Box<dyn RtModel>> {
+    model_factory(BlockKind::Dynamics, fs, max_block)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn group_kinds() {
+        assert_eq!(block_kind("ch/*/dyn"), Some(BlockKind::Dynamics));
+        assert_eq!(block_kind("ch/*/gate"), Some(BlockKind::Dynamics));
+        assert_eq!(block_kind("aux/*/eq"), Some(BlockKind::Eq(EqVariant::Aux)));
+        assert_eq!(block_kind("main/*/eq"), Some(BlockKind::Eq(EqVariant::Bus)));
+        assert_eq!(block_kind("ch/*/flt"), Some(BlockKind::FilterTool));
+        assert_eq!(block_kind("fx/9"), Some(BlockKind::Fx));
+        assert_eq!(block_kind("ch/*/in/set"), None);
     }
 }

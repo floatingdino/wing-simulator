@@ -10,6 +10,9 @@ use wing_model::BoundedQueue;
 pub mod kind {
     /// Gain reduction in dB (>= 0) of a dynamics/gate slot.
     pub const GAIN_REDUCTION_DB: u8 = 0;
+    /// Linear peak level (max |L|,|R|) since the previous poll at a strip tap point; `block` is the
+    /// tap index (`crate::channel::Tap as u8`).
+    pub const TAP_PEAK: u8 = 1;
 }
 
 /// One telemetry record (16 bytes, `Copy`).

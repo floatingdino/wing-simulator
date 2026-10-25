@@ -67,8 +67,8 @@
 //!
 //! The swap mechanism depends only on the [`strip::RtModel`] trait (`load_defaults`,
 //! `set_param(pos, value)`, `param`, `commit`, `reset`, `process(l, r)`, `gain_reduction_db`);
-//! wing-blocks' model registry (T045) implements it, [`std_models`] holds interim adapters for
-//! GATE/DUCK/COMP/EXP. Model slots ([`strip::ModelSlot::from_group`]) take a factory and
+//! [`std_models`] implements it for wing-blocks' `Box<dyn Model>` (T045) and provides
+//! `model_factory` (every catalog model, stubs included). Model slots ([`strip::ModelSlot::from_group`]) take a factory and
 //! preallocate one instance per model of the wing-model group at construction (models without an
 //! implementation pass audio through). A `Model` message resets the incoming instance, loads the
 //! model defaults (then the dispatcher's parameter set) and crossfades
