@@ -2,7 +2,7 @@
 id: T03G
 title: BUG: channel solo from WING-Edit has no effect on monitor output
 stage: S3
-status: review
+status: done
 owner: agent-T03G
 depends: [T038, T03F]
 branch: task/T03G
