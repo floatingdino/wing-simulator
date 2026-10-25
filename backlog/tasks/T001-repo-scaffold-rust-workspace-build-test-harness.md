@@ -2,10 +2,10 @@
 id: T001
 title: Repo scaffold: Rust workspace + build/test harness
 stage: S0
-status: todo
-owner: -
+status: review
+owner: eng-agent-T001
 depends: []
-branch: -
+branch: task/T001
 ---
 
 ## Goal
@@ -18,3 +18,4 @@ Create the Cargo workspace and empty crates per docs/ARCHITECTURE.md (wing-proto
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 eng-agent-T001: Done, status review. Files: Cargo.toml (workspace; release lto=thin, cgu=1, panic=abort), Cargo.lock, rust-toolchain.toml, .cargo/config.toml (apple-m1), Makefile (check/fmt/build/bench), CLAUDE.md, 6 crates, 2 apps, crates/wing-dsp/benches/dsp.rs (criterion dev-dep only). Test: make check (rc=0); make bench.
