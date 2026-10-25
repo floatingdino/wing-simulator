@@ -1,4 +1,4 @@
-.PHONY: check check-full fmt build bench app
+.PHONY: check check-full fidelity-report fmt build bench app
 
 check:
 	cargo fmt --all --check
@@ -10,6 +10,10 @@ check-full:
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cargo test --workspace --release -- --include-ignored
+
+# Regenerate docs/fidelity-report.md from the full reference grids (T072).
+fidelity-report:
+	WING_FIDELITY_REPORT=$(CURDIR)/docs/fidelity-report.md cargo test -p wing-blocks --release --test fidelity_all -- --ignored fidelity_all_full
 
 fmt:
 	cargo fmt --all

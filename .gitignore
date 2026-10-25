@@ -11,3 +11,7 @@ WING-Edit.app/
 __pycache__/
 .build/
 .swiftpm/
+/kit/
+/rec/
+/recordings/
+/verify-report/

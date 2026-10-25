@@ -6,6 +6,7 @@
 //!   streaming reader.
 //! * [`rpp`]: read-only REAPER `.RPP` import (track hardware outputs → USB inputs).
 //! * [`render`]: console construction (shared with the daemon) and the render loop.
+//! * [`verify`]: hardware verification kit (`wing-verify`, T072): test signal, scenes, recording comparison.
 //! * [`loudness`]: sample peak and BS.1770-4 integrated loudness for the report.
 //! * [`report_json`]: the JSON render report.
 //!
@@ -16,6 +17,7 @@ pub mod inputs;
 pub mod loudness;
 pub mod render;
 pub mod rpp;
+pub mod verify;
 
 use serde_json::{json, Value};
 
