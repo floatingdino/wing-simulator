@@ -2,7 +2,7 @@
 id: T004
 title: Research: WING signal flow + DSP model catalog
 stage: S0
-status: review
+status: done
 owner: research-agent-T004
 depends: []
 branch: -
@@ -25,10 +25,12 @@ Produce docs/research/signal-flow.md (exact processing order and tap points for 
   Brashler); official manual/remote-protocol PDFs unreachable (image-only / HTTP 500).
 - 2026-10-25 research-agent: DONE -> review. Files: docs/research/signal-flow.md, docs/research/models.md (generated
   tables + hand notes). Counts: filter tool 4, gate+dyn 33 (13 gate-family, 20 comp-family), EQ 9 distinct (ch 7,
-  aux 6, bus/main/mtx 7), FX 64 + NONE (23 premium-only). T003 outputs (data/schema/wing-tree.json,
-  docs/research/wing-edit-schema.md) did not exist at finish -> reconciliation list in models.md section 9.
+  aux 6, bus/main/mtx 7), FX 64 + NONE (26 restricted to FX1-8). T003 outputs appeared before finish and were
+  cross-checked programmatically: model IDs identical, gate/dyn/EQ keys+ranges identical; T003 adds EQ params of
+  EQ-type FX/strips and GEQ bands (merged into models.md, marked "from T003"). Details: models.md section 9.
   How to check: open both docs; every model in models.md has emulation approach + difficulty; tables list keys
   identical to snapshot keys.
   Proposed follow-ups: (1) measure/obtain knob->Hz/dB maps for vintage EQ/comp models; (2) verify open questions in
   signal-flow.md section 13 on a console or the manual; (3) T011 snapshot loader aliases (WARM mix->wmix, aux dyn
-  default mdl CMB, out-delay m->dly, default lcs/hcs); (4) T003 to confirm enum lists marked "not recovered".
+  default mdl CMB, out-delay m->dly, default lcs/hcs); (4) drive WING-Edit's `*_respf_*`/`*_gain_*`/`*_parchg_*` functions (T003 emulator) to get knob->unit maps and
+  static curves for vintage models; (5) T003 numeric-key collisions (`31`, `40`) in variants.
