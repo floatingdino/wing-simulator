@@ -2,7 +2,7 @@
 id: T033
 title: EQ standard model
 stage: S3
-status: review
+status: done
 owner: agent-T033
 depends: [T030, T004]
 branch: task/T033
