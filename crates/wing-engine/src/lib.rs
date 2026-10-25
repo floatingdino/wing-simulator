@@ -8,6 +8,8 @@
 //! * [`sched`]: the [`Engine`]: one driver thread (the caller) plus `N` workers that claim nodes
 //!   per level with epoch-tagged atomic counters and meet at spin-then-park level barriers. No
 //!   rayon, locks or allocation on the audio path.
+//! * [`fx`]: the FX rack (16 slots hosted inline by the strips' insert points, FX SEND legs,
+//!   automix).
 //! * [`mix`]: faders, pans, sends, busses, mains, matrices and the complete engine graph
 //!   ([`mix::build_mix_graph`]).
 //! * [`routing`]: WING I/O routing (sources, USB/alt inputs, output patching) resolved from the
@@ -24,6 +26,7 @@
 pub mod channel;
 pub mod clock;
 pub mod dummy;
+pub mod fx;
 pub mod graph;
 pub mod meters;
 pub mod mix;

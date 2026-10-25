@@ -20,7 +20,9 @@
 //!   at block boundaries (an order change is a discontinuity, as on the console).
 //! * **Bypass**: every block has its own switch (`lc`/`hc`/`tf`, `gate.on`, `peq.on`, `eq.on`, `dyn.on`,
 //!   `preins.on`/`postins.on`). Model slots crossfade on/off over 5 ms and cost nothing when off; LC/HC and
-//!   PRE EQ fade internally; an insert that is off, unassigned (`NONE`) or in automix mode passes through.
+//!   PRE EQ fade internally; an insert that is off, unassigned (`NONE`) or whose FX slot another insert owns
+//!   (`$stat` N/A) passes through. Inserts run their FX slot inline via the [`InsertHost`] (the FX rack,
+//!   [`crate::fx`]); a channel post-insert in AUTO_X/AUTO_Y mode applies the automix gain instead.
 //! * **Stereo-linked**: strips are always processed as stereo pairs (a mono source feeds both sides in the
 //!   input stage); gate and dynamics models detect on the linked key and apply one gain to both sides.
 //! * **Side-chain**: `gatesc`/`dynsc` `type f q` filter the key inside the slot; `src` != SELF makes the slot
@@ -287,10 +289,45 @@ impl Tap {
 
 // ---- inserts ----------------------------------------------------------------------------------------------
 
-/// Hosts insert effects (the FX rack, T050). The strip calls it for an engaged insert.
+/// Which insert point of a strip (`preins` / `postins`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum InsertPos {
+    /// Insert 1 (`preins`).
+    Pre = 0,
+    /// Insert 2 (`postins`).
+    Post = 1,
+}
+
+/// Hosts insert effects (the FX rack, [`crate::fx`]). The strip calls it for an engaged insert; the
+/// strip's node tells it which slots the strip claims ([`InsertHost::assign`], between cycles).
+///
+/// Only [`InsertHost::process_insert`] is required; the other methods have pass-through defaults so
+/// test hosts stay small.
 pub trait InsertHost {
     /// Process FX slot `fx` (1..=16) in place on the strip signal.
     fn process_insert(&mut self, fx: u8, l: &mut [f32], r: &mut [f32]);
+
+    /// [`InsertHost::process_insert`] for insert point `pos` (the FX rack checks that this insert owns
+    /// the slot; a slot claimed by another insert passes through = `$stat` N/A).
+    fn process_insert_at(&mut self, _pos: InsertPos, fx: u8, l: &mut [f32], r: &mut [f32]) {
+        self.process_insert(fx, l, r);
+    }
+
+    /// Insert `pos` now claims FX slot `fx` (0 = none). Called between cycles (driver thread).
+    fn assign(&mut self, _pos: InsertPos, _fx: u8) {}
+
+    /// Channel post-insert in automix mode: `group` 1 = AUTO_X, 2 = AUTO_Y, 0 = not a member (called
+    /// between cycles when the membership changes).
+    fn automix_group(&mut self, _group: u8) {}
+
+    /// Apply the automix gain of a member channel in place (`weight_db` = `postins.w`).
+    fn automix(&mut self, _weight_db: f32, _l: &mut [f32], _r: &mut [f32]) {}
+
+    /// Latency (samples) the insert at `pos` running slot `fx` adds (0 when it passes through).
+    fn insert_latency(&self, _pos: InsertPos, _fx: u8) -> usize {
+        0
+    }
 }
 
 /// No FX rack: every insert passes through.
@@ -300,13 +337,13 @@ impl InsertHost for NoInserts {
     fn process_insert(&mut self, _fx: u8, _l: &mut [f32], _r: &mut [f32]) {}
 }
 
-/// Insert point state (placeholder until the FX rack exists: engaged inserts call the [`InsertHost`]).
+/// Insert point state; engaged inserts call the [`InsertHost`].
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct InsertPoint {
     pub on: bool,
     /// 0 = NONE, n = FXn.
     pub fx: u8,
-    /// `postins.mode`: 0 FX, 1 AUTO_X, 2 AUTO_Y (automix: TODO, passes through).
+    /// `postins.mode`: 0 FX, 1 AUTO_X, 2 AUTO_Y (channel post-insert only).
     pub mode: u8,
     /// Automix weight `w` (dB).
     pub weight_db: f32,
@@ -317,6 +354,44 @@ impl InsertPoint {
     pub fn engaged(&self) -> Option<u8> {
         (self.on && self.fx != 0 && self.mode == 0).then_some(self.fx)
     }
+
+    /// The FX slot this insert claims (assigned in FX mode, on or off; 0 = none). WING: a slot serves one
+    /// insert at a time (`$stat` N/A for the others).
+    pub fn claim(&self) -> u8 {
+        if self.mode == 0 {
+            self.fx.min(16)
+        } else {
+            0
+        }
+    }
+
+    /// Automix group of a channel post-insert (1 = X, 2 = Y), 0 when not mixing.
+    pub fn automix_group(&self) -> u8 {
+        if self.on && self.mode != 0 {
+            self.mode.min(2)
+        } else {
+            0
+        }
+    }
+}
+
+/// Forward insert-claim and automix-membership changes from `old` to `new` to `host` (call after
+/// `Commit`, between cycles).
+pub fn sync_inserts(
+    host: &mut dyn InsertHost,
+    old: &mut (InsertPoint, InsertPoint),
+    new: (InsertPoint, InsertPoint),
+) {
+    if old.0.claim() != new.0.claim() {
+        host.assign(InsertPos::Pre, new.0.claim());
+    }
+    if old.1.claim() != new.1.claim() {
+        host.assign(InsertPos::Post, new.1.claim());
+    }
+    if old.1.automix_group() != new.1.automix_group() {
+        host.automix_group(new.1.automix_group());
+    }
+    *old = new;
 }
 
 // ---- telemetry --------------------------------------------------------------------------------------------
@@ -532,9 +607,16 @@ impl ChannelStrip {
         (self.preins, self.postins)
     }
 
-    /// Total processing latency (samples) of the active models.
+    /// Total processing latency (samples) of the active models (inserts excluded, see
+    /// [`ChannelStrip::latency_with`]).
     pub fn latency(&self) -> usize {
         self.tool.latency() + self.gate.latency() + self.eq.latency() + self.dyn_.latency()
+    }
+
+    /// [`ChannelStrip::latency`] plus the latency of the engaged inserts as reported by `fx`.
+    pub fn latency_with(&self, fx: &dyn InsertHost) -> usize {
+        let ins = |pos, p: &InsertPoint| p.engaged().map_or(0, |n| fx.insert_latency(pos, n));
+        self.latency() + ins(InsertPos::Pre, &self.preins) + ins(InsertPos::Post, &self.postins)
     }
 
     /// Commit everything and jump all smoothers/fades to their targets (tests, offline renders).
@@ -763,7 +845,7 @@ impl ChannelStrip {
                 self.tool.process(l, r);
                 self.tap(Tap::Filt as usize, l, r);
                 if let Some(n) = self.preins.engaged() {
-                    fx.process_insert(n, l, r);
+                    fx.process_insert_at(InsertPos::Pre, n, l, r);
                 }
                 let order = self.order.0;
                 for (k, b) in order.into_iter().enumerate() {
@@ -786,7 +868,9 @@ impl ChannelStrip {
                         }
                         ProcBlock::Insert => {
                             if let Some(n) = self.postins.engaged() {
-                                fx.process_insert(n, l, r);
+                                fx.process_insert_at(InsertPos::Post, n, l, r);
+                            } else if self.postins.automix_group() != 0 {
+                                fx.automix(self.postins.weight_db, l, r);
                             }
                         }
                     }
@@ -796,7 +880,7 @@ impl ChannelStrip {
             StripKind::Aux => {
                 self.tap(Tap::Filt as usize, l, r);
                 if let Some(n) = self.preins.engaged() {
-                    fx.process_insert(n, l, r);
+                    fx.process_insert_at(InsertPos::Pre, n, l, r);
                 }
                 self.tap(Tap::T3 as usize, l, r);
                 self.eq.process(l, r);

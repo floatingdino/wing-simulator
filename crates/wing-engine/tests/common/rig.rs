@@ -27,6 +27,8 @@ pub struct Rig {
     pub nodes: MixNodes,
     pub routing: RoutingControl,
     pub tiers: [u8; 16],
+    /// The FX rack of the graph.
+    pub fx: wing_engine::fx::FxRack,
     /// External input generator state.
     pub t: u64,
 }
@@ -35,6 +37,7 @@ pub fn rig(store: &ParamStore, cfg: MixConfig, workers: usize) -> Rig {
     let mut routing = RoutingControl::new(store);
     let mg = build_mix_graph(store, &mut routing, cfg).expect("build");
     let tiers = mg.bus_tiers;
+    let fx = mg.fx.clone();
     let (graph, map, nodes) = mg.finish().expect("finish");
     let mut e = Engine::new(graph, engine_cfg(workers));
     let mut pipe = ParamPipeline::new(store, map, PipelineConfig::default()).unwrap();
@@ -45,6 +48,7 @@ pub fn rig(store: &ParamStore, cfg: MixConfig, workers: usize) -> Rig {
         nodes,
         routing,
         tiers,
+        fx,
         t: 0,
     }
 }

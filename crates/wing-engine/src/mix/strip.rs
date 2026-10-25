@@ -14,7 +14,8 @@
 //! * **Dynamics slot** (`dyn`, any model of the shared gate/dynamics table), key filter `dynsc
 //!   type/f/q`, crossover `dynxo`. The key is the strip itself (SELF); external `dynsc.src` keys
 //!   need graph wiring and are not resolved yet.
-//! * **Inserts** (`preins`/`postins` `on ins`) call an [`InsertHost`] placeholder (the FX rack, T050).
+//! * **Inserts** (`preins`/`postins` `on ins`) run their FX slot inline through the strip's
+//!   [`InsertHost`] (the FX rack handle, [`crate::fx`]; T050/T044).
 //! * **Output delay** (`dly on`, model group `dly/mode` M/FT/MS/SMP with target `dly`) runs on the
 //!   POST signal ([`StripHook::process_post`]) so PRE taps/sends stay undelayed. It is the
 //!   wing-blocks input-stage delay (50 ms glide, linear interpolation, settled integer delays exact).
@@ -32,7 +33,8 @@ use wing_blocks::input::{DelayMode, InputParams, InputStage, SourceMode};
 use wing_blocks::sidechain::XoverKind;
 
 use crate::channel::{
-    slot_key_peak, InsertHost, InsertPoint, NoInserts, PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT,
+    slot_key_peak, sync_inserts, InsertHost, InsertPoint, InsertPos, NoInserts, PREINS_LAYOUT,
+    SC_LAYOUT, XO_LAYOUT,
 };
 use crate::graph::NodeId;
 use crate::meters::{abs_max, word, StripMeter};
@@ -146,6 +148,8 @@ pub struct MixStrip {
     dly_p: InputParams,
     dly_dirty: bool,
     fx: Box<dyn InsertHost + Send>,
+    /// Insert state last forwarded to `fx`.
+    ins_seen: (InsertPoint, InsertPoint),
     telem: MixStripTelemetry,
     meter: Option<StripMeter>,
 }
@@ -198,6 +202,7 @@ impl MixStrip {
             dly_p,
             dly_dirty: false,
             fx: Box::new(NoInserts),
+            ins_seen: Default::default(),
             telem: MixStripTelemetry::default(),
             meter: None,
         };
@@ -243,14 +248,25 @@ impl MixStrip {
         self.meter.as_ref()
     }
 
-    /// Install the FX rack (off the RT thread).
+    /// Install the FX rack (off the RT thread); the current insert assignment is forwarded to it.
     pub fn set_insert_host(&mut self, fx: Box<dyn InsertHost + Send>) {
         self.fx = fx;
+        self.ins_seen = Default::default();
+        sync_inserts(
+            &mut *self.fx,
+            &mut self.ins_seen,
+            (self.preins, self.postins),
+        );
     }
 
-    /// Processing latency (samples) of the active models (output delay excluded).
+    /// Processing latency (samples) of the active models and engaged insert FX (output delay
+    /// excluded).
     pub fn latency(&self) -> usize {
-        self.eq.latency() + self.dyn_.latency()
+        let ins = |pos, p: &InsertPoint| p.engaged().map_or(0, |n| self.fx.insert_latency(pos, n));
+        self.eq.latency()
+            + self.dyn_.latency()
+            + ins(InsertPos::Pre, &self.preins)
+            + ins(InsertPos::Post, &self.postins)
     }
 
     /// Commit and jump every ramp/fade/glide to its target (tests, scene start).
@@ -340,6 +356,8 @@ impl MixStrip {
                     1 => ins.fx = v.clamp(0.0, 16.0) as u8,
                     _ => {}
                 }
+                // mode FX only (bus/main/mtx inserts have no automix)
+                ins.mode = 0;
             }
             hook::DLY => {
                 match param {
@@ -391,6 +409,11 @@ impl MixStrip {
                 }
                 self.eq.commit();
                 self.dyn_.commit();
+                sync_inserts(
+                    &mut *self.fx,
+                    &mut self.ins_seen,
+                    (self.preins, self.postins),
+                );
             }
         }
     }
@@ -407,7 +430,7 @@ impl MixStrip {
             m.stereo(word::IN_L, l, r);
         }
         if let Some(n) = self.preins.engaged() {
-            self.fx.process_insert(n, l, r);
+            self.fx.process_insert_at(InsertPos::Pre, n, l, r);
         }
         self.tap(MixTap::Ins1, l, r);
         self.eq.process(l, r);
@@ -420,7 +443,7 @@ impl MixStrip {
         self.dyn_.process_keyed(l, r, None);
         self.tap(MixTap::Dyn, l, r);
         if let Some(n) = self.postins.engaged() {
-            self.fx.process_insert(n, l, r);
+            self.fx.process_insert_at(InsertPos::Post, n, l, r);
         }
         self.tap(MixTap::Pfl, l, r);
         // An off slot can still run its model for one wrapper-ramp after a parameter change
@@ -468,6 +491,14 @@ impl StripHook for MixStrip {
 
     fn set_param(&mut self, msg: &ParamMsg) {
         self.apply(msg);
+    }
+
+    fn set_insert_host(&mut self, fx: Box<dyn InsertHost + Send>) {
+        MixStrip::set_insert_host(self, fx);
+    }
+
+    fn latency(&self) -> usize {
+        MixStrip::latency(self)
     }
 
     fn telemetry(&mut self, out: &mut TelemetryWriter<'_>) {

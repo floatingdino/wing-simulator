@@ -143,6 +143,9 @@ pub struct StereoDelay {
     d: [f32; 2],
     d_target: [f32; 2],
     glide: f32,
+    /// No sample processed since `reset`: parameter changes jump instead of gliding (a freshly selected
+    /// model starts at its scene's times).
+    fresh: bool,
     feed: f32,
     fb_hp: [Biquad; 2],
     fb_lp: [Biquad; 2],
@@ -167,6 +170,7 @@ impl StereoDelay {
             d: [1.0; 2],
             d_target: [1.0; 2],
             glide: 1.0,
+            fresh: true,
             feed: 0.0,
             fb_hp: [Biquad::default(); 2],
             fb_lp: [Biquad::default(); 2],
@@ -203,6 +207,9 @@ impl StereoDelay {
             (l * 0.001 * fs as f32).clamp(1.0, max),
             (r * 0.001 * fs as f32).clamp(1.0, max),
         ];
+        if self.fresh {
+            self.d = self.d_target;
+        }
         self.feed = (self.p.feed_pct.clamp(0.0, 100.0) * 0.01).min(MAX_FEED);
         let nyq = (fs * 0.45) as f32;
         let f = |v: f32, lo: f32, hi: f32| v.clamp(lo, hi.min(nyq)) as f64;
@@ -239,6 +246,7 @@ impl Model for StereoDelay {
             self.update();
         }
         let (mode, g, a) = (self.p.mode, self.feed, self.glide);
+        self.fresh = left.is_empty() && self.fresh;
         for (xl, xr) in left.iter_mut().zip(right.iter_mut()) {
             let (il, ir) = match mode {
                 DelayMode::Mono => {
@@ -283,6 +291,7 @@ impl Model for StereoDelay {
             l.reset();
         }
         self.d = self.d_target;
+        self.fresh = true;
         for b in self
             .fb_hp
             .iter_mut()
