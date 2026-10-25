@@ -30,7 +30,9 @@ pub fn with_value_token<R>(
     let d = store.desc(id)?;
     let raw = store.get_raw(id);
     Some(match d.ty {
-        ParamType::LinF | ParamType::LogF | ParamType::Fader => f(Token::Float(f32::from_bits(raw))),
+        ParamType::LinF | ParamType::LogF | ParamType::Fader => {
+            f(Token::Float(f32::from_bits(raw)))
+        }
         ParamType::FEnum => f(Token::Float(d.as_f64(raw) as f32)),
         ParamType::Int => f(Token::int(raw as i32)),
         ParamType::Enum => match d.enum_token(raw) {
@@ -145,21 +147,48 @@ mod tests {
     fn apply_accepts_every_form() {
         let st = ParamStore::new();
         let id = |p| st.lookup(p).unwrap();
-        assert_eq!(apply_value(&st, id("ch/1/fdr"), &Token::Float(-3.0), 9), Ok(true));
+        assert_eq!(
+            apply_value(&st, id("ch/1/fdr"), &Token::Float(-3.0), 9),
+            Ok(true)
+        );
         assert_eq!(st.get(id("ch/1/fdr")), Some(Value::Float(-3.0)));
-        assert_eq!(apply_value(&st, id("ch/1/mute"), &Token::SmallInt(1), 9), Ok(true));
-        assert_eq!(apply_value(&st, id("ch/1/dyn/mdl"), &Token::Str(b"GATE"), 9), Ok(true));
+        assert_eq!(
+            apply_value(&st, id("ch/1/mute"), &Token::SmallInt(1), 9),
+            Ok(true)
+        );
+        assert_eq!(
+            apply_value(&st, id("ch/1/dyn/mdl"), &Token::Str(b"GATE"), 9),
+            Ok(true)
+        );
         assert_eq!(st.active_model(id("ch/1/dyn")).unwrap().name, "GATE");
         // enum by index
-        assert_eq!(apply_value(&st, id("ch/1/dyn/mdl"), &Token::SmallInt(0), 9), Ok(true));
-        assert_eq!(apply_value(&st, id("ch/1/name"), &Token::Str(b"Kick"), 9), Ok(true));
-        assert_eq!(apply_value(&st, id("ch/1/name"), &Token::SmallInt(7), 9), Ok(true));
-        assert_eq!(st.with_str(id("ch/1/name"), |s| s.to_string()).unwrap(), "7");
+        let mdl = id("ch/1/dyn/mdl");
+        let comp = st.desc(mdl).unwrap().enum_index("COMP").unwrap() as u8;
+        assert_eq!(apply_value(&st, mdl, &Token::SmallInt(comp), 9), Ok(true));
+        assert_eq!(st.active_model(id("ch/1/dyn")).unwrap().name, "COMP");
+        assert_eq!(
+            apply_value(&st, id("ch/1/name"), &Token::Str(b"Kick"), 9),
+            Ok(true)
+        );
+        assert_eq!(
+            apply_value(&st, id("ch/1/name"), &Token::SmallInt(7), 9),
+            Ok(true)
+        );
+        assert_eq!(
+            st.with_str(id("ch/1/name"), |s| s.to_string()).unwrap(),
+            "7"
+        );
         // text into a float
-        assert_eq!(apply_value(&st, id("ch/2/fdr"), &Token::Str(b"-10"), 9), Ok(true));
+        assert_eq!(
+            apply_value(&st, id("ch/2/fdr"), &Token::Str(b"-10"), 9),
+            Ok(true)
+        );
         assert_eq!(st.get(id("ch/2/fdr")), Some(Value::Float(-10.0)));
         // normalised
-        assert_eq!(apply_value(&st, id("ch/2/fdr"), &Token::RawFloat(0.75), 9), Ok(true));
+        assert_eq!(
+            apply_value(&st, id("ch/2/fdr"), &Token::RawFloat(0.75), 9),
+            Ok(true)
+        );
         assert_eq!(st.get(id("ch/2/fdr")), Some(Value::Float(0.0)));
         assert_eq!(
             apply_value(&st, NodeId::ROOT, &Token::SmallInt(1), 9),

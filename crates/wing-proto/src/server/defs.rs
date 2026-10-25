@@ -168,7 +168,10 @@ mod tests {
         assert_eq!(d.parent, s.hash(s.by_path("ch").unwrap()));
         assert_eq!(d.kind, NodeKind::Node);
         let stat = node_def(&st, s.by_path("$stat").unwrap(), &live);
-        assert_eq!((stat.parent, stat.hash, stat.name.as_str()), (0, 0x97a0_0439, "$stat"));
+        assert_eq!(
+            (stat.parent, stat.hash, stat.name.as_str()),
+            (0, 0x97a0_0439, "$stat")
+        );
         let fdr = node_def(&st, s.by_path("ch/1/fdr").unwrap(), &live);
         assert_eq!(fdr.kind, NodeKind::FaderLevel);
         assert_eq!(fdr.unit, Unit::Db);
