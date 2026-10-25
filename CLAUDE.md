@@ -5,6 +5,7 @@ See docs/ARCHITECTURE.md for the design and backlog/README.md for the task proto
 ## Commands
 - `make check`: `cargo fmt --check`, `cargo clippy --all-targets -D warnings`, `cargo test` (fast set; ~2 min; run routinely, must pass before review)
 - `make check-full`: same plus `cargo test --workspace --release -- --include-ignored` (~2 min incl. build); run before finishing a DSP task. Keep `make check` under 5 min: any test slower than ~10 s in dev must be `#[ignore = "slow: run with make check-full"]` with a sampled fast variant covering the same path. (wing-blocks/wing-hostio build at opt-level 2 in dev, see Cargo.toml.)
+- `make fidelity-report`: regenerate docs/fidelity-report.md from the full reference grids (T072; `cargo test -p wing-blocks --test fidelity_all` is the sampled version inside `make check`). Hardware verification kit: `tools/verify-hardware/README.md`
 - `make bench`: criterion benches (`cargo bench -p wing-dsp`)
 - `make fmt`: format; `make build`: release build
 - `make app`: WingSimMenu menu-bar app (Swift, `apps/WingSimMenu/build.sh`), its Swift tests and a launch/quit smoke test (not part of `make check`)

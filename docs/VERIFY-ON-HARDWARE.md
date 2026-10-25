@@ -70,3 +70,70 @@ Each item: what was assumed, where, and how to check on a console (or via a meas
 | TAPE | Saturator `tanh(u + 0.12)` residual form, K = 1.5, output / (K sqrt(g)) (drive adds half its dB as level); head bump 63 Hz x ips/15, +4 dB (7.5 ips) .. +2 dB (30 ips), Q 1.2; HF loss LP2 at 14 kHz (ips/15)^0.6; HIGH SHELV +6 dB pre / -4 dB post at 8 kHz (net +2 dB); no hysteresis memory | T05E |
 | TAPE | Extras not in the WING parameter set (`TapeExtras`, default off): wow 0.6 Hz <= 0.35 ms, flutter 9 Hz <= 0.02 ms (x 15/ips), hiss tilted noise (+3 dB per halving of speed); 1 ms unreported delay when wow/flutter is on | T05E |
 | ENHANCE/EXCITER/TAPE | 46 samples latency (4x oversampling, 45.5 rounded up); every FX slot hosts them, so every slot reports 46 samples and strips with inserts pad accordingly | T05E |
+
+## Checking them on a real WING (T072)
+
+The table above is what is assumed. `tools/verify-hardware/` turns the testable part into a short measurement
+run: one 50 s test signal and one generated `.snap` scene per assumption (or model). Play the signal through each
+scene on the console, record the USB return, and `wing-verify compare` renders the same scene with the simulator
+and reports the difference per scene. Procedure and commands: [tools/verify-hardware/README.md](../tools/verify-hardware/README.md).
+Models with reference data from WING-Edit are measured automatically instead, see [fidelity-report.md](fidelity-report.md).
+
+Coverage: dynamics (static level curve, step settling times, noise-burst envelopes), saturation (harmonics of
+1 kHz and 100 Hz tones) and frequency response are measurable this way. Not covered by the kit (needs the console
+UI or other signals): input balance/stereo-pair laws, snapshot header acceptance, `$ctl/lib`, protocol and OSC
+rows, meter source groups, DS902/DEQ/DEQ2 (need frequency-selective key signals), 3CMP, delays/reverbs/pitch/mod
+FX (time-variant or non-deterministic) and anything in the table that is a latency figure on a model the kit
+does not host. A `DEVIATES` row names the assumption to revisit; correct the model, then update this table.
+
+### Scenes and the assumptions they test
+
+<!-- verify:scenes:begin -->
+
+| Scene | Tier | Tests | Area | Assumption under test |
+|---|---|---|---|---|
+| `00-thru` | quick | fr, stairs, tone | Input | unity path: USB level, 0 dBFS in = 0 dBFS out, pan law, latency (baseline for every other scene) |
+| `01-filter` | quick | fr | Filter (exact port) | channel LC 100 Hz / HC 8 kHz match the traced WING-Edit design (sanity check of the whole chain) |
+| `02-eq-std` | quick | fr | EQ (exact port) | STD EQ bands match the traced WING-Edit design (sanity check of the whole chain) |
+| `03-eq-e88` | full | fr, tone | EQ alt | E88 EQ is purely linear (no transformer / tube colour in WING's version) |
+| `04-eq-soul` | full | fr, tone | EQ alt | SOUL EQ is purely linear (no console colour in WING's version) |
+| `10-gate-std` | full | stairs, steps, bursts | Gate | WING GATE static law (exact) and ACCENT/detector timing |
+| `11-gate-e88` | quick | stairs, steps, bursts | Gate vintage | E88: peak detector release 20 ms, 60 dB release law, 2 ms / 50 us attack, EXP end stop |
+| `12-gate-9000g` | full | stairs, steps, bursts | Gate vintage | 9000G: fixed 2 dB hysteresis, 1.5 ms / 100 us attack, 40 dB release law |
+| `13-gate-d241g` | full | stairs, steps, bursts | Gate vintage | D241G: 2 dB hysteresis, 20 us attack, 80 dB depth, programme-dependent release |
+| `14-gate-pse` | full | stairs, steps, bursts | PSE/CMB | PSE: 6 dB knee, 2:1 expansion capped at depth, fast/slow timing, 10 ms RMS |
+| `20-comp-std` | quick | stairs, steps | Comp (reference curve) | WING COMP static law (exact) and attack/release timing |
+| `21-comp-b160` | full | stairs, steps | Comp VCA | B160: 0 dBu = -18 dBFS thresholds, RMS detector |
+| `22-comp-b560` | full | stairs, steps | Comp VCA | B560: dbx OverEasy knee 6 dB, thresholds at 0 dBu = -18 dBFS |
+| `23-comp-9000c` | full | stairs, steps | Comp VCA | 9000C: RMS window 10 ms, 0 dBu = -18 dBFS |
+| `24-comp-sbus` | full | stairs, steps | Comp VCA | SBUS: auto-release constants |
+| `25-comp-d241c` | full | stairs, steps | Comp VCA | D241C: peak detector, 10 ms auto attack |
+| `26-comp-ecl33` | quick | stairs, steps, tone | Comp console | ECL33: threshold read as dBFS, feedback comp, 6 dB soft knee, colouration 0.1 % THD at 20 dB GR |
+| `27-comp-e88c` | full | stairs, steps | Comp console | E88C: SLOW attack 10 ms, 10 dB soft knee, 0 dBu = -18 dBFS |
+| `28-comp-red3` | full | stairs, steps | Comp console | RED3: 10 dB soft knee, peak detector, thresholds as dBFS |
+| `29-comp-2250` | full | stairs, steps | Comp console | 2250: threshold knob law, 10 dB soft knee, NEW RMS 1 ms |
+| `2a-comp-lmt` | full | stairs, steps | Comp console | LMT: 20:1, 0.3 ms attack / 150 ms release, transient shaper laws |
+| `2b-comp-76la` | quick | stairs, steps, tone | Comp FET | 76LA: fixed -18 dBFS cell threshold, in/out knob scaling, 0.4 % THD at 9 dB GR |
+| `2c-comp-nstr` | full | stairs, steps, tone | Comp FET | NSTR: knee widths per ratio, normal-mode harmonics (LF-weighted 2nd + 3rd) |
+| `2d-comp-la` | quick | stairs, steps, tone | Comp opto | LA: PEAK = side-chain drive, GAIN = output gain, two-part cell memory, tube colouration |
+| `2e-comp-l100` | full | stairs, steps, tone | Comp opto | L100: per-switch times, threshold 6 - 3.6 GR dBFS, knee 12 dB |
+| `2f-comp-f670` | quick | stairs, steps, tone | Comp vari-mu | F670: 10 dB per threshold unit, THR map, fixed amp +10 dB, tube colouration |
+| `30-comp-bliss` | full | stairs, steps, tone | Comp class A | BLISS: peak detector, hard knee, anti-log ballistics |
+| `31-comp-onec` | full | stairs, steps | ONEC | ONEC: `gr` knob mapping onto the COMP engine, auto make-up |
+| `32-dyn-wave` | quick | steps, bursts | WAVE | WAVE: differential envelope followers, attack/sustain weights |
+| `33-dyn-ride` | full | steps, bursts | RIDE | RIDE: RMS level 100 ms, 2..200 dB/s slew, hold |
+| `34-dyn-warm` | quick | fr, stairs, tone | WARM | WARM: shaper law, ~1.4 % THD at -12 dBFS (default), colour tilt |
+| `35-fx-tape` | quick | fr, stairs, tone | TAPE | TAPE: saturator law, head bump, HF loss, 46 samples latency |
+| `36-fx-exciter` | quick | fr, tone | EXCITER | EXCITER: tanh bias harmonics, TIMBRE shelf |
+| `37-fx-enhance` | full | fr, tone | ENHANCE | ENHANCE: band maps, harmonic generator shares |
+| `38-fx-pbass` | full | fr, tone | P-BASS | P-BASS: LR4 split, harmonic law |
+| `39-fx-ukrock` | full | fr, stairs, tone | FX amps | UKROCK: gain staging and tone stack |
+<!-- verify:scenes:end -->
+
+### Results
+
+Not run yet. `wing-verify compare ... --update-doc docs/VERIFY-ON-HARDWARE.md` replaces this block with the
+latest run (date and firmware go in the line below it by hand).
+
+<!-- verify:results:begin -->
+<!-- verify:results:end -->

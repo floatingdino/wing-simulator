@@ -31,6 +31,10 @@ toml = { version = "0.9", default-features = false, features = ["parse", "serde"
 [profile.dev.package.wing-hostio]
 opt-level = 2
 
+# The verification kit's analysis (FFTs over a 50 s suite, T072) is slow unoptimised
+[profile.dev.package.wing-render]
+opt-level = 2
+
 # wing-blocks fidelity tests are far too slow unoptimised (T062)
 [profile.dev.package.wing-blocks]
 opt-level = 2

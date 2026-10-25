@@ -13,6 +13,10 @@ path = "src/lib.rs"
 name = "wing-render"
 path = "src/main.rs"
 
+[[bin]]
+name = "wing-verify"
+path = "src/bin/wing-verify.rs"
+
 [dependencies]
 serde_json.workspace = true
 wing-model = { path = "../../crates/wing-model" }
