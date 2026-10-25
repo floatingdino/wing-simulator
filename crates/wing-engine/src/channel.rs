@@ -33,6 +33,10 @@
 //!   dynamics key peaks (the filtered side-chain when the slot forms one, else the slot input) and their
 //!   gain reduction are folded into the engine's [`crate::meters::LevelBank`] (lock-free, no allocation).
 //!   The post-fader words belong to the node that applies the fader.
+//! * **Latency** (T03E, [`crate::latency`]): constant, independent of models and switches. Channel and aux
+//!   strips share one latency (aux pads by the filter-tool and gate slot latency it does not run), applied
+//!   by an alignment pad at the strip output ([`ChannelStrip::latency`], [`ChannelStrip::set_align_latency`],
+//!   [`ChannelStrip::set_insert_latency`]).
 //! * **Tap capture**: the signal at `ptap` is copied into [`ChannelStrip::tap_signal`] (and graph outputs
 //!   2/3 when the node has 4 outputs) for PRE sends.
 
@@ -42,6 +46,7 @@ use wing_blocks::model::{BlockKind, Model, ParamValue};
 use wing_blocks::std_models::{flt_slot, in_slot, FilterModel, InputModel};
 
 use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
+use crate::latency::StripAlign;
 use crate::meters::{abs_max, word, StripMeter};
 use crate::params::std_models::model_factory;
 use crate::params::strip::{ModelSlot, INPUT_LAYOUT, SLOT_LAYOUT};
@@ -369,6 +374,7 @@ pub struct ChannelStrip {
     tap_len: usize,
     telem: StripTelemetry,
     meter: Option<StripMeter>,
+    align: StripAlign,
 }
 
 fn sc_filter(i: u32) -> ScFilter {
@@ -459,7 +465,14 @@ impl ChannelStrip {
             tap_len: 0,
             telem: StripTelemetry::default(),
             meter: None,
+            align: StripAlign::new(0, 0),
         };
+        let natural = s.tool.latency() + s.gate.latency() + s.eq.latency() + s.dyn_.latency();
+        let own = match kind {
+            StripKind::Channel => natural,
+            StripKind::Aux => s.eq.latency() + s.dyn_.latency(),
+        };
+        s.align = StripAlign::new(own, natural);
         // Factory model choices (the pipeline's sync_all overrides them from the store).
         s.tool.select(0);
         s.gate.select(0);
@@ -530,9 +543,26 @@ impl ChannelStrip {
         (self.preins, self.postins)
     }
 
-    /// Total processing latency (samples) of the active models.
+    /// Total strip latency in samples (model slots + inserts + alignment pad). Constant: it does not
+    /// depend on the selected models or block switches.
     pub fn latency(&self) -> usize {
-        self.tool.latency() + self.gate.latency() + self.eq.latency() + self.dyn_.latency()
+        self.align.total()
+    }
+
+    /// Latency alignment state (own slot latency, insert latency, pad).
+    pub fn align(&self) -> &StripAlign {
+        &self.align
+    }
+
+    /// Align the strip output to `target` samples (`None` = the input-strip default: sum of the channel
+    /// slot latencies). Returns the resulting total. RT-safe.
+    pub fn set_align_latency(&mut self, target: Option<usize>) -> usize {
+        self.align.set_target(target)
+    }
+
+    /// Latency added by the engaged inserts (FX rack); the alignment pad absorbs it. RT-safe.
+    pub fn set_insert_latency(&mut self, n: usize) -> usize {
+        self.align.set_insert_latency(n)
     }
 
     /// Commit everything and jump all smoothers/fades to their targets (tests, offline renders).
@@ -544,6 +574,7 @@ impl ChannelStrip {
         for s in [&mut self.tool, &mut self.gate, &mut self.eq, &mut self.dyn_] {
             s.settle();
         }
+        self.align.reset();
     }
 
     fn set(&mut self, blk: u8, param: u16, v: f32) {
@@ -807,6 +838,7 @@ impl ChannelStrip {
                 self.tap(Tap::Pfl as usize, l, r);
             }
         }
+        self.align.process(l, r);
         self.telem.gate_gr_db = self.gate.gain_reduction_db();
         self.telem.dyn_gr_db = self.dyn_.gain_reduction_db();
         if let Some(m) = &self.meter {
@@ -903,11 +935,16 @@ mod tests {
             ChannelStrip::channel(48_000.0, 64),
             ChannelStrip::aux(48_000.0, 64),
         ] {
-            let x: Vec<f32> = (0..64).map(|i| (i as f32 * 0.3).sin() * 0.5).collect();
+            // transparent up to the strip's constant latency (T03E)
+            let lat = s.latency();
+            let x: Vec<f32> = (0..512).map(|i| (i as f32 * 0.3).sin() * 0.5).collect();
             let (mut l, mut r) = (x.clone(), x.clone());
-            s.process_stereo(&mut l, &mut r);
-            assert_eq!(l, x);
-            assert_eq!(r, x);
+            for (a, b) in l.chunks_mut(64).zip(r.chunks_mut(64)) {
+                s.process_stereo(a, b);
+            }
+            assert!(l[..lat].iter().all(|&v| v == 0.0));
+            assert_eq!(l[lat..], x[..512 - lat]);
+            assert_eq!(r[lat..], x[..512 - lat]);
             assert_eq!(
                 s.dyn_slot().model_index(),
                 Some(if s.kind() == StripKind::Channel {

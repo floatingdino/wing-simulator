@@ -1,0 +1,18 @@
+# Host output routing for wing-sim (--hostio), written by WingSimMenu.
+# Syntax: crates/wing-hostio/hostio.example.toml
+[hostio]
+latency_ms = 5.0
+buffer_frames = 256
+
+[[hostio.route]]
+map = 'mon/1 -> "Scarlett 2i4 USB" 1/2'
+
+[[hostio.route]]
+map = 'bus/3.L -> "MacBook Pro Speakers" 2'
+latency_ms = 8.5
+
+[[hostio.route]]
+map = 'usb_out/45/46 -> "Scarlett 2i4 USB" 3/4'
+
+[[hostio.route]]
+map = 'local_out/1-3,5 -> "BlackHole 16ch" 1-4'

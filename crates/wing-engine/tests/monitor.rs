@@ -4,7 +4,7 @@
 mod common;
 
 use common::rig::*;
-use wing_engine::mix::{InputSignal as I, MixConfig, MixLogic, MixSignal as M};
+use wing_engine::mix::{no_processing, InputSignal as I, MixConfig, MixLogic, MixSignal as M};
 use wing_engine::routing::{Side, Strip};
 use wing_model::ParamStore;
 
@@ -55,8 +55,11 @@ impl T {
     fn new() -> Self {
         let (store, mut logic) = setup();
         logic.refresh(&store);
+        // bare mix (no bus/main strip processing): gains are fitted sample by sample against the
+        // channel PFL, which the main strip latency (T03E) would shift
         let cfg = MixConfig {
             logic: Some(logic.shared()),
+            hooks: Some(no_processing()),
             ..MixConfig::default()
         };
         let r = rig(&store, cfg, 2);
