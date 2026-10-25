@@ -19,8 +19,12 @@
 //!   no main send and are muted outright either way [I].
 //! * **Solo** (`cfg/solo`): a strip is soloed by its own `$solo`, by the `$solo` of a DCA it
 //!   belongs to, or (source solo, `srcsolo` CH39/AUX7 with `$srcsolo` on) as the source-solo
-//!   strip [I]. `$ctl/cfg/soloexcl` (EXCL SOLO, default on) makes a new solo clear every other one;
-//!   writing `$stat/solo` = 0 while a solo is active clears every solo ("clear solo"). Taps:
+//!   strip [I]. Solos are **additive** (T083): `$ctl/cfg/soloexcl` (EXCL SOLO, factory on) is a
+//!   control-surface preference (it lives in `ce_data`, signal-flow.md §10) and only makes a solo
+//!   pressed *on the console itself* ([`ORIGIN_LOCAL`] here) clear every other one. Solo writes
+//!   from remote clients (WING-Edit, OSC) are additive whatever it says: the user's real WING
+//!   (factory scene, EXCL SOLO on) solos additively from WING-Edit (user report, T083). Writing
+//!   `$stat/solo` = 0 while a solo is active clears every solo ("clear solo"). Taps:
 //!   `chtap` (ch and aux), `bustap`, `maintap`, `mtxtap`: PFL = pre-fader, AFL = post-fader.
 //!   Which monitor a soloed strip reaches: monitor 1 (PH) and/or 2 (SPK) by `cfg/solo/mon`
 //!   (PH/SPK/PH+SPK); factory PH. The strip `mon` (MON BUS A/B/A+B) does *not* gate it (T03G):
@@ -43,15 +47,20 @@
 //!   is soloed every non-soloed bus [I]. Mains and matrices are never SIP-muted.
 //! * **Indicators** (written back to the store, so WING-Edit sees them): `*/$sololed` 0 = off,
 //!   1 = soloed by its own button, 2 = soloed through a DCA / source solo; `dca/*/$sololed`;
-//!   `$stat/solo` = any solo active.
+//!   `$stat/solo` = any solo active; `*/$mute` (T083, int 0..2, the strip's mute indicator that
+//!   the console emits alongside every `mute` change, protocol.md §3.2): 1 = muted by its own
+//!   button, 2 = muted only through a mute group / DCA mute [I, by analogy with `$sololed`],
+//!   0 = not muted. WING-Edit's strip mute buttons (ch/aux/bus/main/mtx have `$mute`, DCAs do
+//!   not) did not follow their own clicks without it (T083).
 //!
 //! Not modelled: `cfg/solo/mute`, `$flip`, `cfg/muteovr`/`$muteovr`, `$presolo` (tap solo), the
-//! source-solo input selection (`$srcsgrp`/`$srcsin`), `$mute`/`$fdr` mirrors.
+//! source-solo input selection (`$srcsgrp`/`$srcsin`), the `$fdr` mirror.
 //!
 //! # Threading
 //!
 //! [`MixLogic::change_hook`] (registered on the store) marks the state dirty when a watched
-//! parameter changes and remembers the last strip/DCA whose solo was switched on (exclusive solo).
+//! parameter changes and remembers the last strip/DCA whose solo was switched on locally
+//! (exclusive solo).
 //! [`MixLogic::refresh`] (control thread, polled) recomputes everything, writes the indicators and
 //! publishes per-strip values to [`MixShared`] (atomics + a generation counter). RT nodes compare
 //! the generation once per block and re-read only on change: no locks, no allocation.
@@ -59,7 +68,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::*};
 use std::sync::Arc;
 
-use wing_model::{Hook, NodeId as ParamId, ParamStore, Value};
+use wing_model::{Hook, NodeId as ParamId, ParamStore, Value, ORIGIN_LOCAL};
 
 use crate::routing::{Strip, STRIP_COUNT};
 
@@ -140,6 +149,9 @@ pub enum SoloMode {
 /// Ids of one strip's parameters.
 struct StripIds {
     tags: ParamId,
+    mute: ParamId,
+    /// `$mute` indicator.
+    mute_led: ParamId,
     solo: ParamId,
     sololed: ParamId,
     solosafe: Option<ParamId>,
@@ -184,6 +196,8 @@ impl Ids {
                 let p = strip_path(i);
                 StripIds {
                     tags: id(&format!("{p}/tags")),
+                    mute: id(&format!("{p}/mute")),
+                    mute_led: id(&format!("{p}/$mute")),
                     solo: id(&format!("{p}/$solo")),
                     sololed: id(&format!("{p}/$sololed")),
                     solosafe: store.lookup(&format!("{p}/solosafe")),
@@ -217,7 +231,7 @@ impl Ids {
     fn watched(&self) -> Vec<ParamId> {
         let mut v = Vec::new();
         for s in &self.strips {
-            v.extend([s.tags, s.solo]);
+            v.extend([s.tags, s.solo, s.mute]);
             v.extend(s.solosafe);
         }
         v.extend(self.dca_fdr);
@@ -345,13 +359,15 @@ impl MixLogic {
     }
 
     /// Store hook: marks the logic dirty on watched changes. Register before sharing the store.
+    /// Only solos switched on with [`ORIGIN_LOCAL`] (the console itself) are exclusive; client
+    /// solos are additive (see the module docs).
     pub fn change_hook(&self) -> Hook {
         let (watch, solo_btn) = (self.watch.clone(), self.solo_btn.clone());
         let (dirty, last_on) = (self.dirty.clone(), self.last_on.clone());
         Box::new(move |c| {
             let i = c.id as usize;
             if watch.get(i).copied().unwrap_or(false) {
-                if solo_btn[i] && c.raw != 0 {
+                if solo_btn[i] && c.raw != 0 && c.origin == ORIGIN_LOCAL {
                     last_on.store(c.id as u32 + 1, Release);
                 }
                 dirty.store(true, Release);
@@ -359,7 +375,8 @@ impl MixLogic {
         })
     }
 
-    /// Mark dirty if `id` is watched (for callers that see changes another way).
+    /// Mark dirty if `id` is watched (for callers that see changes another way; treated as a
+    /// local change).
     pub fn notify(&self, id: ParamId, raw: u32) {
         if self.watch[id.index()] {
             if self.solo_btn[id.index()] && raw != 0 {
@@ -453,6 +470,7 @@ impl MixLogic {
         let mut gain = [0f32; STRIP_COUNT];
         let mut flags = [0u32; STRIP_COUNT];
         let mut soloed = [0u8; STRIP_COUNT]; // 0 no, 1 own, 2 implicit
+        let mut muted = [0u8; STRIP_COUNT]; // `$mute`: 0 no, 1 own, 2 mute group / DCA
         for (i, s) in ids.strips.iter().enumerate() {
             let (d, m) = store.with_str(s.tags, parse_tags).unwrap_or((0, 0));
             gain[i] = dca_sum_db(d, &dca_db);
@@ -467,6 +485,13 @@ impl MixLogic {
                     flag::MAIN_MUTE
                 };
             }
+            muted[i] = if on(s.mute) {
+                1
+            } else if flags[i] & (flag::MUTE | flag::MAIN_MUTE) != 0 {
+                2
+            } else {
+                0
+            };
             soloed[i] = if on(s.solo) {
                 1
             } else if d & dca_solo != 0 || src_strip == Some(i) {
@@ -512,6 +537,7 @@ impl MixLogic {
         // ---- indicators -------------------------------------------------------------------------
         for (i, s) in ids.strips.iter().enumerate() {
             set(s.sololed, soloed[i] as i32);
+            set(s.mute_led, muted[i] as i32);
         }
         for k in 0..16 {
             set(ids.dca_sololed[k], (dca_solo >> k & 1) as i32);

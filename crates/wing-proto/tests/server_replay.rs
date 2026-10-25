@@ -119,6 +119,8 @@ fn replay_capture_a1_push_reproduces_scene() {
     assert_eq!(stats.gets, 25);
     assert_eq!(stats.defs, 2);
     assert!(stats.rejected < 10, "rejected {}", stats.rejected);
+    // T083: the push is stored as sent, so nothing is echoed back to WING-Edit
+    assert_eq!(stats.echoes, 0);
     // must keep up with the ~0.5 s burst (generous for debug builds)
     assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
     eprintln!("A1 replay: {stats:?} in {elapsed:?}");
@@ -334,6 +336,92 @@ fn set_wire(hash: u32, t: Token) -> Vec<u8> {
     e.control(&Token::NavHash(hash), &mut v).unwrap();
     e.control(&t, &mut v).unwrap();
     v
+}
+
+fn tokens_wire(tokens: &[Token]) -> Vec<u8> {
+    let mut e = wing_proto::nrp::NrpEncoder::new();
+    let mut v = Vec::new();
+    for t in tokens {
+        e.control(t, &mut v).unwrap();
+    }
+    v
+}
+
+/// T083: WING-Edit toggles strip mutes (and other buttons) with `D8` and redraws them only from
+/// the console's reply; fan-out skips the setter, so the session must confirm its own clicks.
+#[test]
+fn tcp_click_and_adjusted_sets_are_confirmed_to_the_setter() {
+    let r = rig(None);
+    let h = |p: &str| r.store.schema().hash(r.store.lookup(p).unwrap());
+    let (mute, bus_mute, solo, fdr, mdl) = (
+        h("ch/1/mute"),
+        h("bus/2/mute"),
+        h("ch/3/$solo"),
+        h("ch/1/fdr"),
+        h("ch/1/dyn/mdl"),
+    );
+    let mut a = connect(&r); // WING-Edit
+    let mut b = connect(&r); // another client
+    std::thread::sleep(Duration::from_millis(100));
+    let want = |hash, v: &str| Reply::Value(hash, v.to_string());
+
+    // click: the setter gets the new value, every click
+    for (hash, v) in [
+        (mute, "SmallInt(1)"),
+        (mute, "SmallInt(0)"),
+        (bus_mute, "SmallInt(1)"),
+        (solo, "SmallInt(1)"),
+        (solo, "SmallInt(0)"),
+    ] {
+        a.write_all(&tokens_wire(&[Token::NavHash(hash), Token::Click]))
+            .unwrap();
+        let w = want(hash, v);
+        let ra = read_until(&mut a, |x| x.contains(&w));
+        assert!(ra.contains(&w), "click {hash:08x} -> {v}: {ra:?}");
+        // and the others get it as a normal change event
+        let rb = read_until(&mut b, |x| x.contains(&w));
+        assert!(rb.contains(&w), "observer {hash:08x} -> {v}: {rb:?}");
+    }
+    assert_eq!(
+        r.store.get(r.store.lookup("bus/2/mute").unwrap()),
+        Some(Value::Int(1))
+    );
+    // a step echoes too
+    a.write_all(&tokens_wire(&[Token::NavHash(fdr), Token::Float(0.0)]))
+        .unwrap();
+    a.write_all(&tokens_wire(&[Token::NavHash(fdr), Token::Step(-10)]))
+        .unwrap();
+    let w = want(fdr, "Float(-4.0)");
+    let ra = read_until(&mut a, |x| x.contains(&w));
+    assert!(ra.contains(&w), "{ra:?}");
+
+    // a plain set stored as sent: no echo to the setter (others get it)
+    a.write_all(&set_wire(mute, Token::SmallInt(1))).unwrap();
+    let ra = read_until(&mut a, |_| false);
+    assert!(
+        !ra.iter()
+            .any(|x| matches!(x, Reply::Value(hh, _) if *hh == mute)),
+        "{ra:?}"
+    );
+    let w = want(mute, "SmallInt(1)");
+    let rb = read_until(&mut b, |x| x.contains(&w));
+    assert!(rb.contains(&w), "{rb:?}");
+
+    // sets the console adjusted are confirmed: clamp, enum by index -> name
+    a.write_all(&set_wire(fdr, Token::Float(20.0))).unwrap();
+    let w = want(fdr, "Float(10.0)");
+    let ra = read_until(&mut a, |x| x.contains(&w));
+    assert!(ra.contains(&w), "{ra:?}");
+    let gate = r
+        .store
+        .desc(r.store.lookup("ch/1/dyn/mdl").unwrap())
+        .unwrap()
+        .enum_index("GATE")
+        .unwrap() as u8;
+    a.write_all(&set_wire(mdl, Token::SmallInt(gate))).unwrap();
+    let w = want(mdl, &format!("Str({:?})", b"GATE"));
+    let ra = read_until(&mut a, |x| x.contains(&w));
+    assert!(ra.contains(&w), "{ra:?}");
 }
 
 #[test]
