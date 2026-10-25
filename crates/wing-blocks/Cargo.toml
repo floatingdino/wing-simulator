@@ -4,3 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+wing-dsp = { path = "../wing-dsp" }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "dynamics"
+harness = false
