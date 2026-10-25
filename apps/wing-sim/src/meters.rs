@@ -158,7 +158,9 @@ impl RealMeters {
                 bank.set_block(
                     v2,
                     i,
-                    &[in_l, in_r, out_l, out_r, gkey, gg, gled, dkey, dg, dstate, 0],
+                    &[
+                        in_l, in_r, out_l, out_r, gkey, gg, gled, dkey, dg, dstate, 0,
+                    ],
                 );
             }
         }
@@ -192,7 +194,11 @@ impl RealMeters {
             bank.set_block(MeterKind::Dca, i, &[floor; 4]);
         }
         for i in 0..lay.count(MeterKind::Fx) {
-            bank.set_block(MeterKind::Fx, i, &[floor, floor, floor, floor, 0, 0, 0, 0, 0, 0]);
+            bank.set_block(
+                MeterKind::Fx,
+                i,
+                &[floor, floor, floor, floor, 0, 0, 0, 0, 0, 0],
+            );
         }
         bank.set_block(MeterKind::Rta, 0, &[floor; 120]);
     }
@@ -247,10 +253,7 @@ mod tests {
         ch2.level(word::IN_L, 0.5); // -6.02 dB
         ch2.level(word::DYN_GR, 10.0);
         ch2.level(word::GATE_GR, 30.0);
-        lv.peak(
-            source_cell(SourceAddr::new(SrcGroup::Usb, 3).unwrap()),
-            0.1,
-        );
+        lv.peak(source_cell(SourceAddr::new(SrcGroup::Usb, 3).unwrap()), 0.1);
         rm.update(0.05);
         rm.fill(&bank);
         let w = |k, i, j| bank.get(k, i, j).unwrap();

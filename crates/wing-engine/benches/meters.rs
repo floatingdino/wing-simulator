@@ -17,7 +17,9 @@ const FS: f64 = 48_000.0;
 const PORTS: usize = 98;
 
 fn signal(n: usize, seed: f32) -> Vec<f32> {
-    (0..n).map(|i| (i as f32 * 0.37 + seed).sin() * 0.3).collect()
+    (0..n)
+        .map(|i| (i as f32 * 0.37 + seed).sin() * 0.3)
+        .collect()
 }
 
 fn strip(meter: Option<StripMeter>) -> ChannelStrip {

@@ -473,7 +473,9 @@ fn strip_meters_levels_keys_and_gain_reduction() {
     let mut run = |s: &mut ChannelStrip, blocks: usize| {
         for _ in 0..blocks {
             let mut l: Vec<f32> = (0..N)
-                .map(|i| amp_l * ((n + i) as f32 * 2.0 * std::f32::consts::PI * 1000.0 / 48_000.0).sin())
+                .map(|i| {
+                    amp_l * ((n + i) as f32 * 2.0 * std::f32::consts::PI * 1000.0 / 48_000.0).sin()
+                })
                 .collect();
             let mut r: Vec<f32> = l.iter().map(|v| v * 0.5).collect();
             n += N;
@@ -490,13 +492,22 @@ fn strip_meters_levels_keys_and_gain_reduction() {
     let cell = |w| bank.get(strip_cell(2, w));
     let db = |v: f32| 20.0 * v.log10();
     // IN = after +6 dB trim: -14 dBFS (L), -20 dBFS (R)
-    assert!((db(cell(word::IN_L)) + 14.0).abs() < 0.05, "{}", db(cell(word::IN_L)));
+    assert!(
+        (db(cell(word::IN_L)) + 14.0).abs() < 0.05,
+        "{}",
+        db(cell(word::IN_L))
+    );
     assert!((db(cell(word::IN_R)) + 20.0).abs() < 0.05);
     // PFL after the compressor: below IN
     assert!(cell(word::PRE_L) < cell(word::IN_L) * 0.9);
     let t = s.telemetry();
     assert!(t.dyn_gr_db > 3.0, "comp reduces: {}", t.dyn_gr_db);
-    assert!((cell(word::DYN_GR) - t.dyn_gr_db).abs() < 0.5, "GR {} vs {}", cell(word::DYN_GR), t.dyn_gr_db);
+    assert!(
+        (cell(word::DYN_GR) - t.dyn_gr_db).abs() < 0.5,
+        "GR {} vs {}",
+        cell(word::DYN_GR),
+        t.dyn_gr_db
+    );
     // dyn key = its input (GEDI: post EQ = IN level here)
     assert!((db(cell(word::DYN_KEY)) + 14.0).abs() < 0.05);
     // gate is off: GR 0; its key meter reads the selected external key

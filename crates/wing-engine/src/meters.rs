@@ -308,7 +308,10 @@ mod tests {
 
     #[test]
     fn layout_is_dense() {
-        assert_eq!(strip_cell(STRIP_COUNT - 1, STRIP_WORDS - 1) + 1, SOURCE_BASE);
+        assert_eq!(
+            strip_cell(STRIP_COUNT - 1, STRIP_WORDS - 1) + 1,
+            SOURCE_BASE
+        );
         let last_src = SourceAddr::new(SrcGroup::Mon, SrcGroup::Mon.count()).unwrap();
         assert_eq!(source_cell(last_src) + 1, OUTPUT_BASE);
         let last_out = OutAddr::new(OutGroup::Aes, 2).unwrap();
