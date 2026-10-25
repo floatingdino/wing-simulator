@@ -169,7 +169,11 @@ mod tests {
 
     #[test]
     fn svf_matches_rbj_responses() {
-        for &(f0, q, g) in &[(200.0, 0.707, 6.0), (1500.0, 2.0, -9.0), (9000.0, 0.5, 12.0)] {
+        for &(f0, q, g) in &[
+            (200.0, 0.707, 6.0),
+            (1500.0, 2.0, -9.0),
+            (9000.0, 0.5, 12.0),
+        ] {
             let cases = [
                 (SvfMode::Lowpass, Coeffs::lowpass(FS, f0, q)),
                 (SvfMode::Highpass, Coeffs::highpass(FS, f0, q)),

@@ -148,10 +148,16 @@ mod tests {
             for &d in &[3.25f32, 10.5, 17.9] {
                 let lin = run(w, d, |dl, _| dl.read_linear(d));
                 let lin_bound = w * w / 8.0 + 1e-6;
-                assert!(lin <= lin_bound, "linear f={f_hz} d={d}: {lin} > {lin_bound}");
+                assert!(
+                    lin <= lin_bound,
+                    "linear f={f_hz} d={d}: {lin} > {lin_bound}"
+                );
                 let lag = run(w, d, |dl, _| dl.read_lagrange3(d));
                 let lag_bound = w.powi(4) * (9.0 / 16.0) / 24.0 + 1e-6;
-                assert!(lag <= lag_bound, "lagrange f={f_hz} d={d}: {lag} > {lag_bound}");
+                assert!(
+                    lag <= lag_bound,
+                    "lagrange f={f_hz} d={d}: {lag} > {lag_bound}"
+                );
                 assert!(lag <= lin + 1e-6);
                 // Thiran phase-delay error grows ~w^3; bound measured: < 2e-3 up to 4 kHz.
                 let ap = run(w, d, |dl, r| dl.read_allpass(r, d));

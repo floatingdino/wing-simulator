@@ -1,10 +1,10 @@
 //! Parameter smoothing (control -> RT de-zippering).
 //!
 //! - [`OnePoleSmoother`]: exponential approach, time constant `tau` (reaches 63.2% of a step after `tau`).
-//!   Per-sample [`OnePoleSmoother::next`], block fill [`OnePoleSmoother::fill`], or per-block
+//!   Per-sample [`OnePoleSmoother::tick`], block fill [`OnePoleSmoother::fill`], or per-block
 //!   [`OnePoleSmoother::advance`] (closed form, one value per block).
 //! - [`LinearRamp`]: reaches the target exactly after a fixed number of samples. Per-sample
-//!   [`LinearRamp::next`], block fill, or per-block [`LinearRamp::advance`].
+//!   [`LinearRamp::tick`], block fill, or per-block [`LinearRamp::advance`].
 
 /// One-pole coefficient for time constant `tau_s` seconds at `fs` Hz: `exp(-1/(tau*fs))`.
 /// `tau_s <= 0` yields 0 (no smoothing).
@@ -68,7 +68,7 @@ impl OnePoleSmoother {
     }
 
     #[inline]
-    pub fn next(&mut self) -> f32 {
+    pub fn tick(&mut self) -> f32 {
         self.value = self.target + (self.value - self.target) * self.coeff;
         self.value as f32
     }
@@ -77,7 +77,7 @@ impl OnePoleSmoother {
     #[inline]
     pub fn fill(&mut self, out: &mut [f32]) {
         for o in out {
-            *o = self.next();
+            *o = self.tick();
         }
     }
 
@@ -144,7 +144,7 @@ impl LinearRamp {
     }
 
     #[inline]
-    pub fn next(&mut self) -> f32 {
+    pub fn tick(&mut self) -> f32 {
         if self.remaining > 0 {
             self.remaining -= 1;
             self.value = if self.remaining == 0 {
@@ -159,7 +159,7 @@ impl LinearRamp {
     #[inline]
     pub fn fill(&mut self, out: &mut [f32]) {
         for o in out {
-            *o = self.next();
+            *o = self.tick();
         }
     }
 
@@ -189,7 +189,7 @@ mod tests {
         s.set_target(1.0);
         let mut v = 0.0;
         for _ in 0..480 {
-            v = s.next();
+            v = s.tick();
         }
         assert!((v - (1.0 - (-1.0f32).exp())).abs() < 1e-4, "v={v}");
         // per-block advance agrees with per-sample
@@ -201,7 +201,7 @@ mod tests {
         assert!((b.value() - v).abs() < 1e-4);
         // settles
         for _ in 0..48_000 {
-            s.next();
+            s.tick();
         }
         assert!(s.is_settled(1e-6));
     }
@@ -225,7 +225,7 @@ mod tests {
         assert!((buf[49] - 0.5).abs() < 1e-5);
         assert_eq!(buf[99], 1.0);
         assert!(!r.is_ramping());
-        assert_eq!(r.next(), 1.0);
+        assert_eq!(r.tick(), 1.0);
 
         let mut b = LinearRamp::new(2.0, 64);
         b.set_target(-2.0);
@@ -245,7 +245,7 @@ mod tests {
         r.set_target(0.0);
         let mut last = 0.0;
         for _ in 0..10 {
-            last = r.next();
+            last = r.tick();
         }
         assert_eq!(last, 0.0);
     }

@@ -112,17 +112,19 @@ impl History {
 
 #[inline(always)]
 fn dot(a: &[f32], b: &[f32]) -> f32 {
-    // 4 accumulators so the reduction vectorises without reassociation flags.
-    let mut acc = [0.0f32; 4];
-    let chunks = a.len() / 4;
-    for i in 0..chunks {
-        for l in 0..4 {
-            acc[l] += a[4 * i + l] * b[4 * i + l];
+    // 8 independent accumulators over fixed-size chunks: bounds-check free and vectorises to NEON FMAs
+    // without needing fast-math reassociation.
+    let (ac, ar) = a.as_chunks::<8>();
+    let (bc, br) = b[..a.len()].as_chunks::<8>();
+    let mut acc = [0.0f32; 8];
+    for (x, y) in ac.iter().zip(bc) {
+        for l in 0..8 {
+            acc[l] += x[l] * y[l];
         }
     }
-    let mut s = (acc[0] + acc[1]) + (acc[2] + acc[3]);
-    for i in chunks * 4..a.len() {
-        s += a[i] * b[i];
+    let mut s = ((acc[0] + acc[4]) + (acc[1] + acc[5])) + ((acc[2] + acc[6]) + (acc[3] + acc[7]));
+    for (x, y) in ar.iter().zip(br) {
+        s += x * y;
     }
     s
 }
@@ -164,7 +166,7 @@ impl HalfbandStage {
     fn upsample(&mut self, input: &[f32], out: &mut [f32]) {
         debug_assert_eq!(out.len(), 2 * input.len());
         let k = self.k;
-        for (&x, o) in input.iter().zip(out.chunks_exact_mut(2)) {
+        for (&x, o) in input.iter().zip(out.as_chunks_mut::<2>().0) {
             self.up.push(x);
             let w = self.up.window();
             o[0] = dot(&self.he_up, w);
@@ -177,7 +179,7 @@ impl HalfbandStage {
     fn downsample(&mut self, input: &[f32], out: &mut [f32]) {
         debug_assert_eq!(input.len(), 2 * out.len());
         let k = self.k;
-        for (pair, o) in input.chunks_exact(2).zip(out.iter_mut()) {
+        for (pair, o) in input.as_chunks::<2>().0.iter().zip(out.iter_mut()) {
             self.down_even.push(pair[0]);
             self.down_odd.push(pair[1]);
             *o = dot(&self.he, self.down_even.window()) + 0.5 * self.down_odd.window()[k];

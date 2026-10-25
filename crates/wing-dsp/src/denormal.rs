@@ -35,13 +35,17 @@ mod imp {
     pub fn get() -> u64 {
         let v: u64;
         // SAFETY: reading FPCR has no side effects.
-        unsafe { core::arch::asm!("mrs {}, fpcr", out(reg) v, options(nomem, nostack, preserves_flags)) };
+        unsafe {
+            core::arch::asm!("mrs {}, fpcr", out(reg) v, options(nomem, nostack, preserves_flags))
+        };
         v
     }
 
     pub fn set(v: u64) {
         // SAFETY: writing FPCR only changes FP rounding/flush behaviour of this thread.
-        unsafe { core::arch::asm!("msr fpcr, {}", in(reg) v, options(nomem, nostack, preserves_flags)) };
+        unsafe {
+            core::arch::asm!("msr fpcr, {}", in(reg) v, options(nomem, nostack, preserves_flags))
+        };
     }
 
     pub fn enable(v: u64) -> u64 {
@@ -141,7 +145,10 @@ mod tests {
     fn guard_flushes_and_restores() {
         let tiny = black_box(f32::MIN_POSITIVE);
         let before = black_box(tiny) * black_box(0.25);
-        assert!(before > 0.0 && before.is_subnormal(), "default mode keeps subnormals");
+        assert!(
+            before > 0.0 && before.is_subnormal(),
+            "default mode keeps subnormals"
+        );
         {
             let _g = DenormalGuard::new();
             if cfg!(any(target_arch = "aarch64", target_arch = "x86_64")) {

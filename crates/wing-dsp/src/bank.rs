@@ -238,7 +238,10 @@ mod tests {
                     x = s.process(x);
                 }
                 assert!((planar[c][n] - x).abs() < 1e-6, "planar c={c} n={n}");
-                assert!((interleaved[n * channels + c] - x).abs() < 1e-6, "interleaved c={c} n={n}");
+                assert!(
+                    (interleaved[n * channels + c] - x).abs() < 1e-6,
+                    "interleaved c={c} n={n}"
+                );
             }
         }
     }

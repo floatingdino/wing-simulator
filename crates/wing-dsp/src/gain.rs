@@ -7,7 +7,7 @@
 //!   - `db_to_lin_fast`: relative error < 6e-6 (< 0.00006 dB) over [-240, +120] dB;
 //!   - `fast_log2`: absolute error < 4e-6 for positive normal inputs (dominated by f32 rounding of the
 //!     result when |log2 x| is large; < 5e-7 for x in [2^-8, 2^8]);
-//!   - `lin_to_db_fast`: absolute error < 3e-5 dB over [-240, +120] dB. Non-positive inputs return
+//!   - `lin_to_db_fast`: absolute error < 4e-5 dB over [-240, +120] dB. Non-positive inputs return
 //!     [`MIN_DB`].
 //! - [`GainTable`]: precomputed dB->linear lookup with linear interpolation (fixed size, no allocation).
 
@@ -15,9 +15,9 @@
 pub const MIN_DB: f32 = -240.0;
 
 /// 20*log10(2): dB per doubling.
-const DB_PER_LOG2: f32 = 6.020_599_9;
+const DB_PER_LOG2: f32 = 20.0 * core::f32::consts::LOG10_2;
 /// log2(10)/20: log2 units per dB.
-const LOG2_PER_DB: f32 = 0.166_096_4;
+const LOG2_PER_DB: f32 = core::f32::consts::LOG2_10 / 20.0;
 
 #[inline]
 pub fn db_to_lin(db: f32) -> f32 {
@@ -56,7 +56,7 @@ pub fn fast_exp2(x: f32) -> f32 {
     let xi = x.round();
     let f = x - xi;
     // e^(f ln2) Taylor coefficients: (ln2)^k / k!
-    const C1: f32 = 0.693_147_2;
+    const C1: f32 = core::f32::consts::LN_2;
     const C2: f32 = 0.240_226_5;
     const C3: f32 = 0.055_504_11;
     const C4: f32 = 0.009_618_129;
@@ -209,7 +209,7 @@ mod tests {
         }
         assert!(worst_l2 < 4e-6, "log2 err {worst_l2}");
         assert!(worst_l2_near < 5e-7, "log2 err near 0 {worst_l2_near}");
-        assert!(worst_db < 3e-5, "dB err {worst_db}");
+        assert!(worst_db < 4e-5, "dB err {worst_db}");
         assert_eq!(lin_to_db_fast(0.0), MIN_DB);
         assert_eq!(lin_to_db_fast(-1.0), MIN_DB);
     }

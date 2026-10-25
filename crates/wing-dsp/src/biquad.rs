@@ -257,14 +257,14 @@ pub fn butterworth(kind: CutKind, fs: f64, f0: f64, order: usize) -> Sections {
         len: 0,
     };
     let n = order as f64;
-    if order % 2 == 1 {
+    if !order.is_multiple_of(2) {
         s.push(match kind {
             CutKind::Lowpass => Coeffs::lowpass1(fs, f0),
             CutKind::Highpass => Coeffs::highpass1(fs, f0),
         });
     }
     for k in 1..=order / 2 {
-        let theta = if order % 2 == 0 {
+        let theta = if order.is_multiple_of(2) {
             (2 * k - 1) as f64 * PI / (2.0 * n)
         } else {
             k as f64 * PI / n
@@ -602,12 +602,7 @@ mod tests {
         for &f0 in &[40.0, 1000.0, 12_000.0] {
             for &q in &[0.5, 0.707, 2.0, 8.0] {
                 let den = |s: Complex| poly2(s, 1.0, 1.0 / q, 1.0);
-                assert_close(
-                    &Coeffs::lowpass(FS, f0, q),
-                    |s| one / den(s),
-                    f0,
-                    "lowpass",
-                );
+                assert_close(&Coeffs::lowpass(FS, f0, q), |s| one / den(s), f0, "lowpass");
                 assert_close(
                     &Coeffs::highpass(FS, f0, q),
                     |s| s * s / den(s),
@@ -679,12 +674,23 @@ mod tests {
     #[test]
     fn landmark_gains() {
         assert!((Coeffs::peak(FS, 1000.0, 1.0, 12.0).magnitude_db(FS, 1000.0) - 12.0).abs() < 1e-9);
-        assert!((Coeffs::low_shelf(FS, 200.0, 0.707, 9.0).magnitude_db(FS, 1.0) - 9.0).abs() < 1e-3);
-        assert!((Coeffs::low_shelf(FS, 200.0, 0.707, 9.0).magnitude_db(FS, 200.0) - 4.5).abs() < 1e-9);
         assert!(
-            (Coeffs::high_shelf(FS, 5000.0, 0.707, -6.0).magnitude_db(FS, 5000.0) + 3.0).abs() < 1e-9
+            (Coeffs::low_shelf(FS, 200.0, 0.707, 9.0).magnitude_db(FS, 1.0) - 9.0).abs() < 1e-3
         );
-        assert!((Coeffs::lowpass(FS, 1000.0, core::f64::consts::FRAC_1_SQRT_2).magnitude_db(FS, 1000.0) + 3.0103).abs() < 1e-3);
+        assert!(
+            (Coeffs::low_shelf(FS, 200.0, 0.707, 9.0).magnitude_db(FS, 200.0) - 4.5).abs() < 1e-9
+        );
+        assert!(
+            (Coeffs::high_shelf(FS, 5000.0, 0.707, -6.0).magnitude_db(FS, 5000.0) + 3.0).abs()
+                < 1e-9
+        );
+        assert!(
+            (Coeffs::lowpass(FS, 1000.0, core::f64::consts::FRAC_1_SQRT_2)
+                .magnitude_db(FS, 1000.0)
+                + 3.0103)
+                .abs()
+                < 1e-3
+        );
         assert!(Coeffs::notch(FS, 1000.0, 4.0).magnitude_db(FS, 1000.0) < -100.0);
     }
 
@@ -712,7 +718,10 @@ mod tests {
             let f2 = edge(f0, FS * 0.4999);
             let measured = (f2 / f1).log2();
             // RBJ's w0/sin(w0) warping compensation is approximate: < 0.002 octave error up to fs/6.
-            assert!((measured - bw).abs() < 2e-3, "f0={f0} bw={bw} measured={measured}");
+            assert!(
+                (measured - bw).abs() < 2e-3,
+                "f0={f0} bw={bw} measured={measured}"
+            );
         }
     }
 
@@ -729,9 +738,12 @@ mod tests {
                         let analog_db = -10.0 * (1.0 + wn.powi(2 * order as i32)).log10();
                         let d = s.response(FS, f).db();
                         if analog_db > -200.0 {
-                            assert!((d - analog_db).abs() < 0.01, "BW{order} f={f} {d} vs {analog_db}");
+                            assert!(
+                                (d - analog_db).abs() < 0.01,
+                                "BW{order} f={f} {d} vs {analog_db}"
+                            );
                         }
-                        if order % 2 == 0 {
+                        if order.is_multiple_of(2) {
                             // LR(order) = Butterworth(order/2)^2
                             let half = -10.0 * (1.0 + wn.powi(order as i32)).log10();
                             if half > -100.0 {
@@ -743,8 +755,22 @@ mod tests {
                 }
             }
             // -3.01 dB / -6.02 dB at f0
-            assert!((butterworth(CutKind::Highpass, FS, f0, 5).response(FS, f0).db() + 3.0103).abs() < 1e-3);
-            assert!((linkwitz_riley(CutKind::Lowpass, FS, f0, 4).response(FS, f0).db() + 6.0206).abs() < 1e-3);
+            assert!(
+                (butterworth(CutKind::Highpass, FS, f0, 5)
+                    .response(FS, f0)
+                    .db()
+                    + 3.0103)
+                    .abs()
+                    < 1e-3
+            );
+            assert!(
+                (linkwitz_riley(CutKind::Lowpass, FS, f0, 4)
+                    .response(FS, f0)
+                    .db()
+                    + 6.0206)
+                    .abs()
+                    < 1e-3
+            );
         }
     }
 
@@ -795,7 +821,10 @@ mod tests {
         let h = impulse_response(|x| cas.process(x), 32_768);
         for f in [40.0, 80.0, 160.0, 1000.0, 10_000.0] {
             let w = 2.0 * PI * f / FS;
-            assert!((dtft(&h, w).db() - s.response(FS, f).db()).abs() < 0.01, "cascade f={f}");
+            assert!(
+                (dtft(&h, w).db() - s.response(FS, f).db()).abs() < 0.01,
+                "cascade f={f}"
+            );
         }
     }
 

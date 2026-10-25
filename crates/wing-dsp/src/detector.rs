@@ -268,12 +268,16 @@ mod tests {
 
     #[test]
     fn mean_square_mode_measures_rms() {
-        let mut e = EnvelopeFollower::new(DetectMode::MeanSquare, 0.05, 0.05, ReleaseMode::Fixed, FS);
+        let mut e =
+            EnvelopeFollower::new(DetectMode::MeanSquare, 0.05, 0.05, ReleaseMode::Fixed, FS);
         let mut v = 0.0;
         for n in 0..96_000 {
             v = e.process((2.0 * core::f32::consts::PI * 1000.0 * n as f32 / FS as f32).sin());
         }
-        assert!((v - core::f32::consts::FRAC_1_SQRT_2).abs() < 0.01, "rms {v}");
+        assert!(
+            (v - core::f32::consts::FRAC_1_SQRT_2).abs() < 0.01,
+            "rms {v}"
+        );
     }
 
     #[test]
@@ -314,7 +318,10 @@ mod tests {
         for n in 0..10_000 {
             v = r.process((2.0 * core::f32::consts::PI * n as f32 / period as f32).sin());
         }
-        assert!((v - core::f32::consts::FRAC_1_SQRT_2).abs() < 1e-4, "rms {v}");
+        assert!(
+            (v - core::f32::consts::FRAC_1_SQRT_2).abs() < 1e-4,
+            "rms {v}"
+        );
         // DC step: exactly 1 after one full window
         let mut r = RmsWindow::new(100, 100);
         let v = (0..100).map(|_| r.process(1.0)).last().unwrap();
