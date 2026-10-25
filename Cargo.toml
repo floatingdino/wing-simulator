@@ -7,6 +7,7 @@ members = [
     "crates/wing-blocks",
     "crates/wing-engine",
     "crates/wing-shm",
+    "crates/wing-hostio",
     "apps/wing-sim",
     "apps/wing-render",
 ]
@@ -21,6 +22,12 @@ publish = false
 libc = "0.2"
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
 socket2 = { version = "0.6", features = ["all"] }
+serde = { version = "1", features = ["derive"] }
+toml = { version = "0.9", default-features = false, features = ["parse", "serde", "std"] }
+
+# The drift simulation tests run an hour of audio; keep them fast in `cargo test`.
+[profile.dev.package.wing-hostio]
+opt-level = 2
 
 [profile.release]
 lto = "thin"

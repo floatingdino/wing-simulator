@@ -2,10 +2,10 @@
 id: T023
 title: Host output bridge with drift compensation
 stage: S2
-status: todo
-owner: -
+status: in_progress
+owner: agent-T023
 depends: [T022]
-branch: -
+branch: task/T023
 ---
 
 ## Goal
