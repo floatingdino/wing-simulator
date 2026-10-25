@@ -21,6 +21,7 @@
 //! [`Model::todo`]) so the whole catalog is selectable today; S4/S5 tasks replace them in [`create_model`].
 
 use crate::eq::EqVariant;
+use crate::models::comp_console::{ConsoleComp, ConsoleKind};
 use crate::models::comp_vca::{VcaComp, VcaKind};
 use crate::models::filter_tool::FilterToolModel;
 use crate::models::gate_vintage::{VintageGate, VintageGateKind};
@@ -308,6 +309,11 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "D241C") => Box::new(VcaComp::new(VcaKind::D241C)),
         (BlockKind::Dynamics, "9000C") => Box::new(VcaComp::new(VcaKind::Ssl9000)),
         (BlockKind::Dynamics, "SBUS") => Box::new(VcaComp::new(VcaKind::SBus)),
+        (BlockKind::Dynamics, "ECL33") => Box::new(ConsoleComp::new(ConsoleKind::Ecl33)),
+        (BlockKind::Dynamics, "E88C") => Box::new(ConsoleComp::new(ConsoleKind::E88c)),
+        (BlockKind::Dynamics, "RED3") => Box::new(ConsoleComp::new(ConsoleKind::Red3)),
+        (BlockKind::Dynamics, "2250") => Box::new(ConsoleComp::new(ConsoleKind::Api2250)),
+        (BlockKind::Dynamics, "LMT") => Box::new(ConsoleComp::new(ConsoleKind::Lmt)),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
@@ -433,10 +439,14 @@ mod tests {
     use super::*;
 
     #[test]
+    #[rustfmt::skip]
     fn catalogs_create_and_stub_flags() {
         let implemented = [
-            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS", "E88",
-            "9000G", "D241G",
+            // One line per model family; append yours on its own line to keep merges clean.
+            "GATE", "DUCK", "COMP", "EXP",
+            "B160", "B560", "D241C", "9000C", "SBUS",
+            "E88", "9000G", "D241G",
+            "ECL33", "E88C", "RED3", "2250", "LMT",
         ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);

@@ -35,3 +35,7 @@ harness = false
 [[bench]]
 name = "gate_vintage"
 harness = false
+
+[[bench]]
+name = "comp_console"
+harness = false
