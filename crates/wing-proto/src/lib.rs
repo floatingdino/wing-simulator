@@ -14,3 +14,4 @@
 pub mod discovery;
 pub mod nrp;
 pub mod osc;
+pub mod server;

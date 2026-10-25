@@ -184,6 +184,12 @@ impl Responder {
         self.sock.local_addr()
     }
 
+    /// A clone of the bound UDP socket (port 2222), e.g. for sending meter data from the
+    /// console's port as a real WING does.
+    pub fn try_clone_socket(&self) -> io::Result<UdpSocket> {
+        self.sock.try_clone()
+    }
+
     pub fn config(&self) -> &ResponderConfig {
         &self.cfg
     }

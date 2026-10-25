@@ -514,6 +514,7 @@ dependencies = [
 name = "wing-proto"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "socket2",
  "wing-model",
 ]
@@ -532,6 +533,11 @@ dependencies = [
 [[package]]
 name = "wing-sim"
 version = "0.1.0"
+dependencies = [
+ "libc",
+ "wing-model",
+ "wing-proto",
+]
 
 [[package]]
 name = "winnow"
