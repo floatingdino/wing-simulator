@@ -68,6 +68,33 @@ fn assert_close(a: &[f32], b: &[f32], tol: f32, what: &str) {
     assert!(d <= tol, "{what}: max diff {d}");
 }
 
+/// Signal history for comparisons across the strips' constant latency (T03E).
+#[derive(Default)]
+struct Hist(Vec<f32>);
+
+impl Hist {
+    fn push(&mut self, x: &[f32]) {
+        self.0.extend_from_slice(x);
+    }
+
+    /// The last pushed block delayed by `d` samples (silence before the start).
+    fn delayed(&self, d: usize) -> Vec<f32> {
+        let end = self.0.len();
+        (end - BLOCK..end)
+            .map(|i| i.checked_sub(d).map_or(0.0, |j| self.0[j]))
+            .collect()
+    }
+}
+
+/// Constant latency of an input strip / a bus-main-matrix strip (zero-latency FX inserts).
+fn input_latency() -> usize {
+    ChannelStrip::channel(48_000.0, BLOCK).latency()
+}
+
+fn mix_latency(s: Strip) -> usize {
+    MixStrip::new(s, 48_000.0, BLOCK).latency()
+}
+
 fn peak(x: &[f32]) -> f32 {
     x.iter().fold(0.0f32, |a, v| a.max(v.abs()))
 }
@@ -91,6 +118,8 @@ fn channel_insert_runs_slot_with_fxmix() {
         InsertStat::Ok
     );
     assert_eq!(r.fx.owner(2), None);
+    let d = input_latency();
+    let (mut hl, mut hr) = (Hist::default(), Hist::default());
     for k in 0..40 {
         r.cycle(&[1]);
         let (sl, sr) = (send_leg(&r, 1), send_leg(&r, 2));
@@ -102,10 +131,22 @@ fn channel_insert_runs_slot_with_fxmix() {
         );
         let (mut wl, mut wr) = (sl.clone(), sr.clone());
         model.process(&mut wl, &mut wr, None);
+        hl.push(&wl);
+        hr.push(&wr);
         if k >= 8 {
-            // past the NONE -> ST-DL crossfade
-            assert_close(&r.input(0, I::Pfl, Side::L), &wl, 1e-6, "PFL L = wet");
-            assert_close(&r.input(0, I::Pfl, Side::R), &wr, 1e-6, "PFL R = wet");
+            // past the NONE -> ST-DL crossfade; PFL = wet at the strip's constant latency
+            assert_close(
+                &r.input(0, I::Pfl, Side::L),
+                &hl.delayed(d),
+                1e-6,
+                "PFL L = wet",
+            );
+            assert_close(
+                &r.input(0, I::Pfl, Side::R),
+                &hr.delayed(d),
+                1e-6,
+                "PFL R = wet",
+            );
         }
     }
     assert_eq!(peak(&send_leg(&r, 3)), 0.0, "unused slot: silent SEND leg");
@@ -117,20 +158,57 @@ fn channel_insert_runs_slot_with_fxmix() {
         let (sl, sr) = (send_leg(&r, 1), send_leg(&r, 2));
         let (mut wl, mut wr) = (sl.clone(), sr.clone());
         model.process(&mut wl, &mut wr, None);
+        hl.push(
+            &sl.iter()
+                .zip(&wl)
+                .map(|(d, w)| d + 0.5 * (w - d))
+                .collect::<Vec<_>>(),
+        );
         if k >= 8 {
-            let mix: Vec<f32> = sl.iter().zip(&wl).map(|(d, w)| d + 0.5 * (w - d)).collect();
-            assert_close(&r.input(0, I::Pfl, Side::L), &mix, 1e-5, "PFL = 50 % mix");
+            assert_close(
+                &r.input(0, I::Pfl, Side::L),
+                &hl.delayed(d),
+                1e-5,
+                "PFL = 50 % mix",
+            );
         }
     }
 
-    // insert off: dry
+    // insert off: crossfades to dry over the 5 ms slot ramp (no click); the SEND leg stops
+    setf(&store, "fx/1/fxmix", 100.0);
+    for _ in 0..10 {
+        let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
+        r.cycle(&[1]);
+        let (mut wl, mut wr) = (x.clone(), x.clone());
+        model.process(&mut wl, &mut wr, None);
+        hl.push(&wl);
+    }
     seti(&store, "ch/1/preins/on", 0);
-    r.cycles(2, &[1]);
-    let x: Vec<f32> = (0..BLOCK as u64)
-        .map(|i| sig(0, r.t - BLOCK as u64 + i))
-        .collect();
-    assert_close(&r.input(0, I::Pfl, Side::L), &x, 1e-6, "insert off = dry");
-    assert_eq!(peak(&send_leg(&r, 1)), 0.0, "bypassed slot does not run");
+    let ramp = 240.0f32;
+    for k in 0..8 {
+        let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
+        r.cycle(&[1]);
+        let (mut wl, mut wr) = (x.clone(), x.clone());
+        model.process(&mut wl, &mut wr, None);
+        let expect: Vec<f32> = (0..BLOCK)
+            .map(|i| {
+                let w = (1.0 - (k * BLOCK + i + 1) as f32 / ramp).max(0.0);
+                x[i] + w * (wl[i] - x[i])
+            })
+            .collect();
+        hl.push(&expect);
+        assert_close(
+            &r.input(0, I::Pfl, Side::L),
+            &hl.delayed(d),
+            1e-5,
+            "switch-off crossfade",
+        );
+        assert_eq!(
+            peak(&send_leg(&r, 1)),
+            0.0,
+            "SEND leg silent while the insert is off"
+        );
+    }
 }
 
 /// "Send" use: ch 1 -> bus 1 whose Ins1 hosts FX2; bus 1 returns to main 1 and is re-input on aux 1
@@ -160,41 +238,46 @@ fn bus_insert_send_fx_returns_to_main_and_aux() {
     plain_input(&store, "aux/1");
     let mut r = rig(&store, MixConfig::default(), 3);
     assert_eq!(r.fx.owner(2), Some((Strip::Bus(1), InsertPos::Pre)));
-    let mut prev_post: Option<Vec<f32>> = None;
+    let (db, dm, da) = (
+        mix_latency(Strip::Bus(1)),
+        mix_latency(Strip::Main(1)),
+        BLOCK + input_latency(),
+    );
+    let (mut hl, mut hr, mut hp) = (Hist::default(), Hist::default(), Hist::default());
     for k in 0..40 {
         r.cycle(&[1]);
         let (sl, sr) = (send_leg(&r, 3), send_leg(&r, 4));
         let (mut wl, mut wr) = (sl.clone(), sr.clone());
         model.process(&mut wl, &mut wr, None);
+        hl.push(&wl);
+        hr.push(&wr);
+        let post = r.mix(Strip::Bus(1), M::Post, Side::L);
+        hp.push(&post);
         if k >= 8 {
             assert!(peak(&sl) > 0.01);
             assert_close(
                 &r.mix(Strip::Bus(1), M::Pfl, Side::L),
-                &wl,
+                &hl.delayed(db),
                 1e-6,
                 "bus PFL = wet",
             );
             assert_close(
                 &r.mix(Strip::Bus(1), M::Pfl, Side::R),
-                &wr,
+                &hr.delayed(db),
                 1e-6,
                 "bus PFL R",
             );
-            let post = r.mix(Strip::Bus(1), M::Post, Side::L);
-            let (g, res) = fit(&post, &r.mix(Strip::Main(1), M::Pfl, Side::L));
+            let (g, res) = fit(&hp.delayed(dm), &r.mix(Strip::Main(1), M::Pfl, Side::L));
             assert!(
                 res < 1e-4 && g > 0.1,
                 "main 1 carries the FX return: g {g} res {res}"
             );
-            if let Some(p) = &prev_post {
-                assert_close(
-                    &r.input(40, I::Pfl, Side::L),
-                    p,
-                    1e-6,
-                    "aux 1 = bus 1 one block late",
-                );
-            }
-            prev_post = Some(post);
+            assert_close(
+                &r.input(40, I::Pfl, Side::L),
+                &hp.delayed(da),
+                1e-6,
+                "aux 1 = bus 1 one block late (+ aux strip latency)",
+            );
         }
     }
 }
@@ -215,7 +298,17 @@ fn slot_serves_one_insert() {
     sett(&store, "bus/2/postins/ins", "FX3");
     st_dl(&store, 3, 2.0, 0.0, 100.0);
     let mut r = rig(&store, MixConfig::default(), 2);
-    r.cycles(10, &[1]);
+    let (dc, db) = (input_latency(), mix_latency(Strip::Bus(2)));
+    let (mut hc, mut hx) = (Hist::default(), Hist::default());
+    let run = |r: &mut Rig, hx: &mut Hist, hc: &mut Hist, n: usize| {
+        for _ in 0..n {
+            let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
+            r.cycle(&[1]);
+            hx.push(&x);
+            hc.push(&r.input(0, I::Pfl, Side::L));
+        }
+    };
+    run(&mut r, &mut hx, &mut hc, 10);
     assert_eq!(r.fx.owner(3), Some((Strip::Ch(1), InsertPos::Pre)));
     assert_eq!(
         r.fx.insert_state(Strip::Bus(2), InsertPos::Post),
@@ -232,17 +325,14 @@ fn slot_serves_one_insert() {
         .zip(&dry)
         .any(|(a, b)| (a - b).abs() > 1e-3));
     // bus 2 passes through: PFL = its sum = ch 1 PFL (send at 0 dB, centre pan, constant power)
-    let (g, res) = fit(
-        &r.input(0, I::Pfl, Side::L),
-        &r.mix(Strip::Bus(2), M::Pfl, Side::L),
-    );
+    let (g, res) = fit(&hc.delayed(db), &r.mix(Strip::Bus(2), M::Pfl, Side::L));
     assert!(
         res < 1e-4 && (g - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-3,
         "{g} {res}"
     );
 
     sett(&store, "ch/1/preins/ins", "NONE");
-    r.cycles(10, &[1]);
+    run(&mut r, &mut hx, &mut hc, 10);
     assert_eq!(r.fx.owner(3), Some((Strip::Bus(2), InsertPos::Post)));
     assert_eq!(
         r.fx.insert_state(Strip::Bus(2), InsertPos::Post),
@@ -252,12 +342,9 @@ fn slot_serves_one_insert() {
         r.fx.insert_state(Strip::Ch(1), InsertPos::Pre),
         InsertStat::None
     );
-    let dry: Vec<f32> = (0..BLOCK as u64)
-        .map(|i| sig(0, r.t - BLOCK as u64 + i))
-        .collect();
     assert_close(
         &r.input(0, I::Pfl, Side::L),
-        &dry,
+        &hx.delayed(dc),
         1e-6,
         "ch 1 dry after release",
     );
@@ -297,25 +384,30 @@ impl RtModel for Lat {
     }
 }
 
-/// Slot latency is reported per slot and added to the strips whose engaged inserts own the slot.
+/// Slot latency is constant per slot (T03E: max over its models) and pads the strips whose inserts
+/// claim and own the slot through their latency alignment.
 #[test]
 fn insert_latency_reporting() {
     let rack = FxRack::with_factory(48_000.0, BLOCK, |slot, _i, name| {
-        (name == "GEQ").then(|| Box::new(Lat(10 * slot as usize)) as Box<dyn RtModel>)
+        (name == "GEQ" && (slot == 4 || slot == 12))
+            .then(|| Box::new(Lat(10 * slot as usize)) as Box<dyn RtModel>)
     });
-    let select = |n: u8, model: u16| unsafe {
-        rack.with_slot(n, |s| {
-            s.apply(&ParamMsg::Model { block: 0, model });
-            s.apply(&ParamMsg::Commit);
-            s.reset();
-        })
-    };
-    select(4, 28); // GEQ in a full slot
-    select(12, 2); // GEQ in a lite slot
     assert_eq!(rack.slot_latency(4), 40);
     assert_eq!(rack.slot_latency(12), 120);
     assert_eq!(rack.slot_latency(5), 0);
+    // constant: selecting another model does not change it
+    unsafe {
+        rack.with_slot(4, |s| {
+            s.apply(&ParamMsg::Model {
+                block: 0,
+                model: 19,
+            });
+            s.apply(&ParamMsg::Commit);
+        })
+    };
+    assert_eq!(rack.slot_latency(4), 40);
 
+    let (mut l, mut r) = (vec![0.0f32; BLOCK], vec![0.0f32; BLOCK]);
     let set = |s: &mut ChannelStrip, block, param, value| {
         s.apply(&ParamMsg::Set {
             block,
@@ -323,16 +415,25 @@ fn insert_latency_reporting() {
             value,
         })
     };
+    let expect = |ch: &ChannelStrip, ins: usize| {
+        assert_eq!(ch.align().insert_latency(), ins);
+        assert_eq!(
+            ch.latency(),
+            ch.align().natural().max(ch.align().own() + ins)
+        );
+    };
     let mut ch = ChannelStrip::channel(48_000.0, BLOCK);
     let mut host = rack.host(Strip::Ch(2));
     set(&mut ch, chb::PREINS, 0, 1.0);
     set(&mut ch, chb::PREINS, 1, 4.0);
     ch.apply(&ParamMsg::Commit);
     host.assign(InsertPos::Pre, 4);
-    assert_eq!(ch.latency_with(&*host), ch.latency() + 40);
-    // insert off: no latency
+    ch.process_with(&mut l, &mut r, Default::default(), &mut *host);
+    expect(&ch, 40);
+    // insert off: the slot keeps its latency (no timing change on a switch)
     set(&mut ch, chb::PREINS, 0, 0.0);
-    assert_eq!(ch.latency_with(&*host), ch.latency());
+    ch.process_with(&mut l, &mut r, Default::default(), &mut *host);
+    expect(&ch, 40);
 
     // a bus whose Ins2 claims FX12, and a main that claims FX4 too (N/A: no latency)
     let mut bus = MixStrip::new(Strip::Bus(3), 48_000.0, BLOCK);
@@ -349,7 +450,12 @@ fn insert_latency_reporting() {
         value: 12.0,
     });
     bus.apply(&ParamMsg::Commit);
-    assert_eq!(bus.latency(), 120);
+    bus.process_pre(&mut l, &mut r);
+    assert_eq!(bus.align().insert_latency(), 120);
+    assert_eq!(
+        bus.latency(),
+        bus.align().natural().max(bus.align().own() + 120)
+    );
     let mut main = MixStrip::new(Strip::Main(1), 48_000.0, BLOCK);
     main.set_insert_host(rack.host(Strip::Main(1)));
     let pre = wing_engine::mix::strip::hook::PREINS;
@@ -364,8 +470,17 @@ fn insert_latency_reporting() {
         value: 4.0,
     });
     main.apply(&ParamMsg::Commit);
+    main.process_pre(&mut l, &mut r);
     assert_eq!(rack.owner(4), Some((Strip::Ch(2), InsertPos::Pre)));
-    assert_eq!(main.latency(), 0);
+    assert_eq!(main.align().insert_latency(), 0);
+
+    // ch 2 releases FX4: main takes it over (its pad absorbs the latency), ch 2 drops it
+    host.assign(InsertPos::Pre, 0);
+    set(&mut ch, chb::PREINS, 1, 0.0);
+    ch.process_with(&mut l, &mut r, Default::default(), &mut *host);
+    main.process_pre(&mut l, &mut r);
+    expect(&ch, 0);
+    assert_eq!(main.align().insert_latency(), 40);
 }
 
 /// Channel post-insert AUTO_X / AUTO_Y: Dugan gain sharing with weights and group enables.

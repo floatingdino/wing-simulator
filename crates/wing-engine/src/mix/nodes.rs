@@ -236,9 +236,9 @@ impl InputStripNode {
         self
     }
 
-    /// Processing latency (samples): active models plus engaged insert FX.
+    /// Strip latency (samples, T03E: model slots + insert FX + alignment pad).
     pub fn latency(&self) -> usize {
-        self.strip.latency_with(&*self.fx)
+        self.strip.latency()
     }
 
     /// Follow the DCA / mute-group / SIP state of strip index `idx` ([`Strip::index`]).

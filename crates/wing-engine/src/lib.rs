@@ -28,6 +28,7 @@ pub mod clock;
 pub mod dummy;
 pub mod fx;
 pub mod graph;
+pub mod latency;
 pub mod meters;
 pub mod mix;
 pub mod params;

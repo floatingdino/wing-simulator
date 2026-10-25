@@ -119,6 +119,13 @@ fn strip_model_switches_and_processing_do_not_allocate() {
                 aux.process_stereo(&mut l, &mut r);
             }
         }
+        // T03E: latency alignment changes are RT-safe too
+        ch.set_insert_latency(32);
+        ch.set_align_latency(Some(500));
+        ch.process_stereo(&mut l, &mut r);
+        ch.set_align_latency(None);
+        ch.set_insert_latency(0);
+        ch.process_stereo(&mut l, &mut r);
         let _ = ch.take_telemetry();
     });
     assert_eq!(n, 0, "allocations on the RT path");

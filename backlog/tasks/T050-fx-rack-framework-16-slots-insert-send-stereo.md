@@ -40,6 +40,19 @@ FX slot hosting, routing as insert or via sends, mix/bypass, tempo/tap, prealloc
     `cargo bench -p wing-engine --bench fx`: 16 stub slots 0.24 us, 8 ST-DL + 8 stubs 5.1 us per 64-sample
     block (0.4 % of a 1.33 ms cycle); `cargo bench -p wing-blocks --bench fx_delay`: ST-DL 0.61 us/block.
   - Proposed follow-ups: write `$stat` / `$a_chn` / `$a_pos` back to the store (API exists:
-    `FxRack::insert_state/owner`); EXT return `egrp/ein` + `lat` (T05C); insert on/off is a hard switch
-    (no crossfade); tap tempo for delays has no schema key (T05D to decide); verify on a console: owner rule
+    `FxRack::insert_state/owner`); EXT return `egrp/ein` + `lat` (T05C); tap tempo for delays has no schema key (T05D to decide); verify on a console: owner rule
     for double assignment, ST-DL pattern/offset mapping, SEND group meaning.
+- 2026-10-25 claude-T050-T044: merged main (T03E latency compensation, T04J, new model families) into
+  task/T050-T044. Conflicts: wing-blocks/Cargo.toml (benches, both kept), params/strip.rs (main's constant
+  slot latency + MAX_INSTANCES assert), channel.rs / mix/strip.rs latency API (main's kept; my
+  `ChannelStrip::latency_with` removed).
+  - Insert FX latency -> strip alignment: an FX slot's latency is now constant (ModelSlot max over its models).
+    Strips poll `channel::claimed_latency` (slots their inserts claim *and own*, on or off) at the start of
+    each block and call `set_insert_latency`, so the pad absorbs it (total stays at the family target, or the
+    strip runs late by the excess). Ownership changes (release/hand-over) update both strips next block.
+  - Insert on/off now crossfades: `InsertHost::process_claimed(pos, fx, on, ..)` runs the owned slot whether
+    the insert is on or off; the slot's wrapper `on` follows the insert switch (5 ms ramp, dry at the slot's
+    constant latency while off, SEND legs silent while off). A new owner starts the slot off and fades in.
+  - Tests updated for the strips' constant latency (history-delayed comparisons); new checks: switch-off
+    crossfade equals dry + w(t)(wet - dry), insert latency padding + hand-over (`insert_latency_reporting`).
+    `make check` passes.

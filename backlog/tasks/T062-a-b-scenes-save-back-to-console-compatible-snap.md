@@ -4,7 +4,7 @@ title: A/B scenes + save back to console-compatible .snap
 stage: S6
 status: todo
 owner: -
-depends: [T011, T03B]
+depends: [T011, T026]
 branch: -
 ---
 

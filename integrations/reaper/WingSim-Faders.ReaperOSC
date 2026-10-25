@@ -1,0 +1,27 @@
+# WingSim-Faders.ReaperOSC: REAPER OSC pattern config for the Wing Simulator (T065).
+#
+# Everything in WingSim-Markers.ReaperOSC, plus REAPER tracks 1-40 drive WING channels 1-40:
+#   track volume (dB, including volume automation)  -> /ch/N/fdr ,f <dB>  (clamped to -144..+10)
+#   track mute (including mute automation)          -> /ch/N/mute ,f 0|1
+# REAPER sends these as control-surface feedback, so there is no per-message process spawn and
+# automation playback reaches the simulator at the surface update rate.
+#
+# Limits: one-way (fader moves on the simulator do not move REAPER); REAPER sends the current
+# value of every mapped track when the surface starts or the project changes, which overrides
+# the simulator's faders/mutes for those channels (including right after a scene recall).
+# Track N maps to channel N by position, not by name. Pan/EQ/sends are not mapped.
+
+DEVICE_TRACK_COUNT 40
+DEVICE_SEND_COUNT 0
+DEVICE_RECEIVE_COUNT 0
+DEVICE_FX_COUNT 0
+DEVICE_FX_PARAM_COUNT 0
+DEVICE_FX_INST_PARAM_COUNT 0
+DEVICE_MARKER_COUNT 0
+DEVICE_REGION_COUNT 0
+
+LAST_MARKER_NAME s/wingsim/marker
+LAST_REGION_NAME s/wingsim/region
+
+TRACK_VOLUME f/ch/@/fdr
+TRACK_MUTE b/ch/@/mute

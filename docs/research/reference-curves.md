@@ -185,9 +185,23 @@ use a log-shaped mapping, WAVE is constant 1, and WARM is 0.
   spot-checked only (identical code per band).
 - The channel filter's tool section shares the 4th biquad. `tf=0` gives unity there.
 
+## 5a. 44.1 kHz set and the EQ mix law (T04J)
+
+`data/reference-curves/44k1/` (about 330 kB): `filter.json` (LC/HC, tool TILT/MAX/AP1/AP2), `eq-std-{ch,aux,bus}.json`
+(small grids incl. `mid-mix` and L/H shelf curves at mix 0/25/50/125 %), `eq-alt.json` (6 random settings per
+alternate model, mix cycling 100/50/125/0/75/110 %). Produced by `tools/curve-extract/curves44k1.py`, which patches
+`_AEDRV+8` (fs) and `_AEDRV+0x10` (pi/fs, float) to 44.1 kHz before any update; every coefficient routine reads these
+two fields on each call (and selects the 44.1 kHz tables via fs < 46 kHz). Each curve records the block's complete
+parameter set (exact float32), `biquads` and `mag_db` (1/6-octave grid 20 Hz-20 kHz). Byte-identical on rerun.
+
+**EQ mix law:** `ae::Cequalizer::update` (0x100032554) calls the selected model's `parchg` from `f_table_{ch,bus,aux}`
+with `s0 = mix / 100.0f` for usages 0, 1 and 3 (0x1000327b4, 0x100032c48, 0x100032cb8), the same call for STD and every
+alternate model; each parchg multiplies its knob gains by it (STD: PEQ/SHV band gains, not cuts or tilt). Nothing
+blends dry and wet. The engine's `ModelSlot` therefore forwards `mix` (0..125 %) to every `*/eq` model.
+
 ## 6. Proposed follow-ups
 
 - Drive `DynEqGraph::setDynDeq/setDynDeq2/set3DEQFx/setSpkPro` for the DEQ, DEQ2, DEQ3 and SPKMAN graphs.
 - Hook `CdummyAudioEngine` vtable+8 with T set to 1/fs to capture every model's posted DSP parameter block per
   parchg (time constants for all 32 dyn models, and FX coefficients).
-- Repeat at fs = 44.1 kHz (`_AEDRV+8/+0x10`) for the table-based HP filters.
+- ~~Repeat at fs = 44.1 kHz~~ done for filter/EQ (§5a, T04J); sidechain/crossover not yet.

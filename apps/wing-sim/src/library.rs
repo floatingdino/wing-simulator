@@ -10,7 +10,8 @@
 //!   current document and publishes `$active`/`$activeid`.
 //! - `$action` commands: `GO` recalls `$actionidx`; `GONEXT`/`GOPREV` recall the scene after/
 //!   before the active one; `NEXT`/`PREV` move `$actionidx` without recalling; `GOTAG` is not
-//!   supported (no scene tags). Simulator extensions: `STORE[:name]`, `RENAME:name`, `DELETE`.
+//!   supported (no scene tags). Simulator extensions: `STORE[:name]`, `RENAME:name`, `DELETE`,
+//!   `GO:name` (recall by name or `#N`, T065).
 //! - All file IO runs on the library worker thread ([`LibraryService`]), never on a client
 //!   connection thread.
 
@@ -359,7 +360,14 @@ impl SceneLib {
             None => (action.trim(), None),
         };
         match cmd.to_ascii_uppercase().as_str() {
-            "GO" => recall(at(index as i64)?),
+            "GO" => match arg.map(str::trim) {
+                // simulator extension (T065): `GO:name` / `GO:#N` recalls by name
+                Some(name) => recall(
+                    self.find(name)
+                        .ok_or_else(|| format!("no scene {name:?}"))?,
+                ),
+                None => recall(at(index as i64)?),
+            },
             "GONEXT" => recall(at(active.map_or(0, |a| a + 1))?),
             "GOPREV" => recall(at(active.map_or(0, |a| a - 1))?),
             "NEXT" | "PREV" => {
@@ -674,6 +682,106 @@ mod tests {
 
         drop(sock);
         server.stop();
+        svc.stop();
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    /// T065 acceptance: scene store/recall through OSC over UDP loopback (ephemeral ports) the
+    /// way the REAPER integration drives it: `/wingsim/scene/store`, `/wingsim/marker` feedback
+    /// (`LAST_MARKER_NAME`), `/wingsim/scene/recall`, `$ctl/lib/$action`, and track-feedback
+    /// style fader/mute sets.
+    #[test]
+    fn osc_store_and_recall_loopback() {
+        use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
+        use std::time::{Duration, Instant};
+        use wing_proto::osc::{Arg, Message, OscAttachment, OscConfig, OscServer};
+
+        let d = test_dir("osc");
+        let doc: Doc = Arc::new(Mutex::new(Snapshot::factory()));
+        let lib = Arc::new(SceneLib::open(d.join("scenes"), "wing-rack", doc).unwrap());
+        let mut store = ParamStore::new();
+        lib.publish(&store);
+        let att = OscAttachment::attach(&mut store);
+        let store = Arc::new(store);
+        let svc = LibraryService::spawn(lib.clone(), store.clone(), Arc::new(|_| {})).unwrap();
+        let osc = OscServer::bind(
+            store.clone(),
+            att,
+            OscConfig {
+                bind: SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0),
+                library: Some(svc.clone()),
+                ..OscConfig::default()
+            },
+        )
+        .unwrap()
+        .spawn()
+        .unwrap();
+        let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
+        sock.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let to = osc.local_addr();
+        let send = |addr: &str, args: Vec<Arg>| {
+            sock.send_to(&Message::new(addr, args).to_vec(), to)
+                .unwrap();
+        };
+        let wait = |what: &str, f: &dyn Fn() -> bool| {
+            let t = Instant::now();
+            while !f() {
+                assert!(t.elapsed() < Duration::from_secs(5), "timeout: {what}");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        let st = |t: &str| vec![Arg::Str(t.into())];
+        let fdr = store.lookup("ch/1/fdr").unwrap();
+        let mute = store.lookup("ch/1/mute").unwrap();
+        let active = store.lookup("$ctl/lib/$active").unwrap();
+        let is_active = |n: &str| store.with_str(active, |s| s == n) == Some(true);
+
+        // REAPER track feedback (TRACK_VOLUME_DB `f`, TRACK_MUTE `b`) sets faders/mutes
+        send("/ch/1/fdr", vec![Arg::Float(-5.0)]);
+        send("/ch/1/mute", vec![Arg::Float(1.0)]);
+        wait("fader", &|| store.get(fdr) == Some(Value::Float(-5.0)));
+        wait("mute", &|| store.get(mute) == Some(Value::Int(1)));
+        send("/wingsim/scene/store", st("Intro"));
+        wait("store Intro", &|| lib.names() == ["Intro"]);
+        send("/ch/1/fdr", vec![Arg::Float(-20.0)]);
+        send("/ch/1/mute", vec![Arg::Float(0.0)]);
+        wait("fader 2", &|| store.get(fdr) == Some(Value::Float(-20.0)));
+        send("/$ctl/lib/$action", st("STORE:Verse"));
+        wait("store Verse", &|| lib.names() == ["Intro", "Verse"]);
+        assert!(d.join("scenes/002 Verse.snap").exists());
+
+        // the scene list
+        send("/wingsim/scenes", vec![]);
+        let mut buf = [0u8; 2048];
+        let (n, _) = sock.recv_from(&mut buf).unwrap();
+        let m = Message::decode(&buf[..n]).unwrap();
+        assert_eq!(m.addr, "/wingsim/scenes");
+        assert_eq!(m.args, [st("Intro"), st("Verse")].concat());
+
+        // timeline marker crossings recall scenes; other markers are ignored
+        send("/wingsim/marker", st("WING:Intro"));
+        wait("marker Intro", &|| {
+            store.get(fdr) == Some(Value::Float(-5.0)) && is_active("Intro")
+        });
+        assert_eq!(store.get(mute), Some(Value::Int(1)));
+        send("/wingsim/marker", st("Count-in"));
+        send("/wingsim/marker", st("wing: #1"));
+        wait("marker #1", &|| is_active("Verse"));
+        assert_eq!(store.get(fdr), Some(Value::Float(-20.0)));
+
+        // explicit recall by name and by index, and native `$action` with `$actionidx`
+        send("/wingsim/scene/recall", st("intro"));
+        wait("recall intro", &|| is_active("Intro"));
+        send("/wingsim/scene/recall", vec![Arg::Int(1)]);
+        wait("recall 1", &|| is_active("Verse"));
+        send("/$ctl/lib/$actionidx", vec![Arg::Int(0)]);
+        send("/$ctl/lib/$action", st("GO"));
+        wait("GO 0", &|| is_active("Intro"));
+        send("/wingsim/scene/next", vec![]);
+        wait("next", &|| is_active("Verse"));
+        assert_eq!(store.get(fdr), Some(Value::Float(-20.0)));
+
+        osc.stop();
         svc.stop();
         let _ = fs::remove_dir_all(&d);
     }

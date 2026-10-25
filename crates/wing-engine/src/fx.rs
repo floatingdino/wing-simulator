@@ -18,8 +18,8 @@
 //!   and report `$stat` N/A ([`FxRack::insert_state`]); the owner is the slot's `$a_chn`/`$a_pos`
 //!   ([`FxRack::owner`]). A slot whose owner changes is reset (no stale tail).
 //! * Per slot: `fxmix` = wet/dry of the [`ModelSlot`] wrapper (models output wet only). The wrapper's `on`
-//!   and `gain` have no schema key for FX slots: `on` is fixed on (an unassigned or bypassed insert simply
-//!   does not run the slot), `gain` stays 0 dB; both are reachable as [`param::ON`]/[`param::GAIN`].
+//!   follows the owning insert's `on` switch, so switching an insert crossfades (5 ms) instead of clicking;
+//!   `gain` has no schema key for FX slots and stays 0 dB (reachable as [`param::GAIN`]).
 //!   Tempo / tap: the schema has no global tempo or tap key; time-based models carry their own `time` and
 //!   note `fact`or (ST-DL), so nothing global is bound.
 //! * **FX SEND legs** (`SEND` output group, 32 legs = 16 stereo): the signal entering each slot while it is
@@ -48,10 +48,12 @@
 //!
 //! # Latency
 //!
-//! [`FxRack::slot_latency`] reports the audible model's latency per slot; strips add the latency of their
-//! engaged, owned inserts ([`crate::channel::ChannelStrip::latency_with`], [`crate::mix::MixStrip::latency`],
-//! `InputStripNode::latency`/`MixStripNode::latency`). Like the console, nothing is compensated
-//! automatically (signal-flow.md §11).
+//! Since T03E a [`ModelSlot`]'s latency is constant (the maximum of the models it hosts; the dry path and
+//! every model are aligned to it), so a slot's latency does not change with the model or the insert switch.
+//! [`FxRack::slot_latency`] reports it; each strip polls the latency of the slots its inserts claim and own
+//! ([`crate::channel::claimed_latency`]) at the start of every block and feeds it to its alignment
+//! (`set_insert_latency`): the pad shrinks so the strip's total stays at its family's alignment target,
+//! or the strip runs late by the excess when the inserts exceed it ([`crate::latency::StripAlign`]).
 
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering::Relaxed};
@@ -168,7 +170,6 @@ impl FxSlot {
         let mut slot = ModelSlot::from_group(group_key(n), fs, max_block, |i, name| {
             (name != "NONE").then(|| factory(i, name)).flatten()
         });
-        slot.set_wrapper(param::ON, 1.0);
         slot.select(0);
         slot.settle();
         let b = max_block.max(1);
@@ -200,8 +201,14 @@ impl FxSlot {
         self.slot.latency()
     }
 
-    /// Commit and settle every ramp/fade, clearing signal state (owner change, tests).
+    /// Commit and settle every ramp/fade, clearing signal state (tests).
     pub fn reset(&mut self) {
+        self.slot.settle();
+    }
+
+    /// New owner: clear state and start switched off, so the owner's insert fades the slot in.
+    fn handover(&mut self) {
+        self.slot.set_wrapper(param::ON, 0.0);
         self.slot.settle();
     }
 
@@ -211,7 +218,8 @@ impl FxSlot {
             ParamMsg::Set { param, value, .. } => {
                 if param >= TARGET_BASE {
                     self.slot.set_target(param - TARGET_BASE, value);
-                } else {
+                } else if param != param::ON {
+                    // `on` follows the owning insert's switch (see FxSlot::process_insert)
                     self.slot.set_wrapper(param, value);
                 }
             }
@@ -222,11 +230,24 @@ impl FxSlot {
 
     /// Run the slot in place on an insert signal, capturing its input for the SEND legs (RT-safe).
     pub fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
-        let n = l.len().min(self.feed_l.len());
-        self.feed_l[..n].copy_from_slice(&l[..n]);
-        self.feed_r[..n].copy_from_slice(&r[..n]);
-        self.feed_len = n;
-        self.fed = true;
+        self.process_insert(true, l, r);
+    }
+
+    /// Run the slot for its owning insert with the insert's switch `on`: a switch crossfades the
+    /// model in/out over the wrapper ramp (5 ms); while off the slot passes the dry signal at its
+    /// constant latency (T03E). The SEND legs carry the slot input while the insert is on. RT-safe.
+    pub fn process_insert(&mut self, on: bool, l: &mut [f32], r: &mut [f32]) {
+        if self.slot.wrapper().0 != on {
+            self.slot.set_wrapper(param::ON, on as u8 as f32);
+            self.slot.commit();
+        }
+        if on {
+            let n = l.len().min(self.feed_l.len());
+            self.feed_l[..n].copy_from_slice(&l[..n]);
+            self.feed_r[..n].copy_from_slice(&r[..n]);
+            self.feed_len = n;
+            self.fed = true;
+        }
         self.slot.process(l, r);
     }
 
@@ -295,7 +316,7 @@ impl Shared {
         }
         if self.owner[k].swap(owner, Relaxed) != owner {
             // SAFETY: claims change only between cycles (driver thread / construction).
-            unsafe { self.slot_mut(k) }.reset();
+            unsafe { self.slot_mut(k) }.handover();
         }
     }
 
@@ -366,16 +387,19 @@ impl FxRack {
             })
             .collect();
         let mut instances = [0u8; FX_SLOTS];
+        let mut lat = [0u32; FX_SLOTS];
         for (k, c) in slots.iter().enumerate() {
             // SAFETY: not shared yet.
-            instances[k] = unsafe { &*c.0.get() }.model_slot().num_instances() as u8;
+            let s = unsafe { &*c.0.get() };
+            instances[k] = s.model_slot().num_instances() as u8;
+            lat[k] = s.latency() as u32;
         }
         let shared = Shared {
             slots,
             owner: std::array::from_fn(|_| AtomicU16::new(NO_OWNER)),
             claims: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             claim_of: std::array::from_fn(|_| AtomicU8::new(0)),
-            latency: std::array::from_fn(|_| AtomicU32::new(0)),
+            latency: std::array::from_fn(|k| AtomicU32::new(lat[k])),
             model: std::array::from_fn(|_| AtomicU16::new(0)),
             instances,
             amix_on: [AtomicBool::new(true), AtomicBool::new(true)],
@@ -428,7 +452,7 @@ impl FxRack {
         }
     }
 
-    /// Latency (samples) of slot `n`'s audible model, as of the last committed parameter change.
+    /// Constant latency (samples) of slot `n` (max over its models, T03E).
     pub fn slot_latency(&self, n: u8) -> usize {
         self.shared.latency[n as usize - 1].load(Relaxed) as usize
     }
@@ -512,9 +536,13 @@ impl InsertHost for RackHost {
     }
 
     fn process_insert_at(&mut self, pos: InsertPos, fx: u8, l: &mut [f32], r: &mut [f32]) {
+        self.process_claimed(pos, fx, true, l, r);
+    }
+
+    fn process_claimed(&mut self, pos: InsertPos, fx: u8, on: bool, l: &mut [f32], r: &mut [f32]) {
         if self.shared.owns(self.id(pos), fx) {
             // SAFETY: this insert owns the slot for the whole cycle (see SlotCell).
-            unsafe { self.shared.slot_mut(fx as usize - 1) }.process(l, r);
+            unsafe { self.shared.slot_mut(fx as usize - 1) }.process_insert(on, l, r);
         }
     }
 

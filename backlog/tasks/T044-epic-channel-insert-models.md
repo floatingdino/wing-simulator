@@ -29,3 +29,17 @@ Coordinator decomposes into one task per model.
     previous block (keeps channels parallel, deterministic); disabled group = pass-through. Test:
     `automix_shares_gain` (2 equal mics -3 dB each, +6 dB weight split, groups X/Y, disable).
   - Test: `make check` passes.
+- 2026-10-25 claude-T050-T044: merged main (T03E latency compensation, T04J, new model families) into
+  task/T050-T044. Conflicts: wing-blocks/Cargo.toml (benches, both kept), params/strip.rs (main's constant
+  slot latency + MAX_INSTANCES assert), channel.rs / mix/strip.rs latency API (main's kept; my
+  `ChannelStrip::latency_with` removed).
+  - Insert FX latency -> strip alignment: an FX slot's latency is now constant (ModelSlot max over its models).
+    Strips poll `channel::claimed_latency` (slots their inserts claim *and own*, on or off) at the start of
+    each block and call `set_insert_latency`, so the pad absorbs it (total stays at the family target, or the
+    strip runs late by the excess). Ownership changes (release/hand-over) update both strips next block.
+  - Insert on/off now crossfades: `InsertHost::process_claimed(pos, fx, on, ..)` runs the owned slot whether
+    the insert is on or off; the slot's wrapper `on` follows the insert switch (5 ms ramp, dry at the slot's
+    constant latency while off, SEND legs silent while off). A new owner starts the slot off and fades in.
+  - Tests updated for the strips' constant latency (history-delayed comparisons); new checks: switch-off
+    crossfade equals dry + w(t)(wet - dry), insert latency padding + hand-over (`insert_latency_reporting`).
+    `make check` passes.

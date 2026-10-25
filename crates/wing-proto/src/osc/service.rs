@@ -18,6 +18,23 @@
 //!   blob at `/` holding the native token `D7 <hash> <value token>`. A change made by the
 //!   subscriber itself is not echoed back to it. `$`-prefixed shadow nodes are not emitted.
 //! - Blob passthrough of native tokens to the console (`/ ,b ...`) is not implemented.
+//! - **Scene library (T017/T065).** With a [`SceneLibrary`] configured ([`OscService::with_library`])
+//!   a set of `/$ctl/lib/$action` (`,s` token / simulator extension such as `STORE:Verse`, or `,i`
+//!   enum index) goes to the library with the current `$ctl/lib/$actionidx`, exactly like the
+//!   native protocol; sets of the other console-owned `$ctl/lib/$*` leaves are dropped.
+//! - **Simulator extensions under `/wingsim/` (T065, for DAW integration).** Not WING addresses;
+//!   successful commands are not acknowledged (the library runs them on its worker thread and
+//!   logs the result); without a library they answer `NODE NOT FOUND`:
+//!   - `/wingsim/scene/recall ,s name` (or `#N`, 0-based) / `,i N`: recall a scene.
+//!   - `/wingsim/scene/store` [`,s name`]: store the current state (no name / empty: overwrite the
+//!     active scene, else append `Scene N`).
+//!   - `/wingsim/scene/next`, `/wingsim/scene/prev`: recall the scene after/before the active one
+//!     (a numeric argument of 0, a button release, is ignored).
+//!   - `/wingsim/scenes` (no args): reply `/wingsim/scenes ,s...` with the scene names.
+//!   - `/wingsim/marker ,s text`, `/wingsim/region ,s text`: a DAW timeline marker/region name
+//!     (REAPER's `LAST_MARKER_NAME`/`LAST_REGION_NAME` feedback). `WING:<scene or #N>` (prefix
+//!     case-insensitive) recalls that scene; other names are ignored. A name equal to the
+//!     previous one on the same address is ignored, so feedback refreshes never re-recall.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -28,6 +45,7 @@ use wing_model::{Origin, ParamStore, ParamType, SetError, Value};
 
 use super::codec::{Arg, Message, MAX_PACKET};
 use crate::discovery::{format_reply, local_ipv4_toward, Identity};
+use crate::server::library::{lib_ids, SceneLibrary};
 
 /// Subscription lifetime without renewal (the console documents "< 10 s").
 pub const DEFAULT_SUB_TIMEOUT: Duration = Duration::from_secs(10);
@@ -87,6 +105,9 @@ pub struct OscService {
     advertise_ip: Option<Ipv4Addr>,
     sub_timeout: Duration,
     subs: Arc<SubState>,
+    library: Option<Arc<dyn SceneLibrary>>,
+    /// Last `/wingsim/marker` and `/wingsim/region` text (de-duplication).
+    last_marks: Mutex<[String; 2]>,
 }
 
 /// Origin tag for sets coming from `addr` (so hooks can skip echoing to the setter).
@@ -115,7 +136,15 @@ impl OscService {
             advertise_ip,
             sub_timeout,
             subs,
+            library: None,
+            last_marks: Mutex::default(),
         }
+    }
+
+    /// Route `$ctl/lib/$action` and the `/wingsim/scene...` commands to a scene library.
+    pub fn with_library(mut self, library: Option<Arc<dyn SceneLibrary>>) -> Self {
+        self.library = library;
+        self
     }
 
     pub fn store(&self) -> &Arc<ParamStore> {
@@ -172,6 +201,12 @@ impl OscService {
                     origin: origin_of(from),
                 });
             }
+            a if a.starts_with("/wingsim/") => {
+                if let Some(r) = self.sim_command(a, m.args.first(), origin_of(from)) {
+                    let (addr, args) = r;
+                    reply(&addr, args);
+                }
+            }
             _ => {
                 let Some(id) = self.resolve(addr) else {
                     reply("/*", err("NODE NOT FOUND"));
@@ -185,6 +220,7 @@ impl OscService {
                             Some(a) => reply(addr, a),
                             None => reply("/*", err("NODE NOT FOUND")),
                         },
+                        Some(a) if self.library_leaf(id, a, origin) => {}
                         Some(a) => {
                             if let Err(e) = self.set_leaf(id, a, origin) {
                                 reply("/*", err(e));
@@ -219,6 +255,109 @@ impl OscService {
                 }
             }
         }
+    }
+
+    /// Console-owned `$ctl/lib` leaf sets with a library configured: `$action` goes to the
+    /// library, the others are dropped. Returns whether the set was handled here.
+    fn library_leaf(&self, id: NodeId, a: &Arg, origin: Origin) -> bool {
+        let (Some(lib), Some(ids)) = (&self.library, lib_ids(&self.store)) else {
+            return false;
+        };
+        if self.store.schema().parent(id) != Some(ids.lib) || id == ids.actionidx {
+            return false;
+        }
+        if id == ids.action {
+            let text = match a {
+                Arg::Str(t) => Some(t.trim().to_string()),
+                Arg::Int(_) | Arg::Float(_) => {
+                    let n = match *a {
+                        Arg::Float(f) => f as i32,
+                        Arg::Int(i) => i,
+                        _ => unreachable!(),
+                    };
+                    let items = self.store.desc(id).map(|d| d.enum_items()).unwrap_or(&[]);
+                    usize::try_from(n)
+                        .ok()
+                        .and_then(|n| items.get(n))
+                        .map(|e| e.token.to_string())
+                }
+                Arg::Blob(_) => None,
+            };
+            if let Some(t) = text.filter(|t| !t.is_empty() && t != "IDLE") {
+                let idx = match self.store.get(ids.actionidx) {
+                    Some(Value::Int(n)) => n,
+                    _ => 0,
+                };
+                lib.action(&t, idx, origin);
+            }
+        }
+        true
+    }
+
+    /// A `/wingsim/...` simulator command (see the module docs); returns the reply, if any.
+    fn sim_command(
+        &self,
+        addr: &str,
+        arg: Option<&Arg>,
+        origin: Origin,
+    ) -> Option<(String, Vec<Arg>)> {
+        let err = |e: &str| Some(("/*".to_string(), vec![Arg::Str(e.into())]));
+        let Some(lib) = &self.library else {
+            return err("NODE NOT FOUND");
+        };
+        let num = |a: &Arg| match *a {
+            Arg::Int(i) => Some(i),
+            Arg::Float(f) => Some(f as i32),
+            _ => None,
+        };
+        let text = |a: Option<&Arg>| match a {
+            Some(Arg::Str(t)) => Some(t.trim().to_string()),
+            _ => None,
+        };
+        match addr.trim_end_matches('/') {
+            "/wingsim/scenes" => {
+                let names = lib.scenes().into_iter().map(Arg::Str).collect();
+                return Some(("/wingsim/scenes".into(), names));
+            }
+            "/wingsim/scene/recall" => match arg {
+                Some(Arg::Str(t)) if !t.trim().is_empty() => {
+                    lib.action(&format!("GO:{}", t.trim()), 0, origin)
+                }
+                Some(a) if num(a).is_some() => lib.action("GO", num(a).unwrap_or(0), origin),
+                _ => return err("INCOMPLETE DATA"),
+            },
+            "/wingsim/scene/store" => match text(arg) {
+                Some(t) if !t.is_empty() => lib.action(&format!("STORE:{t}"), 0, origin),
+                _ => lib.action("STORE", 0, origin),
+            },
+            "/wingsim/scene/next" | "/wingsim/scene/prev" => {
+                if arg.and_then(num) == Some(0) {
+                    return None;
+                }
+                let a = if addr.contains("next") {
+                    "GONEXT"
+                } else {
+                    "GOPREV"
+                };
+                lib.action(a, 0, origin);
+            }
+            "/wingsim/marker" | "/wingsim/region" => {
+                let t = text(arg)?;
+                let slot = usize::from(addr.contains("region"));
+                {
+                    let mut last = self.last_marks.lock().unwrap_or_else(|e| e.into_inner());
+                    if last[slot] == t {
+                        return None;
+                    }
+                    last[slot] = t.clone();
+                }
+                if let Some(target) = marker_target(&t) {
+                    lib.action(&format!("GO:{target}"), 0, origin);
+                }
+            }
+            _ => return err("NODE NOT FOUND"),
+        }
+        None
     }
 
     /// Address (path or `#hash`) to node.
@@ -487,6 +626,17 @@ fn def_text(d: &Desc) -> String {
     }
 }
 
+/// The scene named by a `WING:<scene or #N>` marker (prefix case-insensitive), if any.
+pub fn marker_target(name: &str) -> Option<&str> {
+    let n = name.trim();
+    let head = n.get(..5)?;
+    if !head.eq_ignore_ascii_case("WING:") {
+        return None;
+    }
+    let t = n[5..].trim();
+    (!t.is_empty()).then_some(t)
+}
+
 /// Split an optional `/%<port>` prefix: `/%9000/ch/1` -> (Some(9000), `/ch/1`).
 fn split_prefix(addr: &str) -> (Option<u16>, &str) {
     if let Some(rest) = addr.strip_prefix("/%") {
@@ -549,6 +699,19 @@ mod tests {
         let r = ask(&s, "/ch/1/fdr", vec![]);
         assert_eq!(r[0].msg.args[2], Arg::Float(-3.0));
         assert_eq!(r[0].msg.args[0], Arg::Str("-3.0".into()));
+
+        // out-of-range dB (REAPER TRACK_VOLUME_DB at -inf / +12 dB) clamps (T065)
+        assert!(ask(&s, "/ch/1/fdr", vec![Arg::Float(-150.0)]).is_empty());
+        assert_eq!(
+            ask(&s, "/ch/1/fdr", vec![])[0].msg.args[2],
+            Arg::Float(-144.0)
+        );
+        assert!(ask(&s, "/ch/1/fdr", vec![Arg::Float(12.0)]).is_empty());
+        assert_eq!(
+            ask(&s, "/ch/1/fdr", vec![])[0].msg.args[2],
+            Arg::Float(10.0)
+        );
+        ask(&s, "/ch/1/fdr", vec![Arg::Float(-3.0)]);
 
         ask(&s, "/ch/1/mute", vec![Arg::Int(1)]);
         let r = ask(&s, "/ch/1/mute", vec![]);
@@ -641,5 +804,119 @@ mod tests {
             m.args,
             vec![Arg::Blob(vec![0xD7, 0xF5, 0x0F, 0x69, 0xF8, 0x01])]
         );
+    }
+
+    #[derive(Default)]
+    struct FakeLib(Mutex<Vec<(String, i32)>>);
+
+    impl SceneLibrary for FakeLib {
+        fn scenes(&self) -> Vec<String> {
+            vec!["Intro".into(), "Verse".into()]
+        }
+        fn action(&self, action: &str, index: i32, _origin: Origin) {
+            self.0.lock().unwrap().push((action.into(), index));
+        }
+    }
+
+    fn lib_svc() -> (OscService, Arc<FakeLib>) {
+        let lib = Arc::new(FakeLib::default());
+        (svc().with_library(Some(lib.clone())), lib)
+    }
+
+    fn take(l: &FakeLib) -> Vec<(String, i32)> {
+        std::mem::take(&mut *l.0.lock().unwrap())
+    }
+
+    #[test]
+    fn lib_action_leaf_routes_to_library() {
+        let (s, l) = lib_svc();
+        assert!(ask(&s, "/$ctl/lib/$actionidx", vec![Arg::Int(1)]).is_empty());
+        assert!(ask(&s, "/$ctl/lib/$action", vec![Arg::Str("GO".into())]).is_empty());
+        ask(&s, "/$ctl/lib/$action", vec![Arg::Int(2)]); // enum index: GONEXT
+        ask(
+            &s,
+            "/$ctl/lib/$action",
+            vec![Arg::Str("STORE:Verse".into())],
+        );
+        ask(&s, "/$ctl/lib/$action", vec![Arg::Str("IDLE".into())]);
+        ask(&s, "/$ctl/lib/$active", vec![Arg::Str("Hacked".into())]); // dropped
+        assert_eq!(
+            take(&l),
+            [
+                ("GO".into(), 1),
+                ("GONEXT".into(), 1),
+                ("STORE:Verse".into(), 1)
+            ]
+        );
+        let r = ask(&s, "/$ctl/lib/$active", vec![]);
+        assert_eq!(r[0].msg.args, vec![Arg::Str(String::new())]);
+        // without a library the leaves are plain parameters (T014 behaviour)
+        let plain = svc();
+        ask(&plain, "/$ctl/lib/$action", vec![Arg::Str("GO".into())]);
+        let r = ask(&plain, "/$ctl/lib/$action", vec![]);
+        assert_eq!(r[0].msg.args, vec![Arg::Str("GO".into())]);
+    }
+
+    #[test]
+    fn wingsim_scene_commands() {
+        let (s, l) = lib_svc();
+        let st = |t: &str| vec![Arg::Str(t.into())];
+        assert!(ask(&s, "/wingsim/scene/recall", st(" Verse ")).is_empty());
+        ask(&s, "/wingsim/scene/recall", st("#0"));
+        ask(&s, "/wingsim/scene/recall", vec![Arg::Int(1)]);
+        ask(&s, "/wingsim/scene/store", st("Chorus"));
+        ask(&s, "/wingsim/scene/store", vec![]);
+        ask(&s, "/wingsim/scene/next", vec![]);
+        ask(&s, "/wingsim/scene/next", vec![Arg::Float(0.0)]); // button release
+        ask(&s, "/wingsim/scene/prev", vec![Arg::Float(1.0)]);
+        assert_eq!(
+            take(&l),
+            [
+                ("GO:Verse".into(), 0),
+                ("GO:#0".into(), 0),
+                ("GO".into(), 1),
+                ("STORE:Chorus".into(), 0),
+                ("STORE".into(), 0),
+                ("GONEXT".into(), 0),
+                ("GOPREV".into(), 0),
+            ]
+        );
+        let r = ask(&s, "/wingsim/scene/recall", vec![]);
+        assert_eq!(r[0].msg.args, st("INCOMPLETE DATA"));
+        let r = ask(&s, "/wingsim/bogus", vec![]);
+        assert_eq!(r[0].msg.args, st("NODE NOT FOUND"));
+        let r = ask(&s, "/wingsim/scenes", vec![]);
+        assert_eq!(r[0].msg.addr, "/wingsim/scenes");
+        assert_eq!(r[0].msg.args, [st("Intro"), st("Verse")].concat());
+        // no library: not found
+        let r = ask(&svc(), "/wingsim/scene/next", vec![]);
+        assert_eq!(r[0].msg.args, st("NODE NOT FOUND"));
+    }
+
+    #[test]
+    fn wingsim_markers() {
+        let (s, l) = lib_svc();
+        let mark = |a: &str, t: &str| ask(&s, a, vec![Arg::Str(t.into())]);
+        mark("/wingsim/marker", "WING:Intro");
+        mark("/wingsim/marker", "WING:Intro"); // feedback refresh: ignored
+        mark("/wingsim/marker", "Guitar solo"); // not ours
+        mark("/wingsim/marker", "wing: #1 ");
+        mark("/wingsim/region", "WING:Intro"); // separate slot
+        mark("/wingsim/marker", "");
+        mark("/wingsim/marker", "WING:Intro"); // crossed again after leaving it
+        mark("/wingsim/marker", "WING:");
+        assert_eq!(
+            take(&l),
+            [
+                ("GO:Intro".into(), 0),
+                ("GO:#1".into(), 0),
+                ("GO:Intro".into(), 0),
+                ("GO:Intro".into(), 0),
+            ]
+        );
+        assert_eq!(marker_target("WING:Verse"), Some("Verse"));
+        assert_eq!(marker_target("Wing: Verse 2 "), Some("Verse 2"));
+        assert_eq!(marker_target("WINGS"), None);
+        assert_eq!(marker_target("é"), None);
     }
 }

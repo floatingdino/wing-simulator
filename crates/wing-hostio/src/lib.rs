@@ -4,14 +4,15 @@
 //! ```text
 //!  engine thread (virtual-device clock)          HAL IO thread (hardware clock)
 //!  BridgeProducer::push_with(block) --SPSC ring--> BridgeConsumer::render(n frames)
-//!                                                   ├─ fill estimate (producer sawtooth removed)
-//!                                                   ├─ PI controller -> ratio correction (ppm)
+//!                                                   ├─ fill estimate (burst stamps, sawtooth removed)
+//!                                                   ├─ drift estimate + bounded phase correction
 //!                                                   └─ polyphase sinc resampler -> device buffers
 //! ```
 //!
 //! * [`ring`]: lock-free SPSC planar ring (wait-free both sides).
 //! * [`resampler`]: variable-ratio polyphase windowed-sinc resampler, RT-safe.
-//! * [`control`]: PI drift controller (ring fill -> ratio), clamped and slew-limited.
+//! * [`control`]: drift controller (ring fill -> ratio): frequency-locked drift estimate plus a
+//!   bounded, deadbanded phase correction; clamped and slew-limited.
 //! * [`bridge`]: ring + resampler + controller + lock-free [`BridgeStats`]; portable and
 //!   tested with simulated drifting clocks (`tests/drift.rs`).
 //! * [`config`]: route mapping from console taps (`mon/1 -> "Scarlett 2i4 USB" 1/2`,

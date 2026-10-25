@@ -176,6 +176,13 @@ fn run_strip(s: &mut ChannelStrip, x: &[f32]) -> Vec<f32> {
     l
 }
 
+/// `x` delayed by `d` samples (zeros in front, same length): the strip's constant latency (T03E).
+fn delayed(x: &[f32], d: usize) -> Vec<f32> {
+    let mut y = vec![0.0; x.len()];
+    y[d..].copy_from_slice(&x[..x.len() - d]);
+    y
+}
+
 fn run_manual(m: &mut Manual, order: ProcOrder, x: &[f32]) -> Vec<f32> {
     let (mut l, mut r) = (x.to_vec(), x.to_vec());
     for (a, b) in l.chunks_mut(N).zip(r.chunks_mut(N)) {
@@ -196,7 +203,8 @@ fn strip_matches_manual_chain_in_every_order() {
         assert_eq!(s.order(), order);
         let y = run_strip(&mut s, &x);
         let z = run_manual(&mut Manual::new(), order, &x);
-        assert_eq!(y, z, "order {tok}: strip != manual chain");
+        let lat = s.latency();
+        assert_eq!(y, delayed(&z, lat), "order {tok}: strip != manual chain");
         assert!(s.telemetry().dyn_gr_db > 0.0 || s.telemetry().gate_gr_db > 0.0);
         outs.push(y);
     }
@@ -232,7 +240,18 @@ fn order_switch_mid_stream_is_applied_at_block_boundary() {
         s.process_stereo(a, b);
         m.process(ProcOrder::parse(tok).unwrap(), c, d);
     }
-    assert_eq!(l, ml);
+    // Every slot pads to a constant latency (T03E): up to the switch the strip is the manual chain
+    // delayed by the strip latency; the switch reorders blocks whose delay lines hold different
+    // history, so the outputs only re-converge once that history (and the detector state) has passed.
+    let z = delayed(&ml, s.latency());
+    let sw = 50 * N;
+    assert_eq!(l[..sw], z[..sw]);
+    let err = l[4800 + sw / 2..]
+        .iter()
+        .zip(&z[4800 + sw / 2..])
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0f32, f32::max);
+    assert!(err < 1e-3, "{err}");
 }
 
 #[test]
@@ -247,7 +266,7 @@ fn bypass_semantics() {
         set(&mut s, b, 0, 0.0);
     }
     s.settle();
-    assert_eq!(run_strip(&mut s, &x), x);
+    assert_eq!(run_strip(&mut s, &x), delayed(&x, s.latency()));
     assert!(!s.gate_slot().is_running() && !s.dyn_slot().is_running());
     // switching a slot on fades in without a jump larger than the signal itself
     set(&mut s, block::EQ, 0, 1.0);
@@ -345,7 +364,12 @@ fn ptap_capture_and_tap_peaks() {
     set(&mut s, block::STRIP, 1, Tap::In as u8 as f32);
     s.settle();
     let (mut l, mut r) = (x.clone(), x.clone());
-    s.process_stereo(&mut l, &mut r);
+    // run past the strip latency (gate + dyn slot padding) so PFL sees signal
+    for _ in 0..=s.latency() / N {
+        l.copy_from_slice(&x);
+        r.copy_from_slice(&x);
+        s.process_stereo(&mut l, &mut r);
+    }
     let t = s.take_telemetry();
     assert!((t.tap_peak[Tap::In as usize] - 0.5).abs() < 1e-3);
     assert!((t.tap_peak[Tap::Pfl as usize] - 0.5).abs() < 1e-3);
