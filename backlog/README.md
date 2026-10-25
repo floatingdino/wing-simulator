@@ -24,3 +24,6 @@ Rules for engineering agents
 6. Never commit WING-Edit.app, firmware binaries, or large audio. Never run sudo; if something needs root,
    write the exact command into the Log and set `status: blocked`.
 7. RT code rules: no alloc/lock/syscall/logging on audio threads; every DSP block has a unit test and a bench.
+
+Coordinator rule: the coordinator never edits a task file on `main` while that task's branch is in flight (it causes
+merge conflicts); in-flight status is tracked by the coordinator outside the file until merge.
