@@ -2,7 +2,7 @@
 id: T04J
 title: EQ mix law for all EQ models + 44.1 kHz coefficient verification
 stage: S4
-status: review
+status: done
 owner: T04J agent
 depends: [T04G, T04H, T03C]
 branch: task/T04J

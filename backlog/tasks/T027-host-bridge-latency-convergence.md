@@ -2,7 +2,7 @@
 id: T027
 title: Host bridge latency convergence + startup underruns
 stage: S2
-status: review
+status: done
 owner: agent
 depends: [T023, T026]
 branch: task/T027
