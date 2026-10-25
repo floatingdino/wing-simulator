@@ -4,5 +4,6 @@
 pub mod comp_console;
 pub mod comp_opto;
 pub mod comp_vca;
+pub mod eq_alt;
 pub mod filter_tool;
 pub mod gate_vintage;

@@ -37,6 +37,10 @@ name = "gate_vintage"
 harness = false
 
 [[bench]]
+name = "eq_alt"
+harness = false
+
+[[bench]]
 name = "comp_console"
 harness = false
 
