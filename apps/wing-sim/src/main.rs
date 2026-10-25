@@ -7,7 +7,7 @@
 //!          [--port 2222] [--osc-port 2223] [--save-on-exit PATH]
 //!          [--state-dir DIR] [--no-autosave] [--recall NAME] [--list-scenes]
 //!          [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N]
-//!          [--workers N] [--no-rt]
+//!          [--workers N] [--no-rt] [--no-control]
 //! ```
 //! Ctrl-C (SIGINT) or SIGTERM shuts down cleanly.
 //!
@@ -23,12 +23,17 @@
 //! (compatible) driver it runs control-only and keeps retrying. `--hostio PATH` takes a
 //! wing-hostio TOML (see `crates/wing-hostio/hostio.example.toml`); by default monitor A (`mon/1`: the monitor source, MAIN.1 by default, with solo priority) plays on
 //! "Scarlett 2i4 USB" 1/2 when that device exists.
+//!
+//! Front ends (T064, see `wing_sim::control`): `<state-dir>/status.json` is rewritten every
+//! second (load, xruns, bridges, clients), and `<state-dir>/control.sock` takes line commands
+//! (`save`/`load` a scene file, `reload-hostio`, `quit`, ...); `--no-control` disables both.
 
 mod library;
 mod persist;
 
 use wing_engine::meters::LevelBank;
 use wing_sim::audio::{self, AudioOptions, AudioService, ConsoleConfig, HostIoSetting};
+use wing_sim::control;
 use wing_sim::meters::meter_source;
 
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
@@ -75,13 +80,15 @@ struct Args {
     block: usize,
     workers: Option<usize>,
     rt: bool,
+    hostio_path: Option<PathBuf>,
+    control: bool,
 }
 
 const USAGE: &str = "usage: wing-sim [--name NAME] [--ip A.B.C.D] [--fw FIRMWARE] [--model MODEL] \
 [--serial SERIAL] [--scene PATH] [--idle-timeout SECS] [--no-meters] [--no-osc] [--port N] \
 [--osc-port N] [--save-on-exit PATH] [--state-dir DIR] [--no-autosave] [--recall NAME|#N] \
 [--list-scenes] [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N] \
-[--workers N] [--no-rt]";
+[--workers N] [--no-rt] [--no-control]";
 
 fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut a = Args {
@@ -104,6 +111,8 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         block: 64,
         workers: None,
         rt: true,
+        hostio_path: None,
+        control: true,
     };
     while let Some(flag) = it.next() {
         let mut val = || it.next().ok_or(format!("{flag} needs a value"));
@@ -128,8 +137,15 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--recall" => a.recall = Some(val()?),
             "--list-scenes" => a.list_scenes = true,
             "--no-audio" => a.audio = false,
-            "--hostio" => a.hostio = HostIoSetting::from_file(&val()?)?,
-            "--no-hostio" => a.hostio = HostIoSetting::Off,
+            "--hostio" => {
+                let p = val()?;
+                a.hostio = HostIoSetting::from_file(&p)?;
+                a.hostio_path = Some(PathBuf::from(p));
+            }
+            "--no-hostio" => {
+                a.hostio = HostIoSetting::Off;
+                a.hostio_path = None;
+            }
             "--shm-name" => a.shm_name = val()?,
             "--block" => {
                 a.block = val()?.parse().map_err(|e| format!("--block: {e}"))?;
@@ -139,6 +155,7 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--workers" => a.workers = Some(val()?.parse().map_err(|e| format!("--workers: {e}"))?),
             "--no-rt" => a.rt = false,
+            "--no-control" => a.control = false,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
@@ -434,10 +451,12 @@ fn run(args: Args) -> Result<(), String> {
     ));
 
     // ---- audio ----
+    let mut hostio_note = "host outputs off (--no-audio)".to_string();
     let audio = match routing {
         Some(routing) => {
             let (hostio, note) = args.hostio.resolve();
             log(&format!("audio: {note}"));
+            hostio_note = note;
             let mut console = ConsoleConfig {
                 block: args.block,
                 rt_workers: args.rt,
@@ -479,9 +498,79 @@ fn run(args: Args) -> Result<(), String> {
             on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t,
         );
     }
+    // ---- local control socket + status file (T064) ----
+    let status_file = args.state_dir.join(control::STATUS_FILE);
+    let ctl = if args.control {
+        match control::ControlServer::spawn(&args.state_dir.join(control::SOCKET_FILE)) {
+            Ok((srv, rx)) => {
+                log(&format!(
+                    "control: socket {}, status {}",
+                    srv.path().display(),
+                    status_file.display()
+                ));
+                Some((srv, rx))
+            }
+            Err(e) => {
+                log(&format!("control: socket disabled: {e}"));
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let mut local = LocalState {
+        scene_file: args.scene.clone(),
+        hostio_path: args.hostio_path.clone(),
+        hostio_note,
+    };
+    let status = |local: &LocalState, running: bool| control::DaemonStatus {
+        running,
+        pid: std::process::id(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        name: args.identity.name.clone(),
+        updated_unix: control::unix_now(),
+        uptime_s: t0.elapsed().as_secs_f64(),
+        state_dir: args.state_dir.display().to_string(),
+        native_clients: server.clients(),
+        meter_reports: subs.live_reports(Instant::now()),
+        discovery_replies: discovery.replies(),
+        scene_file: local.scene_file.clone(),
+        active_scene: lib.active(),
+        hostio_path: local.hostio_path.as_ref().map(|p| p.display().to_string()),
+        hostio: local.hostio_note.clone(),
+        audio: audio.as_ref().map(|a| a.report()),
+    };
     let mut last_status = Instant::now();
+    let mut last_status_file: Option<Instant> = None;
     while !STOP.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_millis(100));
+        if let Some((_, rx)) = &ctl {
+            while let Ok(req) = rx.try_recv() {
+                let res = match &req.cmd {
+                    control::Command::Status => Ok(status(&local, true).to_json()),
+                    cmd => execute(cmd, &store, &doc, &lib, audio.as_ref(), &mut local),
+                };
+                match &res {
+                    Ok(m)
+                        if !matches!(
+                            req.cmd,
+                            control::Command::Status | control::Command::Ping
+                        ) =>
+                    {
+                        log(&format!("control: {m}"))
+                    }
+                    Err(e) => log(&format!("control: {:?} failed: {e}", req.cmd)),
+                    _ => {}
+                }
+                req.respond(res);
+            }
+            if last_status_file.is_none_or(|t| t.elapsed() >= Duration::from_secs(1)) {
+                last_status_file = Some(Instant::now());
+                if let Err(e) = control::write_status(&status_file, &status(&local, true)) {
+                    log(&format!("control: writing {}: {e}", status_file.display()));
+                }
+            }
+        }
         if last_status.elapsed() >= Duration::from_secs(60) {
             last_status = Instant::now();
             log(&format!(
@@ -497,6 +586,11 @@ fn run(args: Args) -> Result<(), String> {
         }
     }
     log("shutting down");
+    if let Some((srv, rx)) = ctl {
+        drop(rx);
+        srv.stop();
+        let _ = control::write_status(&status_file, &status(&local, false));
+    }
     if let Some(a) = audio {
         a.stop(); // detaches: the driver falls back to loopback
     }
@@ -521,6 +615,85 @@ fn run(args: Args) -> Result<(), String> {
     }
     log("stopped");
     Ok(())
+}
+
+/// Daemon state the control socket can change (T064).
+struct LocalState {
+    scene_file: Option<String>,
+    hostio_path: Option<PathBuf>,
+    hostio_note: String,
+}
+
+/// Execute a control command (main thread; `status` is answered by the caller).
+fn execute(
+    cmd: &control::Command,
+    store: &ParamStore,
+    doc: &persist::Doc,
+    lib: &library::SceneLib,
+    audio: Option<&AudioService>,
+    local: &mut LocalState,
+) -> Result<String, String> {
+    use control::Command;
+    match cmd {
+        Command::Ping | Command::Status => Ok(format!(
+            "wing-sim {} pid {}",
+            env!("CARGO_PKG_VERSION"),
+            std::process::id()
+        )),
+        Command::Save(p) => {
+            let n =
+                persist::save_state(store, doc, p).map_err(|e| format!("{}: {e}", p.display()))?;
+            local.scene_file = Some(p.display().to_string());
+            Ok(format!("saved {n} bytes to {}", p.display()))
+        }
+        Command::Load(p) => {
+            let text = std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?;
+            let rep = {
+                // hold the document while the store is rewritten (see SceneLib::recall)
+                let mut d = doc.lock().unwrap_or_else(|e| e.into_inner());
+                let (snap, rep) =
+                    Snapshot::load(store, &text).map_err(|e| format!("{}: {e}", p.display()))?;
+                *d = snap;
+                rep
+            };
+            lib.adopt_doc_active();
+            lib.publish(store);
+            local.scene_file = Some(p.display().to_string());
+            Ok(format!(
+                "loaded {}: {} keys, {} applied, {} rejected",
+                p.display(),
+                rep.keys,
+                rep.applied,
+                rep.rejected.len()
+            ))
+        }
+        Command::ReloadHostIo(p) => {
+            let audio = audio.ok_or("audio is off (--no-audio)")?;
+            let path = p
+                .clone()
+                .or_else(|| local.hostio_path.clone())
+                .ok_or("no --hostio file in use; give a path")?;
+            let cfg = match HostIoSetting::from_file(&path.display().to_string())? {
+                HostIoSetting::Config(c) => c,
+                _ => unreachable!("from_file returns a config"),
+            };
+            let (_, note) = HostIoSetting::Config(cfg.clone()).resolve();
+            audio.set_hostio(Some(cfg));
+            local.hostio_path = Some(path);
+            local.hostio_note = note.clone();
+            Ok(note)
+        }
+        Command::HostIoOff => {
+            audio.ok_or("audio is off (--no-audio)")?.set_hostio(None);
+            local.hostio_path = None;
+            local.hostio_note = "host outputs off".into();
+            Ok(local.hostio_note.clone())
+        }
+        Command::Quit => {
+            STOP.store(true, Ordering::SeqCst);
+            Ok("stopping".into())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -580,6 +753,13 @@ mod tests {
         ])
         .unwrap();
         assert!(!a.audio && a.hostio == HostIoSetting::Off && a.block == 128);
+        assert!(a.control && a.hostio_path.is_none());
+        assert!(!args(&["--no-control"]).unwrap().control);
+        let ex = std::env::temp_dir().join(format!("wing-sim-cli-{}.toml", std::process::id()));
+        std::fs::write(&ex, wing_hostio::config::EXAMPLE_TOML).unwrap();
+        let h = args(&["--hostio", ex.to_str().unwrap()]).unwrap();
+        assert_eq!(h.hostio_path.as_deref(), Some(ex.as_path()));
+        let _ = std::fs::remove_file(&ex);
         assert_eq!(a.workers, Some(2));
         assert!(args(&["--block", "7"]).is_err());
         assert!(args(&["--hostio", "/nonexistent.toml"]).is_err());
