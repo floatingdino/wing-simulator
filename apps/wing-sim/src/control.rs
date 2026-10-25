@@ -22,6 +22,9 @@
 //!                                               end of line)
 //! record stop           -> ok recorded <secs> s, <n> file(s) to <dir>
 //! record status         -> ok rec ...
+//! monitor-level         -> ok mon/1 0.0 dB, mon/2 0.0 dB   (T03F: the PHONES / SPEAKERS knobs)
+//! monitor-level <m> <dB> -> ok mon/1 -12.0 dB, mon/2 0.0 dB (m: 1|a|A|phones, 2|b|B|speakers;
+//!                                                          dB: -144..10, -inf/-oo/off = -oo)
 //! quit                  -> ok stopping
 //! ```
 //!
@@ -83,6 +86,9 @@ pub struct DaemonStatus {
     pub recording: bool,
     /// Recorder state line (`rec off`, `rec 12.3 s, 2 file(s) -> DIR, dropped 0`, ...).
     pub recorder: String,
+    /// Monitor level knobs `[A (PHONES, mon/1), B (SPEAKERS, mon/2)]` in dB, -144 = -oo (T03F;
+    /// `None` with `--no-audio`). Set with `monitor-level`.
+    pub monitor_levels_db: Option<[f32; 2]>,
 }
 
 impl DaemonStatus {
@@ -115,7 +121,7 @@ pub fn write_status(path: &Path, status: &DaemonStatus) -> io::Result<()> {
 }
 
 /// A parsed control command.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     Ping,
     Status,
@@ -133,7 +139,32 @@ pub enum Command {
     },
     RecordStop,
     RecordStatus,
+    /// Report (`None`) or set a monitor level knob: (monitor 1|2, dB) (T03F).
+    MonitorLevel(Option<(usize, f32)>),
     Quit,
+}
+
+/// Monitor number of `1`/`a`/`phones` (1) and `2`/`b`/`speakers` (2), case-insensitive.
+pub fn parse_monitor(s: &str) -> Option<usize> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "1" | "a" | "phones" | "ph" => Some(1),
+        "2" | "b" | "speakers" | "spk" => Some(2),
+        _ => None,
+    }
+}
+
+/// A level in dB: a number (optionally suffixed `dB`), or `-inf`/`-oo`/`off` (= -144).
+pub fn parse_db(s: &str) -> Option<f32> {
+    let t = s.trim().to_ascii_lowercase();
+    match t.as_str() {
+        "-inf" | "-oo" | "off" | "-144" => Some(-144.0),
+        _ => t
+            .trim_end_matches("db")
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|v| v.is_finite()),
+    }
 }
 
 impl Command {
@@ -184,6 +215,17 @@ impl Command {
                     ("stop", "") => Ok(Command::RecordStop),
                     ("status", "") | ("", "") => Ok(Command::RecordStatus),
                     _ => Err("usage: record start <taps> <dir> | stop | status".into()),
+                }
+            }
+            "monitor-level" => {
+                let usage = || "usage: monitor-level [<1|2|a|b> <dB|-inf>]".to_string();
+                if arg.is_empty() {
+                    return Ok(Command::MonitorLevel(None));
+                }
+                let (m, v) = arg.split_once(char::is_whitespace).ok_or_else(usage)?;
+                match (parse_monitor(m), parse_db(v)) {
+                    (Some(m), Some(db)) => Ok(Command::MonitorLevel(Some((m, db)))),
+                    _ => Err(usage()),
                 }
             }
             "quit" => no_arg(Command::Quit),
@@ -384,6 +426,25 @@ mod tests {
         assert_eq!(Command::parse("record stop"), Ok(Command::RecordStop));
         assert_eq!(Command::parse("record status"), Ok(Command::RecordStatus));
         assert_eq!(Command::parse("record"), Ok(Command::RecordStatus));
+        assert_eq!(
+            Command::parse("monitor-level"),
+            Ok(Command::MonitorLevel(None))
+        );
+        assert_eq!(
+            Command::parse("monitor-level a -12.5"),
+            Ok(Command::MonitorLevel(Some((1, -12.5))))
+        );
+        assert_eq!(
+            Command::parse("monitor-level SPEAKERS -inf"),
+            Ok(Command::MonitorLevel(Some((2, -144.0))))
+        );
+        assert_eq!(
+            Command::parse("monitor-level 2 +3dB"),
+            Ok(Command::MonitorLevel(Some((2, 3.0))))
+        );
+        assert!(Command::parse("monitor-level 3 0").is_err());
+        assert!(Command::parse("monitor-level a").is_err());
+        assert!(Command::parse("monitor-level a loud").is_err());
         assert!(Command::parse("record start main/1").is_err());
         assert!(Command::parse("record pause").is_err());
         assert!(Command::parse("save").is_err());
@@ -505,6 +566,7 @@ mod tests {
             }),
             recording: true,
             recorder: "rec 12.3 s, 2 file(s) -> /Users/x/Takes, dropped 0".into(),
+            monitor_levels_db: Some([0.0, -12.5]),
         };
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("../../../fixtures/control/status.json")).unwrap();

@@ -10,8 +10,13 @@
 //!   of every DCA it belongs to (X32 semantics [I]); any member DCA at -oo silences it; the total
 //!   is clamped to +10 dB. Applied as [`MixShared`] external gain, smoothed by the strip's 5 ms
 //!   fader ramp.
-//! * **Mutes**: effective mute = own mute OR an active mute group it belongs to OR (with
-//!   `cfg/dcamgrp` "DCA MUTEGROUPS", default on) a muted DCA it belongs to [I].
+//! * **Mutes**: effective mute = own mute OR an active mute group it belongs to.
+//! * **DCA mute** (T03F, confirmed by the user on a real WING): a muted DCA always mutes its
+//!   members' *main sends* (ch/aux/bus -> main 1-4, whatever their `pre` tap) — the strip itself,
+//!   its bus/matrix sends and its PFL/AFL solo keep running ([`flag::MAIN_MUTE`], applied by the
+//!   main nodes). With `cfg/dcamgrp` "DCA MUTEGROUPS" on (factory default) the DCA mute acts as a
+//!   mute group: a full strip mute ([`flag::MUTE`], incl. PRE sends). Main/matrix members have
+//!   no main send and are muted outright either way [I].
 //! * **Solo** (`cfg/solo`): a strip is soloed by its own `$solo`, by the `$solo` of a DCA it
 //!   belongs to, or (source solo, `srcsolo` CH39/AUX7 with `$srcsolo` on) as the source-solo
 //!   strip [I]. `$ctl/cfg/soloexcl` (EXCL SOLO, default on) makes a new solo clear every other one;
@@ -48,6 +53,10 @@ use crate::routing::{Strip, STRIP_COUNT};
 
 use super::law::FADER_OFF_DB;
 
+/// First main strip index ([`Strip::index`]): ch, aux and bus strips come before it.
+const MAIN_BASE: usize = 64;
+const _: () = assert!(STRIP_COUNT == MAIN_BASE + 4 + 8);
+
 /// Flag bits of [`MixShared::flags`].
 pub mod flag {
     /// External mute (mute group, DCA mute, solo in place).
@@ -58,6 +67,9 @@ pub mod flag {
     pub const SOLO_MON2: u32 = 4;
     /// Solo tap is AFL (post fader) instead of PFL.
     pub const AFL: u32 = 8;
+    /// The strip's main sends are muted (DCA mute with `cfg/dcamgrp` off, T03F); applied by the
+    /// main nodes to the sends they receive.
+    pub const MAIN_MUTE: u32 = 16;
 }
 
 /// Per-strip state shared with the RT nodes (indexed by [`Strip::index`]).
@@ -415,8 +427,16 @@ impl MixLogic {
         for (i, s) in ids.strips.iter().enumerate() {
             let (d, m) = store.with_str(s.tags, parse_tags).unwrap_or((0, 0));
             gain[i] = dca_sum_db(d, &dca_db);
-            if m & mgrp_mute != 0 || (dcamgrp && d & dca_mute != 0) {
+            if m & mgrp_mute != 0 {
                 flags[i] |= flag::MUTE;
+            }
+            if d & dca_mute != 0 {
+                // mains and matrices have no main send: a DCA mute mutes them outright [I]
+                flags[i] |= if dcamgrp || i >= MAIN_BASE {
+                    flag::MUTE
+                } else {
+                    flag::MAIN_MUTE
+                };
             }
             soloed[i] = if on(s.solo) {
                 1

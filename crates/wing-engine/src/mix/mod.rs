@@ -66,7 +66,7 @@ pub mod strip;
 pub use build::{bind_mix_params, build_mix_graph, bus_tiers, MixError, MixGraph, MixNodes};
 pub use law::PanLaw;
 pub use logic::{LogicState, MixLogic, MixShared, SoloMode};
-pub use monitor::MonitorNode;
+pub use monitor::{MonitorLevels, MonitorNode};
 pub use nodes::{
     InputSignal, InputStripNode, MixSignal, MixStripNode, NoProcessing, SendMode, SendParams,
     SlotKind, SlotSpec, StripHook, INPUT_OUTPUTS, MIX_OUTPUTS,
@@ -170,6 +170,9 @@ pub struct MixConfig {
     /// FX rack hosting the strips' inserts (T050; `None` = a new [`crate::fx::FxRack`] with every
     /// catalog model). Tests pass one built with [`crate::fx::FxRack::with_factory`].
     pub fx_rack: Option<crate::fx::FxRack>,
+    /// Monitor level knobs (T03F): when set, the monitor section takes its levels from them and
+    /// ignores `cfg/mon/1|2/lvl` (the daemon mirrors the knobs into the store).
+    pub monitor_levels: Option<Arc<monitor::MonitorLevels>>,
 }
 
 impl Default for MixConfig {
@@ -186,6 +189,7 @@ impl Default for MixConfig {
             logic: None,
             meters: None,
             fx_rack: None,
+            monitor_levels: None,
         }
     }
 }
@@ -204,6 +208,7 @@ impl std::fmt::Debug for MixConfig {
             .field("logic", &self.logic.is_some())
             .field("meters", &self.meters.is_some())
             .field("fx_rack", &self.fx_rack.is_some())
+            .field("monitor_levels", &self.monitor_levels)
             .finish()
     }
 }

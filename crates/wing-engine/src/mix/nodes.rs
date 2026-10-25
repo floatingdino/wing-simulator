@@ -147,6 +147,13 @@ impl LogicLink {
             return false;
         }
         l.seen = g;
+        l.read(f)
+    }
+
+    /// Copy the published external gain/mute into `f`; returns whether `f` changed.
+    #[inline]
+    fn read(&self, f: &mut Fader) -> bool {
+        let l = self;
         let gain = l.shared.gain_db(l.idx);
         let mute = l.shared.flags(l.idx) & flag::MUTE != 0;
         let changed = gain != f.ext_gain_db || mute != f.ext_mute;
@@ -487,6 +494,8 @@ struct Slot {
     base: u16,
     p: SendParams,
     dirty: bool,
+    /// Main send cut by a DCA mute of the sender (`cfg/dcamgrp` off, T03F); mains only.
+    cut: bool,
     /// One matrix per input signal (`Input`: Pre, PreLinked, Afl, Post; `Mix`: Pre, Post).
     ramps: [Ramp<4>; 4],
 }
@@ -558,6 +567,7 @@ impl MixStripNode {
                     base,
                     p: SendParams::default(),
                     dirty: false,
+                    cut: false,
                     ramps: [Ramp::new(a); 4],
                 };
                 base += s.kind.ports() as u16;
@@ -591,14 +601,43 @@ impl MixStripNode {
             idx,
             seen: u32::MAX,
         });
-        if LogicLink::poll(&mut self.logic, &mut self.fader) {
-            self.update_targets();
-        }
+        self.poll_logic();
+        self.apply(&ParamMsg::Commit);
         self
     }
 
     pub fn strip(&self) -> Strip {
         self.strip
+    }
+
+    /// Read a newly published logic state: the external gain/mute, and (mains) which senders'
+    /// main sends a DCA mute cuts ([`flag::MAIN_MUTE`]). Marks what changed dirty; returns
+    /// whether anything did (apply a `Commit` then). RT-safe.
+    fn poll_logic(&mut self) -> bool {
+        let Some(l) = self.logic.as_mut() else {
+            return false;
+        };
+        let g = l.shared.generation();
+        if g == l.seen {
+            return false;
+        }
+        l.seen = g;
+        let mut changed = l.read(&mut self.fader);
+        self.dirty |= changed;
+        if self.dest == Dest::Main {
+            for (src, &k) in self.slot_of.iter().enumerate() {
+                let Some(s) = self.slots.get_mut(k as usize) else {
+                    continue;
+                };
+                let cut = l.shared.flags(src) & flag::MAIN_MUTE != 0;
+                if cut != s.cut {
+                    s.cut = cut;
+                    s.dirty = true;
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
 
     /// Number of input ports the node expects.
@@ -630,9 +669,7 @@ impl MixStripNode {
 
     /// Jump every gain to its target on the next block.
     pub fn settle(&mut self) {
-        if LogicLink::poll(&mut self.logic, &mut self.fader) {
-            self.dirty = true;
-        }
+        self.poll_logic();
         self.apply(&ParamMsg::Commit);
         self.post.settle();
         self.pre.settle();
@@ -646,7 +683,7 @@ impl MixStripNode {
     fn slot_targets(&self, s: &Slot) -> [Matrix; 4] {
         let mut t = [ZERO; 4];
         let p = &s.p;
-        if !p.on {
+        if !p.on || s.cut {
             return t;
         }
         let g = law::fader_gain(p.lvl_db);
@@ -742,8 +779,8 @@ impl MixStripNode {
 
 impl Processor for MixStripNode {
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
-        if LogicLink::poll(&mut self.logic, &mut self.fader) {
-            self.update_targets();
+        if self.poll_logic() {
+            self.apply(&ParamMsg::Commit);
         }
         let ins = io.inputs();
         let b = io.block_size();

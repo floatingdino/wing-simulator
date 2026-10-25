@@ -41,5 +41,6 @@
     "message": "audio: 48000 Hz, driver running"
   },
   "recording": true,
-  "recorder": "rec 12.3 s, 2 file(s) -> /Users/x/Takes, dropped 0"
+  "recorder": "rec 12.3 s, 2 file(s) -> /Users/x/Takes, dropped 0",
+  "monitor_levels_db": [0.0, -12.5]
 }

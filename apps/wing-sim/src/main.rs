@@ -30,7 +30,10 @@
 //! busses, mains, matrices (T036) -> output patch -> USB Out 1..48, plus host-device bridges). Without a
 //! (compatible) driver it runs control-only and keeps retrying. `--hostio PATH` takes a
 //! wing-hostio TOML (see `crates/wing-hostio/hostio.example.toml`); by default monitor A (`mon/1`: the monitor source, MAIN.1 by default, with solo priority) plays on
-//! "Scarlett 2i4 USB" 1/2 when that device exists.
+//! "Scarlett 2i4 USB" 1/2 when that device exists. The monitor A/B levels are the simulated
+//! PHONES / SPEAKERS knobs (T03F, `wing_sim::audio::MonitorKnobs`, default 0 dB; they own
+//! `cfg/mon/1|2/lvl`): control socket `monitor-level [<1|2> <dB>]`, OSC
+//! `/wingsim/mon/<1|2>/lvl [,f dB]`, status.json `monitor_levels_db`.
 //!
 //! Front ends (T064, see `wing_sim::control`): `<state-dir>/status.json` is rewritten every
 //! second (load, xruns, bridges, clients), and `<state-dir>/control.sock` takes line commands
@@ -266,14 +269,25 @@ fn record_message(pos: &[String]) -> Option<Message> {
     })
 }
 
-/// The recorder as an OSC extension, logging what it does.
+/// The daemon's `/wingsim/...` OSC extensions: the recorder (logging what it does) and the
+/// monitor level knobs (T03F).
 struct LoggedRecorder {
     rec: Arc<Recorder>,
     log: persist::LogFn,
+    knobs: Option<audio::MonitorKnobs>,
 }
 
 impl SimExtension for LoggedRecorder {
     fn command(&self, addr: &str, args: &[Arg]) -> Option<Option<(String, Vec<Arg>)>> {
+        if addr.starts_with("/wingsim/mon/") {
+            let r = audio::monitor_osc(self.knobs.as_ref(), addr, args)?;
+            if !args.is_empty() {
+                if let Some(k) = &self.knobs {
+                    (self.log)(&format!("osc: monitor level {}", k.describe()));
+                }
+            }
+            return Some(r);
+        }
         let r = self.rec.command(addr, args)?;
         if !addr.ends_with("status") && addr != "/wingsim/record" {
             if let Some((_, a)) = &r {
@@ -453,6 +467,8 @@ fn run(args: Args) -> Result<(), String> {
     let osc_att = args.osc.then(|| OscAttachment::attach(&mut store));
     let changes = persist::ChangeCounter::attach(&mut store);
     let routing = args.audio.then(|| audio::prepare(&mut store));
+    // monitor level knobs (T03F): control socket, OSC and status.json
+    let knobs = routing.as_ref().map(|r| r.monitor.clone());
     let store = Arc::new(store);
     let logf: persist::LogFn = Arc::new(log);
     let autosaver = if args.autosave {
@@ -595,6 +611,7 @@ fn run(args: Args) -> Result<(), String> {
                     extension: Some(Arc::new(LoggedRecorder {
                         rec: recorder.clone(),
                         log: logf.clone(),
+                        knobs: knobs.clone(),
                     })),
                     ..OscConfig::default()
                 },
@@ -693,6 +710,7 @@ fn run(args: Args) -> Result<(), String> {
         scene_file: args.scene.clone(),
         hostio_path: args.hostio_path.clone(),
         hostio_note,
+        knobs,
     };
     let status = |local: &LocalState, running: bool| control::DaemonStatus {
         running,
@@ -712,6 +730,7 @@ fn run(args: Args) -> Result<(), String> {
         audio: audio.as_ref().map(|a| a.report()),
         recording: recorder.is_recording(),
         recorder: recorder.status(),
+        monitor_levels_db: local.knobs.as_ref().map(|k| k.both()),
     };
     let mut last_status = Instant::now();
     let mut last_status_file: Option<Instant> = None;
@@ -817,6 +836,8 @@ struct LocalState {
     scene_file: Option<String>,
     hostio_path: Option<PathBuf>,
     hostio_note: String,
+    /// Monitor level knobs (T03F; `None` with --no-audio).
+    knobs: Option<audio::MonitorKnobs>,
 }
 
 /// Execute a control command (main thread; `status` is answered by the caller).
@@ -891,6 +912,13 @@ fn execute(
         Command::RecordStart { taps, dir } => recorder.start(taps, dir),
         Command::RecordStop => Ok(recorder.stop()),
         Command::RecordStatus => Ok(recorder.status()),
+        Command::MonitorLevel(set) => {
+            let k = local.knobs.as_ref().ok_or("audio is off (--no-audio)")?;
+            if let Some((m, db)) = *set {
+                k.set(m, db)?;
+            }
+            Ok(k.describe())
+        }
         Command::Quit => {
             STOP.store(true, Ordering::SeqCst);
             Ok("stopping".into())

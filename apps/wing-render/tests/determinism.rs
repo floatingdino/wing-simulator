@@ -41,6 +41,11 @@ fn set(store: &ParamStore, path: &str, v: &str) {
 fn scene() -> ParamStore {
     let snap = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/PUBLIC.snap");
     let (store, _) = load_scene(Some(&snap)).unwrap();
+    // PUBLIC.snap mutes DCAs 5 and 8, whose members (busses 1, 2, 5, 7: the group busses the
+    // first channels feed) then have their main sends muted (T03F DCA semantics): unmute them so
+    // main 1 carries signal
+    set(&store, "dca/5/mute", "0");
+    set(&store, "dca/8/mute", "0");
     for ch in 1..=40 {
         set(&store, &format!("ch/{ch}/in/conn/grp"), "USB");
         set(&store, &format!("ch/{ch}/in/conn/in"), &ch.to_string());

@@ -236,9 +236,11 @@ Send level `lvl` in dB (-144 = -oo .. +10), fader law shared with faders [S][E].
 - 16 DCAs `dca.<n> = {name, col, icon, led, mute, fdr, mon}` and 8 mute groups `mgrp.<n> = {name, mute}` [S].
 - Membership is stored in each strip's `tags` string [S]: `#Dn` = member of DCA n, `#Mn` = member of mute group n
   (fixture: ch tags "#M1,DCA.1", bus "#D5,#D7"; plain words such as `DCA.1`, `INSTRUM` are free user tags) [S][I].
-- DCA: member effective fader (dB) = own fader + sum of its DCA faders (X32 semantics, [I]); DCA mute mutes members;
-  `cfg.dcamgrp` ("DCA MUTEGROUPS") makes DCA mute buttons behave as mute groups [E][I].
-- Mute group: effective mute = own mute OR any active mute group it belongs to OR any muted DCA.
+- DCA: member effective fader (dB) = own fader + sum of its DCA faders (X32 semantics, [I]); DCA mute **always mutes the
+  members' main (LR/main 1-4) sends**; `cfg.dcamgrp` ("DCA MUTEGROUPS", factory on) makes it act as a mute group:
+  additionally the members' bus sends incl. PRE-fader sends, i.e. a full channel mute [user-verified on a real WING,
+  T03F; wing-docs.com "global audio settings"].
+- Mute group: effective mute = own mute OR any active mute group it belongs to (OR a muted DCA with dcamgrp on).
   `cfg muteovr` "MUTEGROUP/SIP OVERRIDE" exists [E].
 
 ## 10. Solo and monitoring
@@ -252,7 +254,9 @@ Send level `lvl` in dB (-144 = -oo .. +10), fader law shared with faders [S][E].
   "MON.PH", "MON.SPK") [S][E]; `src` options OFF, MAIN.1-4, MTX.1-8, BUS.1-16, AUX.1-8 [T003]:
   `src` (e.g. MAIN.1), `srclvl`, `srcmix`, 8-band EQ (`lsg/lsf`, 1-6 `g/f/q`, `hsg/hsf`), `lim` limiter threshold,
   `dly {on, m}` (m = distance 0.1..100 m), `dim`, `pfldim` (PFL attenuation), `eqbdtrim`, `inv`, `pan`, `wid`. Solo bus replaces/mixes into the
-  monitor source while any solo is active [I].
+  monitor source while any solo is active [I]. `lvl` ("PHONES"/"SPEAKERS") is the dedicated monitor A/B level
+  knob [E: WING manuals]; it is not in snapshots and WING-Edit pushes it as -oo, so the simulator treats it as a
+  physical knob it owns (T03F; set via control socket/OSC).
 - Talkback `cfg.talk.A|B = {mode AUTO|PUSH|LATCH, mondim, busdim, B1..B16, M1..M4}`, `assign` (source, fixture
   CH40), `indiv` per-destination levels [S][E].
 - RTA/meters: `cfg.rta` and `cfg.mtr` select sources/taps (IN, PRE/POST etc.) - metering only [S].
