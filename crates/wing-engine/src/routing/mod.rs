@@ -15,8 +15,8 @@
 //!   | `LCL` `AUX` `A` `B` `C` `SC` `CRD` `MOD` `PLAY` `AES` | 24/8/48/48/48/32/64/64/4/2 | silent but routable |
 //!
 //!   Derived signals resolve to a [`Tap`] (dense [`TapId`]); the mix graph
-//!   ([`crate::mix::build_mix_graph`]) wires a `Port` per tap ([`TapPorts`]); SEND/MON legs read as
-//!   silence until the FX rack / monitor section exist. Taps used as *channel sources* are
+//!   ([`crate::mix::build_mix_graph`]) wires a `Port` per tap ([`TapPorts`]); MON legs 1..4 are the monitor
+//!   outputs A/B (T038), SEND legs read as silence until the FX rack exists. Taps used as *channel sources* are
 //!   feedback paths and arrive one block late ([`feedback`]).
 //! * **Source settings** (`io/in/<grp>/<n>`): preamp gain `g` (LCL/A/B/C/SC) applies as linear
 //!   gain, `mute` zeroes the leg, `pol` inverts it, `mode` M/ST/M-S sets the width of a channel

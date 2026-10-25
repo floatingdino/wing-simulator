@@ -12,8 +12,10 @@ use wing_hostio::{
 
 /// Device used by the default route when present.
 pub const DEFAULT_DEVICE: &str = "Scarlett 2i4 USB";
-/// Default route (TODO(T038): `mon/1` once the monitor section exists; main 1 until then).
-pub const DEFAULT_ROUTE: &str = "main/1 -> \"Scarlett 2i4 USB\" 1/2";
+/// Default route: monitor A (console monitor output: `cfg/mon/1` source, e.g. MAIN.1, replaced or
+/// mixed by any active solo). Use `--hostio` with e.g. `main/1 -> ...` to bypass the monitor
+/// section.
+pub const DEFAULT_ROUTE: &str = "mon/1 -> \"Scarlett 2i4 USB\" 1/2";
 
 /// Where the host-output config comes from.
 #[derive(Debug, Clone, PartialEq)]
@@ -224,6 +226,7 @@ mod tests {
     fn default_route_and_plan() {
         let r = Route::parse(DEFAULT_ROUTE).unwrap();
         assert_eq!(r.device, DEFAULT_DEVICE);
+        assert_eq!(r.sources[0].tap, wing_hostio::Tap::Monitor(1));
         assert_eq!(r.device_channels, vec![1, 2]);
         let cfg = HostIoConfig {
             routes: vec![r],
