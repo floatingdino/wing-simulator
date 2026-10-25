@@ -2,7 +2,7 @@
 id: T073
 title: Packaging + user docs
 stage: S7
-status: review
+status: done
 owner: T073 agent
 depends: [T064]
 branch: task/T073
