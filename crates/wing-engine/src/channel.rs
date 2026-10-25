@@ -59,6 +59,7 @@ pub mod block {
     pub const PREINS: u8 = 9;
     pub const POSTINS: u8 = 10;
     pub const STRIP: u8 = 11;
+    pub const DYN_XO: u8 = 12;
 }
 
 /// `ch/N/flt` low/high cut.
@@ -83,6 +84,12 @@ pub const TOOL_LAYOUT: BlockLayout = BlockLayout {
 /// `gatesc` / `dynsc`.
 pub const SC_LAYOUT: BlockLayout = BlockLayout {
     params: &[("type", 0), ("f", 1), ("q", 2), ("src", 3)],
+    targets: &[],
+};
+
+/// `ch/N/dynxo`: dynamics crossover (T03C) `type` (OFF LO HI S6 S12 PEAK), `f`, `q`, `depth`.
+pub const XO_LAYOUT: BlockLayout = BlockLayout {
+    params: &[("type", 0), ("f", 1), ("q", 2), ("depth", 3)],
     targets: &[],
 };
 
@@ -142,6 +149,7 @@ pub fn bind_channel_strip(b: &mut ParamMapBuilder, ch: u32, node: NodeId) -> Res
     b.bind_block(&format!("{p}/eq"), node, block::EQ, &EQ_LAYOUT)?;
     b.bind_block(&format!("{p}/dyn"), node, block::DYN, &SLOT_LAYOUT)?;
     b.bind_block(&format!("{p}/dynsc"), node, block::DYN_SC, &SC_LAYOUT)?;
+    b.bind_block(&format!("{p}/dynxo"), node, block::DYN_XO, &XO_LAYOUT)?;
     b.bind_block(&format!("{p}/preins"), node, block::PREINS, &PREINS_LAYOUT)?;
     b.bind_block(
         &format!("{p}/postins"),
@@ -405,6 +413,8 @@ impl ChannelStrip {
         peq.prepare(fs, max_block);
         let mut eq = slot("eq");
         eq.set_mix_max(125.0);
+        // WING EQ mix scales the band gains (T03C), it is not a dry/wet blend.
+        eq.set_mix_in_model(true);
         let mut s = Self {
             kind,
             input,
@@ -565,6 +575,23 @@ impl ChannelStrip {
                     _ => return,
                 }
                 slot.set_key_filter(sc.0, sc.1, sc.2);
+            }
+            block::DYN_XO => {
+                let mut x = *self.dyn_.xover();
+                match param {
+                    0 => {
+                        use wing_blocks::sidechain::XoverKind as K;
+                        x.kind = [K::Off, K::Lo, K::Hi, K::S6, K::S12, K::Peak]
+                            .get(v as usize)
+                            .copied()
+                            .unwrap_or(K::Off)
+                    }
+                    1 => x.freq = v,
+                    2 => x.q = v,
+                    3 => x.depth_db = v,
+                    _ => return,
+                }
+                self.dyn_.set_xover(&x);
             }
             block::PEQ => {
                 let p = &mut self.peq_p;

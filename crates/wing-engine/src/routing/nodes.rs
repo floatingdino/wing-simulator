@@ -6,11 +6,15 @@ use crate::graph::{
 };
 
 use super::addr::{TapId, TAP_COUNT};
-use super::table::{Feed, InputRoute, OscMode, RoutingTable, Width, INPUT_STRIPS, USB_CHANNELS};
+use super::feedback::TapFeedback;
+use super::table::{
+    Feed, InputRoute, Leg, OscMode, RoutingTable, Width, INPUT_STRIPS, USB_CHANNELS,
+};
 use super::RoutingReader;
 
-/// Engine ports for taps, indexed by [`TapId`]. `None` (all of them until T036 adds the mixing
-/// nodes) reads as silence.
+/// Engine ports for taps, indexed by [`TapId`]. `None` reads as silence (the mix graph,
+/// [`crate::mix::build_mix_graph`], wires every BUS/MAIN/MTX leg and strip tap; SEND and MON
+/// legs stay `None` until the FX rack (T050) and monitor section (T038) exist).
 pub type TapPorts = [Option<Port>; TAP_COUNT];
 
 /// No taps wired yet.
@@ -134,16 +138,28 @@ impl Processor for Oscillators {
 /// Input router: inputs = USB In 1..48 then oscillators 1..2; outputs = 48 input strips x L/R
 /// (`2*i` / `2*i+1`, strips 0..40 = ch 1..40, 40..48 = aux 1..8).
 ///
-/// Mix-output and user-signal sources (feeds [`Feed::Tap`]/[`Feed::TapMono`]) read as silence
-/// here: re-inputting a bus into a channel is a feedback path that needs a one-block delayed
-/// tap, which comes with the mixing nodes (T036).
+/// Mix-output and user-signal sources (feeds [`Feed::Tap`]/[`Feed::TapMono`]) are feedback
+/// paths: with a [`TapFeedback`] (see [`super::feedback`]) they read the previous cycle's tap
+/// (one block of latency), without one they read as silence.
 pub struct InputRouter {
     reader: RoutingReader,
+    feedback: Option<TapFeedback>,
 }
 
 impl InputRouter {
     pub fn new(reader: RoutingReader) -> Self {
-        Self { reader }
+        Self {
+            reader,
+            feedback: None,
+        }
+    }
+
+    /// Router that reads re-input taps from `fb` (written by a [`super::FeedbackWriter`]).
+    pub fn with_feedback(reader: RoutingReader, fb: TapFeedback) -> Self {
+        Self {
+            reader,
+            feedback: Some(fb),
+        }
     }
 
     /// The input ports the router expects, given the oscillator node.
@@ -161,9 +177,36 @@ impl InputRouter {
 }
 
 #[inline]
-fn route_strip(r: &InputRoute, ins: &InputList<'_>, l: &mut [f32], rr: &mut [f32]) {
-    write_scaled(l, feed_slice(ins, r.legs[0].feed), r.legs[0].gain);
-    write_scaled(rr, feed_slice(ins, r.legs[1].feed), r.legs[1].gain);
+fn write_leg(out: &mut [f32], ins: &InputList<'_>, fb: Option<&TapFeedback>, leg: &Leg) {
+    match leg.feed {
+        Feed::Tap(id) => write_scaled(out, fb.and_then(|f| f.get(id)), leg.gain),
+        Feed::TapMono(id) => {
+            let l = fb.and_then(|f| f.get(id));
+            let r = fb.and_then(|f| f.get(TapId(id.0 + 1)));
+            match (l, r) {
+                (Some(a), Some(b)) => {
+                    let g = 0.5 * leg.gain;
+                    for ((o, &x), &y) in out.iter_mut().zip(a).zip(b) {
+                        *o = (x + y) * g;
+                    }
+                }
+                _ => out.fill(0.0),
+            }
+        }
+        f => write_scaled(out, feed_slice(ins, f), leg.gain),
+    }
+}
+
+#[inline]
+fn route_strip(
+    r: &InputRoute,
+    ins: &InputList<'_>,
+    fb: Option<&TapFeedback>,
+    l: &mut [f32],
+    rr: &mut [f32],
+) {
+    write_leg(l, ins, fb, &r.legs[0]);
+    write_leg(rr, ins, fb, &r.legs[1]);
     if r.width == Width::MidSide {
         for (a, b) in l.iter_mut().zip(rr.iter_mut()) {
             let (m, s) = (*a, *b);
@@ -182,7 +225,7 @@ impl Processor for InputRouter {
         let outs = io.outputs();
         for (i, pair) in outs.chunks_exact_mut(2 * b).take(INPUT_STRIPS).enumerate() {
             let (l, r) = pair.split_at_mut(b);
-            route_strip(t.input(i), &ins, l, r);
+            route_strip(t.input(i), &ins, self.feedback.as_ref(), l, r);
         }
     }
 }
@@ -264,12 +307,33 @@ pub fn add_input_stage(
     g: &mut GraphBuilder,
     ctl: &mut super::RoutingControl,
 ) -> Result<IoNodes, GraphError> {
+    add_input_stage_impl(g, ctl, None)
+}
+
+/// As [`add_input_stage`], with re-input taps read (one block late) from `fb`.
+pub fn add_input_stage_with_feedback(
+    g: &mut GraphBuilder,
+    ctl: &mut super::RoutingControl,
+    fb: TapFeedback,
+) -> Result<IoNodes, GraphError> {
+    add_input_stage_impl(g, ctl, Some(fb))
+}
+
+fn add_input_stage_impl(
+    g: &mut GraphBuilder,
+    ctl: &mut super::RoutingControl,
+    fb: Option<TapFeedback>,
+) -> Result<IoNodes, GraphError> {
     let osc = g.add_node("osc", 2, &[], Oscillators::new(ctl.subscribe()))?;
+    let router = match fb {
+        Some(fb) => InputRouter::with_feedback(ctl.subscribe(), fb),
+        None => InputRouter::new(ctl.subscribe()),
+    };
     let inputs = g.add_node(
         "input-router",
         (INPUT_STRIPS * 2) as u32,
         &InputRouter::inputs(osc),
-        InputRouter::new(ctl.subscribe()),
+        router,
     )?;
     Ok(IoNodes { osc, inputs })
 }

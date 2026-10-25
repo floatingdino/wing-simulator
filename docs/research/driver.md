@@ -1,7 +1,9 @@
-# Wing Simulator HAL driver (T006 spike)
+# Wing Simulator HAL driver (T006 spike, T021 production build)
 
-Status: the spike builds and passes its host-side tests. It has **not been installed yet**, because
-installing needs root. A human has to run the install (see "Install" below).
+Status:
+- The T006 build (shm v1) is installed and passed 48x48 unity loopback in REAPER.
+- T021 (shm v2, configurable input delay, crossfaded fallback; section 9) builds and passes its
+  host-side tests. It still needs a human reinstall, then `driver/verify.sh` (section 9.6).
 
 ## 1. What was built
 
@@ -15,8 +17,8 @@ installing needs root. A human has to run the install (see "Install" below).
 | Output (DAW → sim) | 1 stream × 48 ch, float32. Channel names `USB In 1..48` (WING "USB in") |
 | Input (sim → DAW) | 1 stream × 48 ch, float32. Channel names `USB Out 1..48` (WING "USB out") |
 | Rates | 48000 (default), 44100. A rate change set on either the device or a stream format updates both streams and the shm header |
-| Input latency | 256 frames, reported as the input stream latency. This is the shm processing window (see section 4) |
-| Without daemon | Loopback: input(T) = output(T − 256) |
+| Input latency | Input delay D, configurable (default 128 frames; section 9), reported as the input stream latency. It is the daemon's processing window (section 4). Device latency and safety offsets are 0 |
+| Without daemon | Loopback: input(T) = output(T − D). A daemon that appears, stalls, crashes or restarts is crossfaded in/out (section 9) |
 | IPC | POSIX shm `/wingsim.audio.v1` (3 MiB). Layout is in `driver/include/wing_shm.h` |
 
 Files:
@@ -129,18 +131,19 @@ install. If shm turns out to be blocked, the fallback is a Mach service through
   At each of these the driver resets `to_daemon.write_time` and then increments `io_epoch` (release store).
   The daemon reacts to a new epoch by skipping its backlog and stamping `from_daemon.epoch`. The driver
   ignores `from_daemon` until that epoch matches.
-- WriteMix(T) writes `to_daemon[T..T+n)`. ReadInput(T) reads `from_daemon[T−256..)` when the daemon is
-  alive, or `to_daemon[T−256..)` in loopback.
-- The fixed 256-frame delay is reported as the input stream latency, so REAPER's recording compensation
+- WriteMix(T) writes `to_daemon[T..T+n)`. ReadInput(T) reads `from_daemon[T−D..)` when the daemon is
+  alive, or `to_daemon[T−D..)` in loopback (D = input delay, 256 before T021, now configurable).
+- The delay D is reported as the input stream latency, so REAPER's recording compensation
   stays correct in both modes.
-- It gives the daemon a window of roughly the IO buffer plus 256 frames (≥ 5.3 ms at 48 kHz).
+- It gives the daemon a window of roughly the IO buffer plus D frames (≥ 4 ms at 48 kHz with the
+  default D = 128 and a 64-frame buffer; section 9.2).
 - Frames that are missing or late are delivered as zeros, and `from_daemon.underruns` is incremented.
 - The daemon counts as alive if `daemon_heartbeat` is less than 100 ms old. When it exits it sets the
   heartbeat to 0, which switches the driver back to loopback immediately.
 - Record-only clients (input IO without output IO, so `to_daemon.write_time` stays put): every
   ReadInput publishes `input_time` (end device time) and `input_frames`. When `input_time >
   to_daemon.write_time` the daemon treats input as silence and produces `from_daemon` up to
-  `input_time − 256 + 2·input_frames`. Verified by the `--record-only` selftest phase (0 underruns).
+  `input_time − D + 2·input_frames`. Verified by the `--record-only` selftest phase (0 underruns).
   Caveat: if a client starts output mid-epoch, the frames the daemon already produced from silence
   are not redone (one short glitch at output start).
 - New-epoch resync: the daemon keeps at most 512 frames of what the driver already wrote in the new
@@ -179,7 +182,7 @@ service, so they were not pursued.
 - Safety net: if three consecutive os_sync waits run to their timeout although `cycle_seq` did
   change (wakes not delivered, for example if the installed driver host turns out to block them), the
   daemon switches to 100 µs polling by itself. It costs about 3 % CPU and has ≤ 140 µs latency, which
-  still fits the ≥ 5.3 ms window.
+  still fits the window (section 4).
 - Cross-process wakes are proven by the selftest: the Rust daemon waits with a 10 ms timeout, so
   undelivered wakes would show up as underruns. There were 0. **Not yet verified inside the real
   coreaudiod sandbox** (needs install). After install, check `gain_client` against the real driver: it
@@ -211,13 +214,15 @@ locally (BlackHole is distributed the same way when built from source).
 
 ## 6. Post-install verification (no sudo)
 
+Since T021, `driver/verify.sh` runs all of this and more (section 9.6). Manual equivalent:
+
 ```bash
 log stream --predicate 'subsystem == "com.wingsimulator.driver"' &   # expect "shm /wingsim.audio.v1 attached"
 driver/build/wing_hal_probe --info            # PASS 48x48, rates 44100 48000, names USB In/Out n
 driver/build/wing_hal_probe                   # loopback: PASS gain 1.0 on all 48 channels
-driver/build/wing_shm_client &                # daemon stand-in, gain -1 (or the Rust one:
-                                              #   cargo run --release -p wing-shm --example gain_client &)
-driver/build/wing_shm_client --status         # epoch, heartbeats, write_time advancing, underruns
+target/release/examples/gain_client --rt &    # Rust daemon stand-in, gain -1, RT thread
+                                              #   (cargo build --release -p wing-shm --examples)
+target/release/examples/gain_client --status # epoch, heartbeats, write_time advancing, underruns
 driver/build/wing_hal_probe --expect-gain -1  # PASS: audio went driver -> shm -> client -> shm -> driver
 kill %2                                       # client detaches -> loopback again
 driver/build/wing_hal_probe --rate 44100      # PASS at 44.1k
@@ -280,6 +285,189 @@ Recommendations for using this project with the simulator:
   time-constraint thread and join the device's `os_workgroup`.
 - Underrun accounting is per ReadInput call and per client, so it is counted once per input client.
 - No volume/mute controls are exposed, on purpose: the device behaves like a USB interface.
-- The shm is mode 0666. Revisit in T021 (for example, verify the daemon uid via a handshake).
-- Not yet verified on the real system: loading by the actual driver host, glitch-free 1 h runs (T021),
-  and REAPER behaviour at 64/128/256 buffers.
+- The shm is mode 0666 (any local user can read or inject audio). Still open: verify the daemon uid via
+  a handshake.
+- Verified on the real system (T006 driver, v1): loading by the driver host, 48x48 unity loopback. Still
+  to verify after the T021 reinstall: `driver/verify.sh` (section 9), then a 1 h REAPER run at
+  64/128/256 buffers.
+
+## 9. Production build (T021)
+
+### 9.1 Latency, safety offsets, input delay
+
+- Data path: input(T) = source(T − D). D is the **input delay**. It gives the daemon a processing window
+  of about one IO buffer plus D frames (section 4).
+- Reported to the HAL:
+  - input stream latency = D
+  - output stream latency = 0
+  - device latency = 0 and safety offset = 0, in both scopes
+- Why that is correct:
+  - There are no converters and no DMA: the data is in memory before the HAL asks for it.
+  - In HAL timestamps, a sample written with output time T comes back with input time T + D. So a DAW that
+    compensates output + input latency compensates exactly D.
+  - With zero safety offsets, the result does not depend on whether a DAW adds safety offsets into its
+    compensation.
+- Configuration: key `InputDelayFrames` (0..2048) in
+  `/Library/Preferences/Audio/com.wingsimulator.driver.plist`. It is read once, when the plug-in loads.
+  - That directory is the only preferences path the coreaudiod sandbox lets a plug-in read (`file-read*`
+    subpath).
+  - `user-preference-read` is granted only for `com.apple.coreaudio`, so the driver reads the file
+    directly instead of going through CFPreferences/cfprefsd.
+  - To change it:
+    ```bash
+    sudo defaults write /Library/Preferences/Audio/com.wingsimulator.driver InputDelayFrames -int 1024
+    sudo launchctl kickstart -k system/com.apple.audio.coreaudiod
+    ```
+  - The driver logs `input delay N frames (<source>)` at load.
+  - Tests point `$WINGSIM_CONFIG` at their own plist.
+- The segment's `input_delay_frames` stays immutable. A driver configured with a different delay treats
+  an existing segment as incompatible and recreates it, exactly like a version mismatch, and an attached
+  daemon must reattach. No protocol change was needed (still v2).
+- `WING_SHM_DEFAULT_INPUT_DELAY_FRAMES` (C) and `DEFAULT_INPUT_DELAY_FRAMES` (Rust) are now 128
+  (were 256). A daemon that creates the segment first uses the same default, so the driver does not
+  recreate it.
+
+### 9.2 Default delay: measurement
+
+`wing_shm_selftest --sweep` runs the real `ShmLink` on a time-constraint thread at real-time pace, like
+the HAL IO thread. If that thread is late by a whole period it skips cycles, as a HAL overload would;
+skips are reported separately. The other side is the release Rust `gain_client`. Each buffer size runs
+with a generous delay of 1024 frames.
+
+The sweep reports the smallest margin by which daemon data was ahead of what a ReadInput needed
+(`min slack`).
+- The delay the daemon actually consumed is `1024 − min slack`.
+- A value ≤ 0 means the daemon was never even one cycle behind, so one IO buffer of window was enough.
+
+Results (2026-10-25, M-series, macOS 26.6.2, machine busy with other agents' builds, load average about
+5–6, 60 s per buffer size unless noted):
+
+| Daemon thread | buf 64 | buf 128 | buf 256 |
+|---|---|---|---|
+| normal priority, 3 runs × 20 s | 192 / 384 / 320 | 896 / 256 / 128 | ≤ 0 |
+| normal priority, run A (cargo build running) | > 1024 (1 late block) | 512 | ≤ 0 |
+| normal priority, run B | > 1024 (1 late block) | 640 | ≤ 0 |
+| normal priority, run C (HAL-like skipping) | > 1024 (1 late block), 0 driver skips | 512 | ≤ 0 |
+| normal priority, run D (buf 64 only) | ≤ 0 | | |
+| **time-constraint (`gain_client --rt`)** | **≤ 0** (slack 1088 = D + buf) | **≤ 0** (1152) | **≤ 0** (1280) |
+
+Findings:
+- The transport needs no extra delay. With the daemon on a time-constraint thread it was never even one
+  cycle behind in 3 minutes under load, so delay 0 would have been glitch-free. Wakes take 7 µs (p50) and
+  20 µs (p99) per `wake_latency --attach` against the test driver; see also section 4.1.
+- A **normal-priority** daemon is descheduled now and then for 5 to more than 20 ms. Under load, no
+  delay below about 1100 frames is glitch-free for it.
+- Default chosen: **128 frames** (2.7 ms at 48 kHz, 2.9 ms at 44.1 kHz). The measured minimum for an RT
+  daemon is 0, so 128 is headroom for real DSP time (T022's engine, unlike `gain_client`, does work per
+  block) and for the DAW's own share of the IO cycle.
+- The production daemon must run its loop on a time-constraint thread (T022). `gain_client --rt` stands
+  in for it, and `verify.sh` uses it.
+- Until then, a normal-priority daemon needs `InputDelayFrames` ≥ 1024. Otherwise its stalls show up as
+  click-free fades to loopback.
+- At StopIO the driver logs the smallest daemon slack per IO session; `verify.sh` prints it. Use it to
+  tune the delay on a given machine.
+
+### 9.3 Fallback and crossfade (`ShmLink::ReadInput`)
+
+- Source selection:
+  - **Daemon**: `from_daemon(T − D)`. Requires all of:
+    - the daemon is alive (heartbeat younger than 100 ms);
+    - it has stamped the current epoch;
+    - the block's data is present and lies in its contiguous span.
+  - **Fallback**: loopback `to_daemon(T − D)`, or silence where the DAW wrote nothing (record-only, IO
+    start).
+- Every switch is a linear crossfade of 128 frames (2.7 ms).
+  - Frames that a stalled daemon never delivered are replaced by its last delivered sample (held) while it
+    fades out, not by zeros, so the fade itself cannot click.
+  - After a fallback, the daemon must be on time for 1024 consecutive frames before the driver fades back
+    to it. This hysteresis stops flapping.
+  - At an epoch start, the first D frames are silence in both sources. The starting source is picked
+    without a fade: the daemon if it is alive.
+- Stale-data guard: the driver uses only `from_daemon` data written contiguously since it last saw the
+  daemon (re)connect. It treats any of these as a reconnect:
+  - the heartbeat comes back;
+  - `daemon_pid` changes;
+  - `write_time` goes backwards;
+  - `write_time` jumps by more than 2048 frames plus one buffer between two reads (an overrun resync).
+
+  So a daemon that crashes and restarts within one cycle never makes the driver play its ring's stale
+  content.
+- `WriteOutput` zero-fills any gap in `to_daemon` (IO start, skipped cycles, output paused while input
+  runs). Loopback and the daemon never see audio from a previous IO session (a T006 bug: up to one
+  buffer of the previous session at each StartIO).
+- Late blocks are counted in `from_daemon.underruns` only when the daemon was the source.
+- Several HAL clients read the same cycle. The first `ReadInput` renders and caches the block; the others
+  get an identical copy without advancing the crossfade.
+- `Revalidate` (at HAL StartIO, IO stopped): if the shm name was removed or now refers to another segment
+  (`segment_id`), for example after a daemon recreated it, the driver re-attaches or recreates it. It also
+  retries shared memory if it had fallen back to private memory.
+
+### 9.4 Rates, names, logging, copies
+
+- Rates: 44100 and 48000 only (96000 is rejected).
+  - A change set on the device or on a stream format updates both streams.
+  - `BeginEpoch` then stores `sample_rate`, increments `io_epoch` and `cycle_seq`, and calls the
+    os_sync wake. A waiting daemon learns about the new rate immediately.
+- Channel names: output n = "USB In n", input n = "USB Out n", for n = 1..48 (WING's point of view).
+- Logging: `os_log` (subsystem `com.wingsimulator.driver`) only from non-IO threads:
+  - load (config, shm attach / fallback)
+  - StartIO (rate, delay, daemon present, re-attach)
+  - StopIO (totals of crossfades, late blocks, resyncs, and this session's minimum daemon slack)
+  - rate changes
+
+  The IO path only updates relaxed atomic counters.
+- Copies:
+  - WriteMix transposes the HAL's mixed buffer straight into the shm ring. There is no intermediate
+    buffer.
+  - ReadInput renders straight into the HAL's buffer.
+  - Loops are channel-outer, so the ring side is contiguous.
+  - The interleaved↔planar transpose is inherent: HAL buffers are interleaved, and the rings are planar
+    for the daemon.
+  - The one extra copy is the per-cycle multi-client cache (one memcpy of the input block).
+
+### 9.5 Tests
+
+- `driver/build.sh --test` (ctest):
+  - `shm_selftest`: the phases in the file header. Loopback, a new epoch with no stale audio, daemon,
+    IO restart, a SIGSTOP stall, and a SIGKILL crash with the from ring scribbled followed by a restart:
+    all click-free. Then detach, segment recreation on delay mismatch, and `Revalidate`.
+  - `driver_smoketest` and `driver_smoketest_delay` (`--delay 96` via a config plist), through the
+    AudioServerPlugIn interface:
+    - latency, safety offsets, all 96 channel names, rate changes (epoch + wake), 96 kHz rejected
+    - exact loopback
+    - a synchronous fake daemon with attach, stall, resume, a one-cycle restart with a garbage gap, and a
+      crash: no clicks, no garbage
+    - two clients reading identical data
+- Mutation checks, run once by hand: with the crossfade step set to 1, both suites report clicks (max
+  step 127× the fade slope); with the stale-data guard disabled, the smoketest plays the garbage (12288
+  samples).
+- `crates/wing-shm/tests/cpp_selftest.rs` runs the extended selftest against the Rust daemon side.
+
+### 9.6 Post-install verification: `driver/verify.sh`
+
+Human steps (needs sudo once):
+
+```bash
+# quit REAPER first
+driver/build.sh && sudo driver/install.sh
+driver/verify.sh
+```
+
+`verify.sh` needs no root. It builds the Rust examples and checks the following against the installed
+driver:
+
+1. The installed binary is the one in `driver/build`. The driver log shows the shm attach.
+2. `wing_hal_probe --info --expect-latency D`: 48x48, names, total input latency D, output 0. The shm is v2
+   with delay D.
+3. Loopback gain +1 under `--strict` (no HAL overloads, timestamp gaps, glitch frames, or shm underruns).
+4. 44.1k and 48k, with the rate visible in the shm header.
+5. `gain_client --rt` attached: gain −1 end to end, strict.
+6. `wake_latency --attach` observes the driver's `cycle_seq` while the probe runs IO. os_sync wakes must be
+   delivered from inside the coreaudiod sandbox, with p99 ≤ 1 ms.
+7. 60 s with the daemon path at IO buffers 64, 128 and 256 (`--buffer`, the probe's IOBufferFrameSize),
+   strict.
+8. With the probe in `--transition` mode, `gain_client` is SIGSTOPped, resumed and SIGKILLed: no clicks.
+   Then loopback, then a restarted `gain_client` is picked up.
+
+At the end it prints the driver's StopIO log lines (minimum daemon slack per session). Its exit status is
+the number of failed steps.

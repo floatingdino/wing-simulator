@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub mod rig;
+
 use serde_json::Value as Json;
 use wing_model::{ParamStore, ParamType, Value};
 

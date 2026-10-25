@@ -21,6 +21,9 @@
 //! [`Model::todo`]) so the whole catalog is selectable today; S4/S5 tasks replace them in [`create_model`].
 
 use crate::eq::EqVariant;
+use crate::models::comp_vca::{VcaComp, VcaKind};
+use crate::models::filter_tool::FilterToolModel;
+use crate::models::gate_vintage::{VintageGate, VintageGateKind};
 use crate::std_models::{DynModel, GateModel, StdEqModel};
 
 /// A parameter value in engineering units (see module doc for the encoding).
@@ -102,6 +105,11 @@ pub trait Model: Send {
 
     /// Load the model's WING-Edit default parameters (staged like `set_param`).
     fn load_defaults(&mut self) {}
+
+    /// EQ `mix` (%): WING scales every EQ model's band gains (dB) by `mix/100` instead of blending dry/wet
+    /// (`ae::Cequalizer::update`, T03C). Models without gain-scaled bands ignore it. Survives
+    /// [`Model::load_defaults`]; staged like `set_param`.
+    fn set_gain_scale(&mut self, _mix_pct: f32) {}
 
     /// Apply staged parameter changes now (block rate). Models that apply lazily may do nothing.
     fn commit(&mut self) {}
@@ -290,9 +298,21 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
     match (kind, id) {
         (BlockKind::Dynamics, "GATE") => Box::new(GateModel::gate()),
         (BlockKind::Dynamics, "DUCK") => Box::new(GateModel::duck()),
+        (BlockKind::Dynamics, "E88") => Box::new(VintageGate::new(VintageGateKind::E88)),
+        (BlockKind::Dynamics, "9000G") => Box::new(VintageGate::new(VintageGateKind::Ssl9000)),
+        (BlockKind::Dynamics, "D241G") => Box::new(VintageGate::new(VintageGateKind::D241)),
         (BlockKind::Dynamics, "COMP") => Box::new(DynModel::comp()),
         (BlockKind::Dynamics, "EXP") => Box::new(DynModel::exp()),
+        (BlockKind::Dynamics, "B160") => Box::new(VcaComp::new(VcaKind::B160)),
+        (BlockKind::Dynamics, "B560") => Box::new(VcaComp::new(VcaKind::B560)),
+        (BlockKind::Dynamics, "D241C") => Box::new(VcaComp::new(VcaKind::D241C)),
+        (BlockKind::Dynamics, "9000C") => Box::new(VcaComp::new(VcaKind::Ssl9000)),
+        (BlockKind::Dynamics, "SBUS") => Box::new(VcaComp::new(VcaKind::SBus)),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
+        (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
+        (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
+        (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
+        (BlockKind::FilterTool, "AP2") => Box::new(FilterToolModel::ap2()),
         _ => {
             let task = if catalog(kind).contains(&id) {
                 owning_task(kind, id)
@@ -414,7 +434,10 @@ mod tests {
 
     #[test]
     fn catalogs_create_and_stub_flags() {
-        let implemented = ["GATE", "DUCK", "COMP", "EXP"];
+        let implemented = [
+            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS", "E88",
+            "9000G", "D241G",
+        ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);
             assert_eq!(m.id(), id);
@@ -427,13 +450,11 @@ mod tests {
             let m = create_model(BlockKind::Eq(EqVariant::Channel), id);
             assert_eq!(m.is_stub(), id != "STD");
         }
-        for id in FILTER_TOOL_IDS.iter().chain(FX_IDS.iter()) {
-            let kind = if FILTER_TOOL_IDS.contains(id) {
-                BlockKind::FilterTool
-            } else {
-                BlockKind::Fx
-            };
-            assert!(create_model(kind, id).is_stub());
+        for id in FILTER_TOOL_IDS {
+            assert!(!create_model(BlockKind::FilterTool, id).is_stub());
+        }
+        for id in FX_IDS {
+            assert!(create_model(BlockKind::Fx, id).is_stub());
         }
         assert_eq!(create_model(BlockKind::Fx, "NEWFX").todo(), Some("unknown"));
     }

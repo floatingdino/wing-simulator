@@ -2,20 +2,38 @@
 //! store's active (model-dependent) descriptors, and the console-local "live" values the server
 //! answers itself (`$`-prefixed dynamic lists and the console model).
 
+use std::fmt;
+use std::sync::Arc;
+
 use wing_model::{NodeId, ParamClass, ParamStore, ParamType};
 
+use super::library::SceneLibrary;
 use crate::nrp::nodedef::{EnumItem, FloatEnumItem, NodeDef, NodeKind, Unit};
 
 /// Console-local values that are not ordinary stored parameters.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct LiveInfo {
     /// Reply to `$syscfg/$cnsmdl = "ModelRequest"`. WING-Edit goes offline unless this is
     /// `wing-fullsize`, `wing-rack` or `wing-compact` (wing-edit-schema.md §6).
     pub console_model: String,
     /// Items of `play/$songs` (USB player song list). [H] empty = no USB stick.
     pub songs: Vec<String>,
-    /// Items of `$ctl/lib/$scenes` (show/scene library list). [H]
+    /// Items of `$ctl/lib/$scenes` (show/scene library list) when no `library` is set. [H]
     pub scenes: Vec<String>,
+    /// The show/scene library behind `$ctl/lib` (T017): supplies `$scenes` and handles
+    /// `$action`. `None`: the `$ctl/lib` leaves are ordinary parameters.
+    pub library: Option<Arc<dyn SceneLibrary>>,
+}
+
+impl fmt::Debug for LiveInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LiveInfo")
+            .field("console_model", &self.console_model)
+            .field("songs", &self.songs)
+            .field("scenes", &self.scenes)
+            .field("library", &self.library.is_some())
+            .finish()
+    }
 }
 
 impl Default for LiveInfo {
@@ -24,6 +42,7 @@ impl Default for LiveInfo {
             console_model: "wing-fullsize".into(),
             songs: Vec::new(),
             scenes: Vec::new(),
+            library: None,
         }
     }
 }
@@ -39,11 +58,14 @@ impl LiveInfo {
     }
 
     /// The items of a dynamic string list parameter, by path.
-    pub fn list_for(&self, path: &str) -> &[String] {
+    pub fn list_for(&self, path: &str) -> Vec<String> {
         match path {
-            "play/$songs" => &self.songs,
-            "$ctl/lib/$scenes" => &self.scenes,
-            _ => &[],
+            "play/$songs" => self.songs.clone(),
+            "$ctl/lib/$scenes" => match &self.library {
+                Some(l) => l.scenes(),
+                None => self.scenes.clone(),
+            },
+            _ => Vec::new(),
         }
     }
 }
@@ -110,10 +132,10 @@ pub fn node_def(store: &ParamStore, id: NodeId, live: &LiveInfo) -> NodeDef {
             let _ = s.write_path(id, &mut path);
             NodeKind::StringEnum(
                 live.list_for(&path)
-                    .iter()
+                    .into_iter()
                     .map(|i| EnumItem {
                         name: i.clone(),
-                        long_name: i.clone(),
+                        long_name: i,
                     })
                     .collect(),
             )
