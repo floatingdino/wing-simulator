@@ -5,13 +5,36 @@
 //! wing-sim [--name WINGSIM] [--ip A.B.C.D] [--fw 3.3.4-0-g0c2b9d4a:release] [--model ngc-full]
 //!          [--serial S] [--scene PATH] [--idle-timeout SECS(0=off)] [--no-meters] [--no-osc]
 //!          [--port 2222] [--osc-port 2223] [--save-on-exit PATH]
+//!          [--state-dir DIR] [--no-autosave] [--recall NAME] [--list-scenes]
+//!          [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N]
+//!          [--workers N] [--no-rt]
 //! ```
 //! Ctrl-C (SIGINT) or SIGTERM shuts down cleanly.
+//!
+//! State (T017, see `persist.rs`/`library.rs`): the store is autosaved to
+//! `<state-dir>/state.snap` 2 s after the last change and on exit, and restored on start unless
+//! `--scene` or `--recall` is given. `<state-dir>/scenes/` is the scene library served as
+//! `$ctl/lib` (WING-Edit's library page); `--list-scenes` prints it, `--recall NAME` (or `#N`)
+//! starts from a library scene.
+//!
+//! Audio (T026, see `wing_sim::audio`): attaches to the Wing Simulator HAL driver's shared memory
+//! and runs the console on a real-time thread (USB In 1..48 -> routing -> 40 ch + 8 aux strips ->
+//! provisional main 1 -> output patch -> USB Out 1..48, plus host-device bridges). Without a
+//! (compatible) driver it runs control-only and keeps retrying. `--hostio PATH` takes a
+//! wing-hostio TOML (see `crates/wing-hostio/hostio.example.toml`); by default main 1 plays on
+//! "Scarlett 2i4 USB" 1/2 when that device exists.
+
+mod library;
+mod persist;
+
+use wing_sim::audio::{self, AudioOptions, AudioService, ConsoleConfig, HostIoSetting};
 
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use wing_model::{ParamStore, Snapshot};
@@ -40,11 +63,23 @@ struct Args {
     osc: bool,
     port: u16,
     osc_port: u16,
+    state_dir: PathBuf,
+    autosave: bool,
+    recall: Option<String>,
+    list_scenes: bool,
+    audio: bool,
+    hostio: HostIoSetting,
+    shm_name: String,
+    block: usize,
+    workers: Option<usize>,
+    rt: bool,
 }
 
 const USAGE: &str = "usage: wing-sim [--name NAME] [--ip A.B.C.D] [--fw FIRMWARE] [--model MODEL] \
 [--serial SERIAL] [--scene PATH] [--idle-timeout SECS] [--no-meters] [--no-osc] [--port N] \
-[--osc-port N] [--save-on-exit PATH]";
+[--osc-port N] [--save-on-exit PATH] [--state-dir DIR] [--no-autosave] [--recall NAME|#N] \
+[--list-scenes] [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N] \
+[--workers N] [--no-rt]";
 
 fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut a = Args {
@@ -57,6 +92,16 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         osc: true,
         port: NATIVE_PORT,
         osc_port: OSC_PORT,
+        state_dir: persist::default_state_dir(),
+        autosave: true,
+        recall: None,
+        list_scenes: false,
+        audio: true,
+        hostio: HostIoSetting::Default,
+        shm_name: wing_shm::SHM_NAME.to_string(),
+        block: 64,
+        workers: None,
+        rt: true,
     };
     while let Some(flag) = it.next() {
         let mut val = || it.next().ok_or(format!("{flag} needs a value"));
@@ -76,11 +121,30 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--osc-port" => a.osc_port = val()?.parse().map_err(|e| format!("--osc-port: {e}"))?,
             "--no-meters" => a.meters = false,
             "--no-osc" => a.osc = false,
+            "--state-dir" => a.state_dir = PathBuf::from(val()?),
+            "--no-autosave" => a.autosave = false,
+            "--recall" => a.recall = Some(val()?),
+            "--list-scenes" => a.list_scenes = true,
+            "--no-audio" => a.audio = false,
+            "--hostio" => a.hostio = HostIoSetting::from_file(&val()?)?,
+            "--no-hostio" => a.hostio = HostIoSetting::Off,
+            "--shm-name" => a.shm_name = val()?,
+            "--block" => {
+                a.block = val()?.parse().map_err(|e| format!("--block: {e}"))?;
+                if !(16..=1024).contains(&a.block) {
+                    return Err("--block must be 16..1024".into());
+                }
+            }
+            "--workers" => a.workers = Some(val()?.parse().map_err(|e| format!("--workers: {e}"))?),
+            "--no-rt" => a.rt = false,
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
     }
     a.identity.validate()?;
+    if a.scene.is_some() && a.recall.is_some() {
+        return Err("--scene and --recall are mutually exclusive".into());
+    }
     Ok(a)
 }
 
@@ -113,42 +177,118 @@ fn run(args: Args) -> Result<(), String> {
     ));
 
     // ---- state ----
-    let mut store = ParamStore::new();
-    let mut scenes = Vec::new();
-    let snapshot = match &args.scene {
-        Some(p) => {
-            let text = std::fs::read_to_string(p).map_err(|e| format!("--scene {p}: {e}"))?;
-            let (snap, rep) =
-                Snapshot::load(&store, &text).map_err(|e| format!("--scene {p}: {e}"))?;
-            log(&format!(
-                "scene {p}: {} (fw {}{}), {} keys, {} applied, {} migrated ({} lossy), {} unmapped, \
-                 {} rejected, {} adjusted",
-                rep.format,
-                rep.creator_fw,
-                if rep.legacy { ", migrated from 1.x/2.x" } else { "" },
-                rep.keys,
-                rep.applied,
-                rep.migrated.len(),
-                rep.lossy().count(),
-                rep.unmapped.len(),
-                rep.rejected.len(),
-                rep.adjusted.len()
-            ));
-            if let Some(stem) = std::path::Path::new(p).file_stem() {
-                scenes.push(stem.to_string_lossy().into_owned());
-            }
-            snap
-        }
-        None => Snapshot::factory(),
-    };
     let console_model = LiveInfo::console_model_for(&args.identity.model);
-    if let Some(id) = store.lookup("$syscfg/$cnsmdl") {
-        let _ = store.set_str(id, console_model, wing_model::ORIGIN_LOCAL);
+    let mut store = ParamStore::new();
+    let doc: persist::Doc = Arc::new(Mutex::new(Snapshot::factory()));
+    let state_file = args.state_dir.join(persist::STATE_FILE);
+    let lib = Arc::new(
+        library::SceneLib::open(
+            args.state_dir.join(persist::SCENES_DIR),
+            console_model,
+            doc.clone(),
+        )
+        .map_err(|e| format!("state dir {}: {e}", args.state_dir.display()))?,
+    );
+    if args.list_scenes {
+        println!("# show {} ({})", library::SHOW_NAME, lib.dir().display());
+        for (i, (n, f)) in lib.names().iter().zip(lib.files()).enumerate() {
+            println!("#{i}\t{n}\t{}", f.display());
+        }
+        return Ok(());
     }
-    // change hooks: native fan-out and OSC subscription events coexist on the same store
+    let report = |what: &str, rep: &wing_model::LoadReport| {
+        log(&format!(
+            "{what}: {} (fw {}{}), {} keys, {} applied, {} migrated ({} lossy), {} unmapped, \
+             {} rejected, {} adjusted",
+            rep.format,
+            rep.creator_fw,
+            if rep.legacy {
+                ", migrated from 1.x/2.x"
+            } else {
+                ""
+            },
+            rep.keys,
+            rep.applied,
+            rep.migrated.len(),
+            rep.lossy().count(),
+            rep.unmapped.len(),
+            rep.rejected.len(),
+            rep.adjusted.len()
+        ))
+    };
+    if let Some(p) = &args.scene {
+        let text = std::fs::read_to_string(p).map_err(|e| format!("--scene {p}: {e}"))?;
+        let (snap, rep) = Snapshot::load(&store, &text).map_err(|e| format!("--scene {p}: {e}"))?;
+        report(&format!("scene {p}"), &rep);
+        *doc.lock().unwrap_or_else(|e| e.into_inner()) = snap;
+    } else if let Some(name) = &args.recall {
+        let i = lib.find(name).ok_or_else(|| {
+            format!(
+                "--recall {name}: no such scene in {} (have: {})",
+                lib.dir().display(),
+                lib.names().join(", ")
+            )
+        })?;
+        let (n, rep) = lib
+            .recall(&store, i)
+            .map_err(|e| format!("--recall {name}: {e}"))?;
+        report(&format!("recalled library scene #{i} {n:?}"), &rep);
+    } else if state_file.exists() {
+        let loaded = std::fs::read_to_string(&state_file)
+            .map_err(|e| e.to_string())
+            .and_then(|t| Snapshot::load(&store, &t).map_err(|e| e.to_string()));
+        match loaded {
+            Ok((snap, rep)) => {
+                report(&format!("restored {}", state_file.display()), &rep);
+                *doc.lock().unwrap_or_else(|e| e.into_inner()) = snap;
+            }
+            Err(e) => {
+                // keep the unreadable file for inspection and start from the factory scene
+                let bad = state_file.with_extension("snap.bad");
+                let _ = std::fs::rename(&state_file, &bad);
+                store.reset_to_defaults();
+                log(&format!(
+                    "restoring {} failed ({e}); moved to {}, starting from factory defaults",
+                    state_file.display(),
+                    bad.display()
+                ));
+            }
+        }
+    }
+    lib.adopt_doc_active();
+    lib.publish(&store); // also sets `$syscfg/$cnsmdl`
+    log(&format!(
+        "state dir {}: autosave {}, library {} scenes{}",
+        args.state_dir.display(),
+        if args.autosave { "on" } else { "off" },
+        lib.names().len(),
+        lib.active()
+            .map_or(String::new(), |a| format!(", active {a:?}"))
+    ));
+    // change hooks: native fan-out, OSC subscription events and the autosave counter coexist
     let hub = Hub::attach(&mut store);
     let osc_att = args.osc.then(|| OscAttachment::attach(&mut store));
+    let changes = persist::ChangeCounter::attach(&mut store);
+    let routing = args.audio.then(|| audio::prepare(&mut store));
     let store = Arc::new(store);
+    let logf: persist::LogFn = Arc::new(log);
+    let autosaver = if args.autosave {
+        Some(
+            persist::Autosaver::spawn(
+                store.clone(),
+                doc.clone(),
+                changes,
+                state_file.clone(),
+                persist::AUTOSAVE_DEBOUNCE,
+                logf.clone(),
+            )
+            .map_err(|e| format!("autosave: {e}"))?,
+        )
+    } else {
+        None
+    };
+    let library = library::LibraryService::spawn(lib.clone(), store.clone(), logf.clone())
+        .map_err(|e| format!("library: {e}"))?;
 
     // ---- discovery (and the UDP 2222 socket meters are sent from) ----
     let responder = Responder::bind(ResponderConfig {
@@ -239,7 +379,7 @@ fn run(args: Args) -> Result<(), String> {
             idle_timeout: args.idle,
             live: LiveInfo {
                 console_model: console_model.into(),
-                scenes,
+                library: Some(library.clone()),
                 ..LiveInfo::default()
             },
             ..ServerConfig::default()
@@ -285,6 +425,41 @@ fn run(args: Args) -> Result<(), String> {
         args.idle
     ));
 
+    // ---- audio ----
+    let audio = match routing {
+        Some(routing) => {
+            let (hostio, note) = args.hostio.resolve();
+            log(&format!("audio: {note}"));
+            let mut console = ConsoleConfig {
+                block: args.block,
+                rt_workers: args.rt,
+                ..ConsoleConfig::default()
+            };
+            if let Some(w) = args.workers {
+                console.workers = w;
+            }
+            Some(
+                AudioService::spawn(
+                    store.clone(),
+                    routing,
+                    AudioOptions {
+                        shm_name: args.shm_name.clone(),
+                        console,
+                        rt: args.rt,
+                        hostio,
+                        ..AudioOptions::default()
+                    },
+                    logf.clone(),
+                )
+                .map_err(|e| format!("audio: {e}"))?,
+            )
+        }
+        None => {
+            log("audio: off (--no-audio)");
+            None
+        }
+    };
+
     unsafe {
         libc::signal(
             libc::SIGINT,
@@ -307,9 +482,15 @@ fn run(args: Args) -> Result<(), String> {
                 streamer.as_ref().map_or(0, |s| s.packets()),
                 discovery.replies()
             ));
+            if let Some(a) = &audio {
+                log(&a.status_line());
+            }
         }
     }
     log("shutting down");
+    if let Some(a) = audio {
+        a.stop(); // detaches: the driver falls back to loopback
+    }
     server.stop();
     if let Some(o) = osc {
         o.stop();
@@ -321,9 +502,14 @@ fn run(args: Args) -> Result<(), String> {
         s.stop();
     }
     discovery.stop();
+    library.stop();
+    if let Some(a) = autosaver {
+        let n = a.stop();
+        log(&format!("autosave: {n} saves to {}", state_file.display()));
+    }
     if let Some(p) = &args.save_on_exit {
-        match std::fs::write(p, snapshot.save(&store)) {
-            Ok(()) => log(&format!("saved scene to {p}")),
+        match persist::save_state(&store, &doc, std::path::Path::new(p)) {
+            Ok(_) => log(&format!("saved scene to {p}")),
             Err(e) => log(&format!("saving scene to {p} failed: {e}")),
         }
     }
@@ -360,7 +546,37 @@ mod tests {
         assert_eq!(a.ip, Some(Ipv4Addr::new(10, 0, 0, 5)));
         assert_eq!(a.idle, None);
         assert!(!a.osc);
+        assert!(a.autosave && a.recall.is_none() && !a.list_scenes);
+        assert!(a
+            .state_dir
+            .ends_with("Library/Application Support/WingSimulator"));
+        let a = args(&[
+            "--state-dir",
+            "/tmp/ws",
+            "--no-autosave",
+            "--recall",
+            "Verse",
+            "--list-scenes",
+        ])
+        .unwrap();
+        assert_eq!(a.state_dir, PathBuf::from("/tmp/ws"));
+        assert!(!a.autosave && a.list_scenes);
+        assert_eq!(a.recall.as_deref(), Some("Verse"));
+        assert!(args(&["--scene", "x.snap", "--recall", "y"]).is_err());
         assert!(args(&["--bogus"]).is_err());
+        let a = args(&[
+            "--no-audio",
+            "--no-hostio",
+            "--block",
+            "128",
+            "--workers",
+            "2",
+        ])
+        .unwrap();
+        assert!(!a.audio && a.hostio == HostIoSetting::Off && a.block == 128);
+        assert_eq!(a.workers, Some(2));
+        assert!(args(&["--block", "7"]).is_err());
+        assert!(args(&["--hostio", "/nonexistent.toml"]).is_err());
         assert!(args(&["--name", "a,b"]).is_err());
     }
 }

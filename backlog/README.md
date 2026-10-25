@@ -27,3 +27,7 @@ Rules for engineering agents
 
 Coordinator rule: the coordinator never edits a task file on `main` while that task's branch is in flight (it causes
 merge conflicts); in-flight status is tracked by the coordinator outside the file until merge.
+
+Merge convention for model families: each family adds its own `pub mod <family>;` line to
+crates/wing-blocks/src/models/mod.rs, one registration line per model in model.rs, and a separate `[[bench]]`
+block (name + harness = false) in crates/wing-blocks/Cargo.toml.

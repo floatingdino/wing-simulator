@@ -8,11 +8,13 @@
 //! - an unknown hash (including `00000000`, ~1.4k per WING-Edit push) invalidates the cursor so
 //!   the following value is dropped instead of landing on the previous node;
 //! - channel 3 meter requests are parsed into [`MeterCommand`]s for the meter streamer;
-//! - `$syscfg/$cnsmdl = "ModelRequest"` is answered with `D7 985729a2 <model>` (no `DE`) [H].
+//! - `$syscfg/$cnsmdl = "ModelRequest"` is answered with `D7 985729a2 <model>` (no `DE`) [H];
+//! - with a scene library configured, `$ctl/lib/$action` sets go to it (see [`super::library`]).
 
-use wing_model::{NodeId, Origin, ParamStore};
+use wing_model::{NodeId, Origin, ParamStore, Value};
 
 use super::defs::{hidden, node_def, LiveInfo};
+use super::library::{action_text, lib_ids};
 use super::values::{apply_value, click_value, step_value, with_value_token};
 use crate::nrp::{MeterCommand, MeterRequestParser, NrpDecoder, NrpEncoder, Token};
 
@@ -48,6 +50,8 @@ pub struct SessionStats {
     pub actions: u64,
     /// `$cnsmdl` model requests answered.
     pub model_requests: u64,
+    /// `$ctl/lib/$action` requests passed to the scene library (T017).
+    pub library_actions: u64,
     /// Channel-3 meter tokens received.
     pub meter_tokens: u64,
     /// Undecodable bytes (both channels).
@@ -210,6 +214,29 @@ impl State {
                         let _ = self.enc.control(&Token::Str(&m[..m.len().min(256)]), out);
                     }
                     return;
+                }
+                if let (Some(lib), Some(ids)) = (&live.library, lib_ids(store)) {
+                    if s.parent(id) == Some(ids.lib) && id != ids.actionidx {
+                        // console-owned library state (T017): `$action` goes to the library,
+                        // client sets of `$scenes`/`$active`/`$actshow`/... are dropped
+                        let text = (id == ids.action)
+                            .then(|| action_text(store, id, &t))
+                            .flatten();
+                        match text {
+                            Some(a) if a != "IDLE" => {
+                                let idx = match store.get(ids.actionidx) {
+                                    Some(Value::Int(n)) => n,
+                                    _ => 0,
+                                };
+                                self.stats.library_actions += 1;
+                                lib.action(&a, idx, self.origin);
+                            }
+                            Some(_) => {}
+                            None => self.stats.rejected += 1,
+                        }
+                        self.last_set = Some(id);
+                        return;
+                    }
                 }
                 self.count(apply_value(store, id, &t, self.origin), id);
             }
@@ -392,5 +419,72 @@ mod tests {
         let r = replies(&out);
         assert_eq!(r.len(), st.schema().children(NodeId::ROOT).count() + 1);
         assert_eq!(r.last().unwrap(), "End");
+    }
+
+    #[derive(Default)]
+    struct MockLib(std::sync::Mutex<Vec<(String, i32)>>);
+
+    impl crate::server::SceneLibrary for MockLib {
+        fn scenes(&self) -> Vec<String> {
+            vec!["Intro".into(), "Verse".into()]
+        }
+        fn action(&self, action: &str, index: i32, _origin: Origin) {
+            self.0.lock().unwrap().push((action.into(), index));
+        }
+    }
+
+    #[test]
+    fn library_actions_are_routed() {
+        let st = ParamStore::new();
+        let lib = Arc::new(MockLib::default());
+        let live = LiveInfo {
+            library: Some(lib.clone()),
+            ..LiveInfo::default()
+        };
+        let mut s = Session::new(7, Arc::new(live));
+        let h = |p| st.schema().hash(st.lookup(p).unwrap());
+        let mut out = Vec::new();
+        s.feed(
+            &st,
+            &wire(&[
+                Token::NavHash(h("$ctl/lib/$actshow")),
+                Token::Str(b"PC SHOW"), // console-owned: dropped
+                Token::NavHash(h("$ctl/lib/$actionidx")),
+                Token::SmallInt(1),
+                Token::NavHash(h("$ctl/lib/$action")),
+                Token::Str(b"GO"),
+                Token::SmallInt(5), // enum index 5 = NEXT
+                Token::Str(b"STORE:Chorus"),
+                Token::Str(b"IDLE"), // no-op
+                Token::NavHash(h("$ctl/lib/$scenes")),
+                Token::End,
+                Token::DefRequest,
+            ]),
+            &mut out,
+        );
+        assert_eq!(
+            *lib.0.lock().unwrap(),
+            [
+                ("GO".to_string(), 1),
+                ("NEXT".to_string(), 1),
+                ("STORE:Chorus".to_string(), 1)
+            ]
+        );
+        assert_eq!(s.stats().library_actions, 3);
+        let actshow = st.lookup("$ctl/lib/$actshow").unwrap();
+        assert_eq!(st.with_str(actshow, |x| x.is_empty()), Some(true));
+        // `$scenes` definition carries the library's list
+        let mut d = NrpDecoder::new();
+        d.feed(&[0xDF, 0xD1]);
+        d.feed(&out);
+        let Some(Ok(Token::NodeDef(body))) = d.next_control() else {
+            panic!("no def record")
+        };
+        let def = crate::nrp::NodeDef::parse(body).unwrap();
+        let crate::nrp::nodedef::NodeKind::StringEnum(items) = def.kind else {
+            panic!("{def:?}")
+        };
+        let names: Vec<_> = items.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["Intro", "Verse"]);
     }
 }

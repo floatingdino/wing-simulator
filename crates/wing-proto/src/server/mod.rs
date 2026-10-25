@@ -8,11 +8,13 @@
 //! - [`NativeServer`]: listener + one thread per client (std blocking sockets, short read
 //!   timeout to interleave events), max clients, inactivity timeout, clean shutdown.
 //! - [`meters`]: channel-3 subscriptions, the UDP meter streamer and the meter bank.
+//! - [`library`]: the `$ctl/lib` show/scene library hook ([`SceneLibrary`], T017).
 //!
 //! Spec: docs/research/wing-edit-session.md (decoded WING-Edit 3.3.4 session) and
 //! docs/research/protocol.md §2-§4.
 
 pub mod defs;
+pub mod library;
 pub mod meters;
 pub mod session;
 pub mod values;
@@ -28,6 +30,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 use wing_model::{Change, NodeId, Origin, ParamStore};
 
 pub use defs::LiveInfo;
+pub use library::SceneLibrary;
 pub use meters::{MeterBank, MeterStreamer, MeterSubscriptions, SyntheticMeters};
 pub use session::{Session, SessionStats};
 

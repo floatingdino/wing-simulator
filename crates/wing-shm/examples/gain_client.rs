@@ -8,12 +8,14 @@
 //!
 //! ```text
 //! cargo run -p wing-shm --example gain_client -- [--name /wingsim.audio.v1]
-//!     [--gain -1.0] [--seconds 0] [--create] [--status] [--poll-us N] [--block N]
+//!     [--gain -1.0] [--seconds 0] [--create] [--status] [--poll-us N] [--block N] [--rt]
 //! ```
 //!
 //! Unlike the C++ client it is woken by the driver (os_sync_wait_on_address on
 //! `cycle_seq`) instead of polling; `--poll-us` forces nanosleep polling. It
-//! still runs on a normal-priority thread (T022 adds the RT thread/workgroup).
+//! runs on a normal-priority thread unless `--rt` makes it a Mach
+//! time-constraint thread (a stand-in for T022's RT thread + workgroup; used to
+//! separate transport limits from scheduling in the driver's delay sweep).
 //! `tests/cpp_selftest.rs` runs this code against the C++ driver selftest.
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,7 +32,7 @@ extern "C" fn on_signal(_: libc::c_int) {
 fn usage() -> i32 {
     eprintln!(
         "usage: gain_client [--name NAME] [--gain G] [--seconds S] [--create] [--status] \
-         [--poll-us N] [--block N]"
+         [--poll-us N] [--block N] [--rt]"
     );
     2
 }
@@ -44,6 +46,7 @@ pub fn run<I: IntoIterator<Item = String>>(args: I) -> i32 {
     let mut status = false;
     let mut wake = WakeMode::Auto;
     let mut block = 512usize;
+    let mut rt = false;
 
     let mut it = args.into_iter();
     while let Some(a) = it.next() {
@@ -74,6 +77,7 @@ pub fn run<I: IntoIterator<Item = String>>(args: I) -> i32 {
                 _ => return usage(),
             },
             "--create" => create = true,
+            "--rt" => rt = true,
             "--status" => status = true,
             _ => return usage(),
         }
@@ -114,6 +118,10 @@ pub fn run<I: IntoIterator<Item = String>>(args: I) -> i32 {
         link.mechanism()
     );
 
+    if rt && !make_time_constraint() {
+        eprintln!("gain_client: --rt: thread_policy_set failed, staying at normal priority");
+    }
+
     // Everything the loop needs is allocated here, before it starts.
     let mut buf = vec![0.0f32; block];
     let start = Instant::now();
@@ -150,6 +158,34 @@ pub fn run<I: IntoIterator<Item = String>>(args: I) -> i32 {
     drop(link); // detach: heartbeat 0 -> driver loopback immediately
     eprintln!("gain_client: detached");
     0
+}
+
+/// Make the calling thread a Mach time-constraint thread: aperiodic, up to
+/// 0.5 ms of computation that must finish within 2 ms of a wake-up.
+#[cfg(target_os = "macos")]
+fn make_time_constraint() -> bool {
+    let ms = |m: f64| wing_shm::clock::ns_to_ticks((m * 1e6) as u64) as u32;
+    let mut policy = libc::thread_time_constraint_policy {
+        period: 0,
+        computation: ms(0.5),
+        constraint: ms(2.0),
+        preemptible: 1,
+    };
+    // SAFETY: valid policy struct of the advertised size, our own thread port.
+    let rc = unsafe {
+        libc::thread_policy_set(
+            libc::pthread_mach_thread_np(libc::pthread_self()),
+            libc::THREAD_TIME_CONSTRAINT_POLICY as libc::thread_policy_flavor_t,
+            (&mut policy as *mut libc::thread_time_constraint_policy).cast(),
+            libc::THREAD_TIME_CONSTRAINT_POLICY_COUNT,
+        )
+    };
+    rc == 0
+}
+
+#[cfg(not(target_os = "macos"))]
+fn make_time_constraint() -> bool {
+    false
 }
 
 #[allow(dead_code)]

@@ -5,10 +5,20 @@
 //   48 input channels   simulator -> DAW  (WING "USB out" 1..48)
 //   44.1 kHz / 48 kHz, float32 interleaved.
 // Audio is exchanged with the wing-sim daemon through ShmLink (POSIX shm).
-// Without a live daemon the device loops output back to input.
+// Without a live daemon the device loops output back to input; switching
+// between the two is crossfaded (see ShmLink.hpp).
 //
-// The driver is intentionally thin: no DSP, no allocation on the IO path.
+// Latency reporting: input(T) = source(T - inputDelay), where inputDelay is the
+// configurable window that gives the daemon time to process (Config.hpp). It
+// is reported as the input stream latency; device latency and safety offsets
+// are 0 in both directions (no converters, no DMA: data is in memory before
+// the HAL asks for it). A DAW therefore compensates exactly inputDelay frames
+// of round trip.
+//
+// The driver is intentionally thin: no DSP, no allocation on the IO path, and
+// os_log only from non-IO threads (load, StartIO/StopIO, rate changes).
 
+#include "Config.hpp"
 #include "ShmLink.hpp"
 
 #include <aspl/Driver.hpp>
@@ -25,6 +35,13 @@ namespace {
 
 constexpr UInt32 kChannels = WING_SHM_CHANNELS;
 constexpr UInt32 kDefaultRate = 48000;
+// Default input delay (frames). The selftest sweep measured 0 extra frames
+// needed with a time-constraint daemon; 128 is headroom for real DSP time and
+// the DAW's share of the cycle (docs/research/driver.md 9.2). Overridden by
+// InputDelayFrames in WINGSIM_CONFIG_PATH.
+constexpr UInt32 kDefaultInputDelayFrames = WING_SHM_DEFAULT_INPUT_DELAY_FRAMES;
+constexpr UInt32 kDeviceLatencyFrames = 0;
+constexpr UInt32 kSafetyOffsetFrames = 0;
 constexpr Float64 kRates[] = {44100.0, 48000.0};
 
 constexpr const char* kDeviceName = "Wing Simulator";
@@ -243,19 +260,38 @@ public:
     {
     }
 
+    // Not realtime (HAL StartIO, IO is stopped): may re-map shm and log.
     OSStatus OnStartIO() override
     {
-        const auto rate = device_ ? device_->GetNominalSampleRate() : kDefaultRate;
-        link_.BeginEpoch(static_cast<uint32_t>(rate));
+        const auto rate = static_cast<uint32_t>(
+            device_ ? device_->GetNominalSampleRate() : static_cast<Float64>(kDefaultRate));
+        if (link_.Revalidate(rate)) {
+            os_log(Log(), "Wing Simulator: shm %{public}s re-attached (shared=%d) %{public}s",
+                link_.Name().c_str(), link_.IsShared() ? 1 : 0, link_.LastError().c_str());
+        } else {
+            link_.BeginEpoch(rate);
+        }
         link_.SetRunning(true);
-        os_log(Log(), "Wing Simulator: StartIO (shared=%d, daemon=%d)",
-            link_.IsShared() ? 1 : 0, link_.DaemonAlive() ? 1 : 0);
+        link_.ResetMinSlack();
+        os_log(Log(), "Wing Simulator: StartIO rate=%u delay=%u shared=%d daemon=%d", rate,
+            link_.InputDelayFrames(), link_.IsShared() ? 1 : 0, link_.DaemonAlive() ? 1 : 0);
         return kAudioHardwareNoError;
     }
 
     void OnStopIO() override
     {
         link_.SetRunning(false);
+        const auto s = link_.GetStats();
+        os_log(Log(),
+            "Wing Simulator: StopIO; totals: to-fallback %llu, to-daemon %llu, "
+            "daemon-late blocks %llu, daemon resyncs %llu; this session: min daemon slack "
+            "%lld of %u delay frames",
+            static_cast<unsigned long long>(s.toFallback),
+            static_cast<unsigned long long>(s.toDaemon),
+            static_cast<unsigned long long>(s.underrunBlocks),
+            static_cast<unsigned long long>(s.resyncs),
+            static_cast<long long>(s.minSlack == INT64_MAX ? -1 : s.minSlack),
+            link_.InputDelayFrames());
     }
 
     // RT: DAW playback mix (all clients mixed by HAL) -> to_daemon ring.
@@ -304,7 +340,15 @@ std::shared_ptr<aspl::Driver> CreateDriver()
         shmName = WING_SHM_NAME;
     }
 
-    if (!link.Open(kDefaultRate, shmName)) {
+    const auto cfg =
+        wingsim::LoadDriverConfig(kDefaultInputDelayFrames, wingsim::ShmLink::kMaxInputDelayFrames);
+    os_log(Log(), "Wing Simulator: input delay %u frames (%{public}s)", cfg.inputDelayFrames,
+        cfg.source.c_str());
+    if (!cfg.warning.empty()) {
+        os_log_error(Log(), "Wing Simulator: config: %{public}s", cfg.warning.c_str());
+    }
+
+    if (!link.Open(kDefaultRate, shmName, cfg.inputDelayFrames)) {
         os_log_error(Log(), "Wing Simulator: no ring memory: %{public}s", link.LastError().c_str());
     } else if (!link.IsShared()) {
         os_log_error(Log(),
@@ -326,6 +370,8 @@ std::shared_ptr<aspl::Driver> CreateDriver()
     dp.CanBeDefault = true;
     dp.CanBeDefaultForSystemSounds = false;
     dp.EnableMixing = true;
+    dp.Latency = kDeviceLatencyFrames;
+    dp.SafetyOffset = kSafetyOffsetFrames;
 
     auto device = std::make_shared<WingDevice>(context, dp, link);
     devicePtr = device.get();
