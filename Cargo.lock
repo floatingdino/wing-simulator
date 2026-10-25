@@ -530,6 +530,14 @@ dependencies = [
 [[package]]
 name = "wing-render"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "wing-engine",
+ "wing-hostio",
+ "wing-model",
+ "wing-shm",
+ "wing-sim",
+]
 
 [[package]]
 name = "wing-shm"

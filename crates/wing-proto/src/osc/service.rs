@@ -35,6 +35,9 @@
 //!     (REAPER's `LAST_MARKER_NAME`/`LAST_REGION_NAME` feedback). `WING:<scene or #N>` (prefix
 //!     case-insensitive) recalls that scene; other names are ignored. A name equal to the
 //!     previous one on the same address is ignored, so feedback refreshes never re-recall.
+//! - **Other `/wingsim/` commands** go to a [`SimExtension`] first ([`OscService::with_extension`],
+//!   e.g. the daemon's `/wingsim/record/...`, T061); what it does not handle falls through to the
+//!   scene commands above.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -92,6 +95,15 @@ impl SubState {
     }
 }
 
+/// Handler for simulator commands under `/wingsim/` that are not scene commands.
+pub trait SimExtension: Send + Sync {
+    /// Handle `addr` (full address, e.g. `/wingsim/record/start`) with `args`. `None`: not
+    /// handled here; `Some(reply)`: handled, with an optional reply `(address, args)` sent back
+    /// to the requester. Runs on the OSC receive thread: may do short disk IO, must not block
+    /// for long.
+    fn command(&self, addr: &str, args: &[Arg]) -> Option<Option<(String, Vec<Arg>)>>;
+}
+
 /// A datagram to send.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reply {
@@ -106,6 +118,7 @@ pub struct OscService {
     sub_timeout: Duration,
     subs: Arc<SubState>,
     library: Option<Arc<dyn SceneLibrary>>,
+    extension: Option<Arc<dyn SimExtension>>,
     /// Last `/wingsim/marker` and `/wingsim/region` text (de-duplication).
     last_marks: Mutex<[String; 2]>,
 }
@@ -137,6 +150,7 @@ impl OscService {
             sub_timeout,
             subs,
             library: None,
+            extension: None,
             last_marks: Mutex::default(),
         }
     }
@@ -144,6 +158,12 @@ impl OscService {
     /// Route `$ctl/lib/$action` and the `/wingsim/scene...` commands to a scene library.
     pub fn with_library(mut self, library: Option<Arc<dyn SceneLibrary>>) -> Self {
         self.library = library;
+        self
+    }
+
+    /// Route other `/wingsim/...` commands to `ext` (tried before the scene commands).
+    pub fn with_extension(mut self, ext: Option<Arc<dyn SimExtension>>) -> Self {
+        self.extension = ext;
         self
     }
 
@@ -202,6 +222,16 @@ impl OscService {
                 });
             }
             a if a.starts_with("/wingsim/") => {
+                if let Some(r) = self
+                    .extension
+                    .as_ref()
+                    .and_then(|x| x.command(a.trim_end_matches('/'), &m.args))
+                {
+                    if let Some((addr, args)) = r {
+                        reply(&addr, args);
+                    }
+                    return;
+                }
                 if let Some(r) = self.sim_command(a, m.args.first(), origin_of(from)) {
                     let (addr, args) = r;
                     reply(&addr, args);
@@ -891,6 +921,42 @@ mod tests {
         // no library: not found
         let r = ask(&svc(), "/wingsim/scene/next", vec![]);
         assert_eq!(r[0].msg.args, st("NODE NOT FOUND"));
+    }
+
+    #[test]
+    fn wingsim_extension_first_then_scene_commands() {
+        struct Ext(Mutex<Vec<(String, Vec<Arg>)>>);
+        impl SimExtension for Ext {
+            fn command(&self, addr: &str, args: &[Arg]) -> Option<Option<(String, Vec<Arg>)>> {
+                if !addr.starts_with("/wingsim/record") {
+                    return None;
+                }
+                self.0.lock().unwrap().push((addr.into(), args.to_vec()));
+                Some(Some((
+                    "/wingsim/record".into(),
+                    vec![Arg::Str("ok".into())],
+                )))
+            }
+        }
+        let ext = Arc::new(Ext(Mutex::default()));
+        let (s, l) = lib_svc();
+        let s = s.with_extension(Some(ext.clone()));
+        let args = vec![Arg::Str("main/1".into()), Arg::Str("/tmp/x".into())];
+        let r = ask(&s, "/wingsim/record/start/", args.clone());
+        assert_eq!(r[0].msg.addr, "/wingsim/record");
+        assert_eq!(r[0].msg.args, vec![Arg::Str("ok".into())]);
+        assert_eq!(
+            ext.0.lock().unwrap()[0],
+            ("/wingsim/record/start".to_string(), args)
+        );
+        // not handled by the extension: falls through to the library
+        ask(&s, "/wingsim/scene/next", vec![]);
+        assert_eq!(take(&l), [("GONEXT".into(), 0)]);
+        // extension without a library still answers its own commands
+        let s = svc().with_extension(Some(ext));
+        assert_eq!(ask(&s, "/wingsim/record/stop", vec![]).len(), 1);
+        let r = ask(&s, "/wingsim/bogus", vec![]);
+        assert_eq!(r[0].msg.args, vec![Arg::Str("NODE NOT FOUND".into())]);
     }
 
     #[test]

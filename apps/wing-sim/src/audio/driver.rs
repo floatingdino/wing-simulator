@@ -43,6 +43,7 @@ use super::stats::{AudioStats, Snapshot};
 use super::workgroup::WorkInterval;
 use super::ConsoleControl;
 use super::LogFn;
+use crate::record::Recorder;
 
 /// How long the RT thread blocks waiting for a driver cycle before re-checking its flags.
 pub const WAIT_TIMEOUT: Duration = Duration::from_millis(10);
@@ -235,6 +236,7 @@ pub struct AudioService {
     thread: Option<JoinHandle<()>>,
     status: Arc<Mutex<String>>,
     stats: Arc<AudioStats>,
+    recorder: Arc<Recorder>,
 }
 
 impl AudioService {
@@ -245,6 +247,18 @@ impl AudioService {
         routing: ConsoleControl,
         opts: AudioOptions,
         log: LogFn,
+    ) -> std::io::Result<Self> {
+        Self::spawn_with_recorder(store, routing, opts, log, Recorder::new())
+    }
+
+    /// [`spawn`](Self::spawn) with a recorder (T061) shared with e.g. the OSC server: every
+    /// console the service builds polls its slot.
+    pub fn spawn_with_recorder(
+        store: Arc<ParamStore>,
+        routing: ConsoleControl,
+        opts: AudioOptions,
+        log: LogFn,
+        recorder: Arc<Recorder>,
     ) -> std::io::Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
         let status = Arc::new(Mutex::new("audio: starting".to_string()));
@@ -262,6 +276,7 @@ impl AudioService {
             wi: None,
             last_snap: Snapshot::default(),
             last_status: Instant::now(),
+            recorder: recorder.clone(),
         };
         let thread = std::thread::Builder::new()
             .name("wing-audio".into())
@@ -271,7 +286,13 @@ impl AudioService {
             thread: Some(thread),
             status,
             stats,
+            recorder,
         })
+    }
+
+    /// The recorder (T061).
+    pub fn recorder(&self) -> &Arc<Recorder> {
+        &self.recorder
     }
 
     /// The latest status line.
@@ -341,6 +362,7 @@ struct Control {
     wi: Option<Arc<WorkInterval>>,
     last_snap: Snapshot,
     last_status: Instant,
+    recorder: Arc<Recorder>,
 }
 
 impl Control {
@@ -473,6 +495,7 @@ impl Control {
             feeds,
             self.stats.clone(),
         )?;
+        console.attach_recorder(self.recorder.slot().clone());
         // Prime: fault in buffers and wake the workers before the first driver cycle.
         let built_ms = t0.elapsed().as_secs_f64() * 1e3;
         console.warm_up(SESSION_WARM_UP_CYCLES);
@@ -632,7 +655,7 @@ impl Control {
         let over = st.to_daemon.overruns.wrapping_sub(s.base_overruns);
         format!(
             "audio: {} Hz, driver {driver}, load {:.1}% (peak {:.1}%), cycle p50 {} us p99 {} us, \
-             xruns {} (driver underruns {under}, overruns {over}), slow cycles {}, {policy}{}, {}",
+             xruns {} (driver underruns {under}, overruns {over}), slow cycles {}, {policy}{}, {}, {}",
             s.rate,
             d.load_pct(),
             d.peak_load_pct(),
@@ -645,7 +668,8 @@ impl Control {
             } else {
                 ""
             },
-            s.hosts.status(s.rate, upstream_ms)
+            s.hosts.status(s.rate, upstream_ms),
+            self.recorder.status()
         )
     }
 }

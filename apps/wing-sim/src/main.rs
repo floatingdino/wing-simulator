@@ -8,6 +8,7 @@
 //!          [--state-dir DIR] [--no-autosave] [--recall NAME] [--list-scenes]
 //!          [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N]
 //!          [--workers N] [--no-rt]
+//! wing-sim record start <TAPS> <DIR> | stop | status   [--host H] [--osc-port N]
 //! ```
 //! Ctrl-C (SIGINT) or SIGTERM shuts down cleanly.
 //!
@@ -23,6 +24,12 @@
 //! (compatible) driver it runs control-only and keeps retrying. `--hostio PATH` takes a
 //! wing-hostio TOML (see `crates/wing-hostio/hostio.example.toml`); by default monitor A (`mon/1`: the monitor source, MAIN.1 by default, with solo priority) plays on
 //! "Scarlett 2i4 USB" 1/2 when that device exists.
+//!
+//! Recording (T061, see `wing_sim::record`): `/wingsim/record/start ,ss <taps> <dir>`,
+//! `/wingsim/record/stop`, `/wingsim/record/status` over OSC, or the `wing-sim record ...` client
+//! subcommand (sends those to a running daemon, default 127.0.0.1:2223, and prints the reply).
+//! Taps: `main/1,bus/3,mon/1,usb_out/1-48` (one 32-bit float WAV per stereo tap / flat lane).
+//! The audio status line shows the recording state.
 
 mod library;
 mod persist;
@@ -30,6 +37,7 @@ mod persist;
 use wing_engine::meters::LevelBank;
 use wing_sim::audio::{self, AudioOptions, AudioService, ConsoleConfig, HostIoSetting};
 use wing_sim::meters::meter_source;
+use wing_sim::record::Recorder;
 
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::path::PathBuf;
@@ -41,7 +49,7 @@ use std::time::{Duration, Instant};
 
 use wing_model::{ParamStore, Snapshot};
 use wing_proto::discovery::{Identity, Responder, ResponderConfig, DISCOVERY_PORT};
-use wing_proto::osc::{OscAttachment, OscConfig, OscServer, OSC_PORT};
+use wing_proto::osc::{Arg, Message, OscAttachment, OscConfig, OscServer, SimExtension, OSC_PORT};
 use wing_proto::server::meters::METER_INTERVAL;
 use wing_proto::server::{
     EventFn, Hub, LiveInfo, MeterBank, MeterStreamer, MeterSubscriptions, NativeServer,
@@ -150,7 +158,101 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     Ok(a)
 }
 
+/// `wing-sim record start <TAPS> <DIR> | stop | status [--host H] [--osc-port N]`: send the
+/// command to a running daemon over OSC and print its reply.
+fn record_cli(mut it: impl Iterator<Item = String>) -> Result<String, String> {
+    const RUSAGE: &str =
+        "usage: wing-sim record start <TAPS> <DIR> | stop | status [--host H] [--osc-port N]";
+    let mut pos = Vec::new();
+    let mut host = "127.0.0.1".to_string();
+    let mut port = OSC_PORT;
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--host" => host = it.next().ok_or(RUSAGE)?,
+            "--osc-port" => {
+                port = it
+                    .next()
+                    .ok_or(RUSAGE)?
+                    .parse()
+                    .map_err(|e| format!("--osc-port: {e}"))?
+            }
+            "-h" | "--help" => return Err(RUSAGE.into()),
+            _ => pos.push(a),
+        }
+    }
+    let msg = record_message(&pos).ok_or(RUSAGE)?;
+    let sock = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
+    // stop waits for the writer to finalize the files
+    sock.set_read_timeout(Some(Duration::from_secs(5)))
+        .map_err(|e| e.to_string())?;
+    sock.send_to(&msg.to_vec(), (host.as_str(), port))
+        .map_err(|e| format!("send to {host}:{port}: {e}"))?;
+    let mut buf = [0u8; 4096];
+    let (n, _) = sock
+        .recv_from(&mut buf)
+        .map_err(|e| format!("no reply from {host}:{port} ({e}); is wing-sim running?"))?;
+    let reply = Message::decode(&buf[..n]).map_err(|e| format!("bad reply: {e:?}"))?;
+    match reply.args.first() {
+        Some(Arg::Str(s)) if s.starts_with("ERROR") => Err(s.clone()),
+        Some(Arg::Str(s)) => Ok(s.clone()),
+        _ => Err(format!("unexpected reply {reply:?}")),
+    }
+}
+
+/// The OSC message for `record` subcommand words.
+fn record_message(pos: &[String]) -> Option<Message> {
+    let p: Vec<&str> = pos.iter().map(String::as_str).collect();
+    Some(match p.as_slice() {
+        ["start", taps, dir] => {
+            // the daemon may run elsewhere (cwd): send an absolute path
+            let dir = std::path::absolute(dir).unwrap_or_else(|_| PathBuf::from(dir));
+            Message::new(
+                "/wingsim/record/start",
+                vec![
+                    Arg::Str(taps.to_string()),
+                    Arg::Str(dir.display().to_string()),
+                ],
+            )
+        }
+        ["stop"] => Message::new("/wingsim/record/stop", vec![]),
+        ["status"] | [] => Message::new("/wingsim/record/status", vec![]),
+        _ => return None,
+    })
+}
+
+/// The recorder as an OSC extension, logging what it does.
+struct LoggedRecorder {
+    rec: Arc<Recorder>,
+    log: persist::LogFn,
+}
+
+impl SimExtension for LoggedRecorder {
+    fn command(&self, addr: &str, args: &[Arg]) -> Option<Option<(String, Vec<Arg>)>> {
+        let r = self.rec.command(addr, args)?;
+        if !addr.ends_with("status") && addr != "/wingsim/record" {
+            if let Some((_, a)) = &r {
+                if let Some(Arg::Str(t)) = a.first() {
+                    (self.log)(&format!("record: {t}"));
+                }
+            }
+        }
+        Some(r)
+    }
+}
+
 fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("record") {
+        return match record_cli(std::env::args().skip(2)) {
+            Ok(s) => {
+                println!("{s}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("wing-sim record: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(a) => a,
         Err(e) => {
@@ -400,6 +502,7 @@ fn run(args: Args) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     // ---- OSC ----
+    let recorder = Recorder::new();
     let osc = match osc_att {
         Some(att) => Some(
             OscServer::bind(
@@ -410,6 +513,10 @@ fn run(args: Args) -> Result<(), String> {
                     identity: args.identity.clone(),
                     advertise_ip: args.ip,
                     library: Some(library.clone()),
+                    extension: Some(Arc::new(LoggedRecorder {
+                        rec: recorder.clone(),
+                        log: logf.clone(),
+                    })),
                     ..OscConfig::default()
                 },
             )
@@ -449,7 +556,7 @@ fn run(args: Args) -> Result<(), String> {
                 console.workers = w;
             }
             Some(
-                AudioService::spawn(
+                AudioService::spawn_with_recorder(
                     store.clone(),
                     routing,
                     AudioOptions {
@@ -460,6 +567,7 @@ fn run(args: Args) -> Result<(), String> {
                         ..AudioOptions::default()
                     },
                     logf.clone(),
+                    recorder.clone(),
                 )
                 .map_err(|e| format!("audio: {e}"))?,
             )
@@ -495,9 +603,15 @@ fn run(args: Args) -> Result<(), String> {
             if let Some(a) = &audio {
                 log(&a.status_line());
             }
+            if recorder.is_recording() {
+                log(&recorder.status());
+            }
         }
     }
     log("shutting down");
+    if recorder.is_recording() {
+        log(&format!("record: {}", recorder.stop()));
+    }
     if let Some(a) = audio {
         a.stop(); // detaches: the driver falls back to loopback
     }
@@ -585,5 +699,29 @@ mod tests {
         assert!(args(&["--block", "7"]).is_err());
         assert!(args(&["--hostio", "/nonexistent.toml"]).is_err());
         assert!(args(&["--name", "a,b"]).is_err());
+    }
+
+    #[test]
+    fn record_subcommand_messages() {
+        let w = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let m = record_message(&w(&["start", "main/1,usb_out/1-2", "/tmp/rec"])).unwrap();
+        assert_eq!(m.addr, "/wingsim/record/start");
+        assert_eq!(
+            m.args,
+            vec![
+                Arg::Str("main/1,usb_out/1-2".into()),
+                Arg::Str("/tmp/rec".into())
+            ]
+        );
+        assert_eq!(
+            record_message(&w(&["stop"])).unwrap().addr,
+            "/wingsim/record/stop"
+        );
+        assert_eq!(
+            record_message(&w(&["status"])).unwrap().addr,
+            "/wingsim/record/status"
+        );
+        assert!(record_message(&w(&["start", "main/1"])).is_none());
+        assert!(record_message(&w(&["bogus"])).is_none());
     }
 }
