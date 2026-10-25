@@ -93,8 +93,22 @@ fn slot_latency_is_constant_and_documented() {
     for s in [Strip::Bus(1), Strip::Main(1), Strip::Mtx(1)] {
         assert_eq!(MixStrip::new(s, FS, B).latency(), FET_LAT, "{s:?}");
     }
-    // the slot latency does not follow the model
+    // models with latency (the slot pads every other model up to the max, 57)
     let mut s = dyn_slot("ch/*/dyn");
+    let sch = Schema::get();
+    let g = sch.groups().iter().find(|g| g.key == "ch/*/dyn").unwrap();
+    let mut lat: Vec<(&str, usize)> = Vec::new();
+    for m in sch.models(g) {
+        s.select(m.enum_index as u16);
+        s.settle();
+        if s.model_latency() > 0 {
+            lat.push((m.name, s.model_latency()));
+        }
+    }
+    println!("dyn model latencies: {lat:?}");
+    assert!(lat.iter().all(|&(_, l)| l <= FET_LAT));
+    assert!(lat.contains(&("NSTR", FET_LAT)) && lat.contains(&("76LA", FET_LAT)));
+    // the slot latency does not follow the model
     s.select(model_index("ch/*/dyn", "COMP"));
     s.settle();
     assert_eq!((s.latency(), s.model_latency()), (FET_LAT, 0));

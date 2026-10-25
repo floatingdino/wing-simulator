@@ -18,8 +18,10 @@
 //!   insert latency fits within the alignment target, and the engine can raise the target with
 //!   `set_align_latency`.
 //!
-//! Added latency at 48 kHz with the current model set (76LA/NSTR oversampled FET compressors report 57
-//! samples, everything else 0; gate and dynamics slots share one model table):
+//! Model latencies at 48 kHz: 76LA/NSTR (oversampled FET compressors) 57 samples, WARM 39, every other
+//! dynamics model and every EQ / filter-tool model 0. Slot latency = max per block kind: gate and
+//! dynamics slots (one shared model table) 57, EQ and filter-tool slots 0 (EQ slots keep the WING
+//! gain-scale mix law, no dry/wet blend, and add nothing). Added latency:
 //!
 //! | path | samples | ms |
 //! |---|---|---|

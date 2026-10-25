@@ -43,3 +43,7 @@ Oversampled models report latency (76LA/NSTR: 57 samples; others 0). The engine'
     C++/layout change); (2) T050 FX rack: call `set_insert_latency` on insert engage; (3) PRE/IN taps and
     sends are not compensated (tap sees latency accumulated so far) — verify against WING;
     (4) channel->main vs channel->bus->main paths differ by one bus latency (57), as on hardware w/o PDC.
+- 2026-10-25 agent-T03E: merged main (T04J EQ mix law, T04A/T049/T04F models). Resolved params/strip.rs keeping
+  both: EQ slots gain-scale mix (latency 0), dyn slots dry delay + aligned crossfade. Recheck: dyn models with
+  latency WARM 39, 76LA 57, NSTR 57 -> gate/dyn slot 57, EQ/tool 0; totals unchanged (input strips 114, mix
+  strips 57). Table in latency.rs updated; tests/latency.rs asserts per-model latencies. `make check` passes.
