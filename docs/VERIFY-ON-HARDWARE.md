@@ -44,3 +44,12 @@ Each item: what was assumed, where, and how to check on a console (or via a meas
 | Comp FET | NSTR knee widths per ratio (12/12/10/6/4/2/1/0 dB); 1.5/2/3:1 opto-like release (0.5x..2x with GR), 10:1 programme-dependent; WING "1.5:1" replaces the EL8's 1:1 | T04D |
 | Comp FET | NSTR normal-mode harmonics: LF-weighted (300 Hz) 2nd + 3rd, 0.3-0.5 % at 100 Hz, < 0.04 % at 1 kHz, scaled up with ratio | T04D |
 | Comp FET | WING runs these models with 57 samples latency (2x audio / 16x control oversampling) - real console latency unknown | T04D |
+| WAVE | Differential envelope: fast follower 0.3 ms / 40 ms, slow follower (smoothing the fast one) 15 ms / 300 ms, d = fast_dB - slow_dB, 1 dB dead zone, attack weight full at +9 dB, sustain weight full at -5 dB; `att`/`sust` = dB at full weight; no gain below -80 dBFS (ramp over 20 dB); gain smoothing 0.5 ms; SPL publishes no time constants | T049 |
+| WAVE | Attack region lasts ~10-15 ms after an onset, sustain acts on decays faster than ~29 dB/s; steady tones and slower decays pass at unity; detector = max(abs L, abs R), stereo-linked | T049 |
+| RIDE | Level = RMS (mean-square one-pole 100 ms, full-scale sine -3 dBFS), `thr`/`tgt` in these RMS dBFS; desired gain = (tgt - level)(1 - 1/ratio) clamped to +-range | T049 |
+| RIDE | `spd` 1..50 = 2..200 dB/s geometric slew (default 10 = 4.7 dB/s); gain reduction 2x faster than boost; 20 ms gain smoothing; control rate 16 samples | T049 |
+| RIDE | Below `thr`: gain frozen for `hld`, then relaxes to 0 dB at the up rate; `hld` >= 9.99 s = INF (never relaxes) | T049 |
+| WARM | Shaper `tanh(u + b) - tanh(b)`, u = 1.5 * drv/100 * x, unity small-signal gain (drive adds harmonics, not level), bias T = tanh(b) = 0.46 (1 - hrm/100)/2 so hrm -100 = 2nd dominant / 3rd largely cancelled, +100 = 3rd only; hrm sign (negative = 2nd) | T049 |
+| WARM | Harmonic levels: default ~1.4 % THD at -12 dBFS, 125 % drive ~5 %; WING's actual THD curves unknown | T049 |
+| WARM | COLOR = pre tilt +-6 dB (HF-LF, centre 1 kHz, 1st order) with 50 % taken back after the shaper (net +-3 dB tilt); trim applied after the dry/wet mix (both paths), `wmix` blends processed with a 39-sample delay-compensated dry; channels independent (not stereo-linked); no side-chain input | T049 |
+| WARM | WING runs WARM with 39 samples latency (2x oversampling) - real console latency unknown | T049 |

@@ -6,6 +6,7 @@ pub mod comp_fet;
 pub mod comp_opto;
 pub mod comp_vca;
 pub mod dyn_eq;
+pub mod dyn_special;
 pub mod eq_alt;
 pub mod filter_tool;
 pub mod gate_vintage;

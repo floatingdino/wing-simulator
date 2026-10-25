@@ -55,3 +55,7 @@ harness = false
 [[bench]]
 name = "comp_fet"
 harness = false
+
+[[bench]]
+name = "dyn_special"
+harness = false

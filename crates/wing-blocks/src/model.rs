@@ -26,6 +26,7 @@ use crate::models::comp_fet::{FetComp, FetKind};
 use crate::models::comp_opto::{OptoComp, OptoKind};
 use crate::models::comp_vca::{VcaComp, VcaKind};
 use crate::models::dyn_eq::{DeEsser902, DynEq};
+use crate::models::dyn_special::{AutoRider, TransientDesigner, WarmthPre};
 use crate::models::eq_alt::{AltEq, AltKind};
 use crate::models::filter_tool::FilterToolModel;
 use crate::models::gate_vintage::{VintageGate, VintageGateKind};
@@ -327,6 +328,9 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "LMT") => Box::new(ConsoleComp::new(ConsoleKind::Lmt)),
         (BlockKind::Dynamics, "76LA") => Box::new(FetComp::new(FetKind::La76)),
         (BlockKind::Dynamics, "NSTR") => Box::new(FetComp::new(FetKind::Nstr)),
+        (BlockKind::Dynamics, "WAVE") => Box::new(TransientDesigner::new()),
+        (BlockKind::Dynamics, "RIDE") => Box::new(AutoRider::new()),
+        (BlockKind::Dynamics, "WARM") => Box::new(WarmthPre::new()),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
         (BlockKind::Eq(_), "SOUL") => Box::new(AltEq::new(AltKind::Soul)),
         (BlockKind::Eq(_), "E88") => Box::new(AltEq::new(AltKind::E88)),
@@ -470,6 +474,7 @@ mod tests {
             "LA", "L100", "F670", "BLISS",
             "DS902", "DEQ", "DEQ2",
             "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS", "76LA", "NSTR",
+            "WAVE", "RIDE", "WARM",
         ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);
