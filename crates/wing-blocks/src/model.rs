@@ -21,6 +21,7 @@
 //! [`Model::todo`]) so the whole catalog is selectable today; S4/S5 tasks replace them in [`create_model`].
 
 use crate::eq::EqVariant;
+use crate::models::comp_vca::{VcaComp, VcaKind};
 use crate::std_models::{DynModel, GateModel, StdEqModel};
 
 /// A parameter value in engineering units (see module doc for the encoding).
@@ -292,6 +293,11 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "DUCK") => Box::new(GateModel::duck()),
         (BlockKind::Dynamics, "COMP") => Box::new(DynModel::comp()),
         (BlockKind::Dynamics, "EXP") => Box::new(DynModel::exp()),
+        (BlockKind::Dynamics, "B160") => Box::new(VcaComp::new(VcaKind::B160)),
+        (BlockKind::Dynamics, "B560") => Box::new(VcaComp::new(VcaKind::B560)),
+        (BlockKind::Dynamics, "D241C") => Box::new(VcaComp::new(VcaKind::D241C)),
+        (BlockKind::Dynamics, "9000C") => Box::new(VcaComp::new(VcaKind::Ssl9000)),
+        (BlockKind::Dynamics, "SBUS") => Box::new(VcaComp::new(VcaKind::SBus)),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
         _ => {
             let task = if catalog(kind).contains(&id) {
@@ -414,7 +420,9 @@ mod tests {
 
     #[test]
     fn catalogs_create_and_stub_flags() {
-        let implemented = ["GATE", "DUCK", "COMP", "EXP"];
+        let implemented = [
+            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS",
+        ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);
             assert_eq!(m.id(), id);

@@ -22,3 +22,7 @@ harness = false
 [[bench]]
 name = "eq"
 harness = false
+
+[[bench]]
+name = "comp_vca"
+harness = false
