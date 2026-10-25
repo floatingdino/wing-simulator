@@ -7,6 +7,8 @@
 //!     x srclvl            (no solo active)
 //!     x srcmix            (any solo active into m: default -oo = solo replaces the source)
 //!   + solo bus m = sum of soloed strips (MixShared flags): PFL (pre-fader) x -pfldim dB,
+//!                  or the side-chain key under key listen (`gatesc`/`dynsc` `$solo`, T080; read
+//!                  from the key bank, [`super::keys`], unity gain),
 //!                  or AFL (channels: post fader before pan; bus/main/mtx: post fader + pan)
 //!   -> monitor EQ (eq/on: low shelf lsg/lsf, 6 peaking 1..6 g/f/q, high shelf hsg/hsf)
 //!   -> level lvl, dim (cfg/solo/$dim: -dim dB), pan/wid (balance law), mono (cfg/solo/$mono),
@@ -36,6 +38,7 @@ use crate::graph::{NodeIo, ProcessCtx, Processor};
 use crate::params::{BindError, BlockLayout, ParamMapBuilder, ParamMsg};
 use crate::routing::{Strip, STRIP_COUNT};
 
+use super::keys::{slot as key_slot, KeyBank};
 use super::law::{self, Matrix, PanLaw, Ramp, ZERO};
 use super::logic::{flag, MixShared};
 use super::nodes::{InputSignal, MixSignal};
@@ -334,8 +337,8 @@ struct Monitor {
     p: MonParams,
     dirty: bool,
     eq_dirty: bool,
-    /// Solo path gains per strip: [pfl, afl].
-    solo: Box<[[Ramp<1>; 2]]>,
+    /// Solo path gains per strip: [pfl, afl, key listen].
+    solo: Box<[[Ramp<1>; 3]]>,
     /// Source gain (srclvl / srcmix).
     src: Ramp<1>,
     /// Output matrix (level, dim, pan, width, mono, polarity).
@@ -349,7 +352,7 @@ struct Monitor {
 
 /// Jump solo ramps to their targets now (silent ramps are skipped in `process`, so they must
 /// never be left unprimed: a later target would otherwise jump instead of ramping).
-fn prime(solo: &mut [[Ramp<1>; 2]]) {
+fn prime(solo: &mut [[Ramp<1>; 3]]) {
     for r in solo.iter_mut().flatten() {
         r.settle();
         r.step();
@@ -370,6 +373,10 @@ pub struct MonitorNode {
     lim_rel: f32,
     sl: Box<[f32]>,
     sr: Box<[f32]>,
+    /// Key listen source (T080) and its scratch.
+    keys: Option<KeyBank>,
+    kl: Box<[f32]>,
+    kr: Box<[f32]>,
 }
 
 impl MonitorNode {
@@ -382,7 +389,7 @@ impl MonitorNode {
             p: MonParams::default(),
             dirty: true,
             eq_dirty: true,
-            solo: vec![[Ramp::new(a); 2]; STRIP_COUNT].into(),
+            solo: vec![[Ramp::new(a); 3]; STRIP_COUNT].into(),
             src: Ramp::new(a),
             out: Ramp::new(a),
             eq: [[SmoothedBiquad::new(Coeffs::IDENTITY, EQ_RAMP); 8]; 2],
@@ -403,6 +410,9 @@ impl MonitorNode {
             lim_rel: (-1.0 / (LIM_RELEASE_S * fs)).exp(),
             sl: vec![0.0; cfg.block_size].into(),
             sr: vec![0.0; cfg.block_size].into(),
+            keys: None,
+            kl: vec![0.0; cfg.block_size].into(),
+            kr: vec![0.0; cfg.block_size].into(),
         };
         n.read_shared();
         n.read_knobs();
@@ -411,6 +421,12 @@ impl MonitorNode {
             prime(&mut m.solo);
         }
         n
+    }
+
+    /// Play key-listened strips' keys from `bank` (T080). Off the RT thread.
+    pub fn with_keys(mut self, bank: KeyBank) -> Self {
+        self.keys = Some(bank);
+        self
     }
 
     /// Whether any solo currently reaches monitor `m` (1 or 2).
@@ -477,16 +493,19 @@ impl MonitorNode {
                 let mut active = false;
                 for (i, r) in m.solo.iter_mut().enumerate() {
                     let f = self.flags[i];
-                    let (pfl, afl) = if f & bit == 0 {
-                        (0.0, 0.0)
+                    let (pfl, afl, key) = if f & bit == 0 {
+                        (0.0, 0.0, 0.0)
+                    } else if f & (flag::KEY_GATE | flag::KEY_DYN) != 0 {
+                        (0.0, 0.0, 1.0)
                     } else if f & flag::AFL != 0 {
-                        (0.0, 1.0)
+                        (0.0, 1.0, 0.0)
                     } else {
-                        (pfl_g, 0.0)
+                        (pfl_g, 0.0, 0.0)
                     };
                     active |= f & bit != 0;
                     r[0].set([pfl]);
                     r[1].set([afl]);
+                    r[2].set([key]);
                 }
                 m.solo_active = active;
                 let sg = if active { m.p.srcmix } else { m.p.srclvl };
@@ -608,7 +627,7 @@ impl MonitorNode {
 }
 
 impl Processor for MonitorNode {
-    fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
+    fn process(&mut self, ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
         let knobs = self.read_knobs();
         if self.read_shared() {
             self.update(true);
@@ -633,9 +652,26 @@ impl Processor for MonitorNode {
                         continue;
                     }
                     let (a0, a1) = ramp.step();
-                    let pi = port_of(i, if t == 0 { Sig::Pfl } else { Sig::Afl });
                     let s = [a0[0], 0.0, 0.0, a0[0]];
                     let e = [a1[0], 0.0, 0.0, a1[0]];
+                    if t == 2 {
+                        // key listen: every strip ran earlier in this cycle
+                        let (kl, kr) = (&mut self.kl[..b], &mut self.kr[..b]);
+                        match &self.keys {
+                            Some(bank) => {
+                                let k = if self.flags[i] & flag::KEY_GATE != 0 {
+                                    key_slot::LISTEN_GATE
+                                } else {
+                                    key_slot::LISTEN_DYN
+                                };
+                                bank.read(ctx.cycle, i, k, kl, kr);
+                            }
+                            None => continue,
+                        }
+                        law::matrix_add(bl, br, kl, kr, s, e);
+                        continue;
+                    }
+                    let pi = port_of(i, if t == 0 { Sig::Pfl } else { Sig::Afl });
                     law::matrix_add(bl, br, ins.get(pi), ins.get(pi + 1), s, e);
                 }
             }

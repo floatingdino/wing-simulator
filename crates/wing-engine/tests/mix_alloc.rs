@@ -1,7 +1,7 @@
 //! T036/T037: the complete mix graph (PUBLIC.snap scene, bus/main/matrix strip processing on) runs
 //! without touching the heap on the RT side, including parameter changes (faders, mutes, pans, sends,
-//! modes, bus EQ/dyn/delay values and model swaps) applied by the pipeline while a control thread
-//! keeps changing the store.
+//! modes, bus EQ/dyn/delay values and model swaps, side-chain key sources/taps/filters/key listen) applied by
+//! the pipeline while a control thread keeps changing the store.
 
 mod common;
 
@@ -81,6 +81,9 @@ fn mix_graph_is_allocation_free_on_rt_side() {
                 "mtx/2/dyn/1",
                 "main/2/dly/dly",
                 "bus/6/dynxo/f",
+                // T080 key filters
+                "ch/2/gatesc/f",
+                "bus/7/dynsc/f",
             ]
             .iter()
             .map(|p| id(&store, p))
@@ -95,6 +98,12 @@ fn mix_graph_is_allocation_free_on_rt_side() {
                 "mtx/4/eq/on",
                 "mtx/4/in/set/inv",
                 "bus/1/preins/on",
+                // T080: slots on, key listen
+                "ch/1/gate/on",
+                "ch/1/dyn/on",
+                "bus/7/dyn/on",
+                "ch/2/gatesc/$solo",
+                "bus/7/dynsc/$solo",
             ]
             .iter()
             .map(|p| id(&store, p))
@@ -103,6 +112,22 @@ fn mix_graph_is_allocation_free_on_rt_side() {
             let bus_dyn = id(&store, "bus/9/dyn/mdl");
             let mtx_eq = id(&store, "mtx/4/eq/mdl");
             let dly_mode = id(&store, "main/3/dly/mode");
+            // T080 key sources and taps: (path, enum size)
+            let keys: Vec<_> = [
+                ("ch/1/gatesc/src", 41),
+                ("ch/1/dynsc/src", 41),
+                ("ch/1/gatesc/tap", 8),
+                ("ch/1/dynsc/tap", 8),
+                ("ch/2/gatesc/type", 5),
+                ("aux/1/dynsc/src", 37),
+                ("bus/7/dynsc/src", 37),
+                ("bus/7/dynsc/tap", 6),
+                ("main/1/dynsc/src", 37),
+                ("mtx/1/dynsc/src", 37),
+            ]
+            .iter()
+            .map(|&(p, n)| (id(&store, p), n))
+            .collect();
             let mut i = 0u32;
             while !stop.load(Relaxed) {
                 i = i.wrapping_add(1);
@@ -117,6 +142,9 @@ fn mix_graph_is_allocation_free_on_rt_side() {
                 let _ = store.set(bus_dyn, Value::Enum(i % 32));
                 let _ = store.set(mtx_eq, Value::Enum(i % 7));
                 let _ = store.set(dly_mode, Value::Enum(i % 4));
+                for (k, &(p, n)) in keys.iter().enumerate() {
+                    let _ = store.set(p, Value::Enum((i + 7 * k as u32) % n));
+                }
                 std::thread::yield_now();
             }
         })

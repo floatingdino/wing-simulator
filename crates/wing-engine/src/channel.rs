@@ -25,9 +25,12 @@
 //!   [`crate::fx`]); a channel post-insert in AUTO_X/AUTO_Y mode applies the automix gain instead.
 //! * **Stereo-linked**: strips are always processed as stereo pairs (a mono source feeds both sides in the
 //!   input stage); gate and dynamics models detect on the linked key and apply one gain to both sides.
-//! * **Side-chain**: `gatesc`/`dynsc` `type f q` filter the key inside the slot; `src` != SELF makes the slot
-//!   key from the external key buffers the graph provides (inputs 2/3 = gate key, 4/5 = dyn key; resolving
-//!   `src`/`tap` to a buffer is routing's job). Without external buffers the slot keys from itself.
+//! * **Side-chain** (T080): `gatesc`/`dynsc` `type f q` filter the key inside the slot (every model, SELF or
+//!   external); `src` != SELF makes the slot key from the external key passed in [`StripKeys`] (in the mix
+//!   graph: resolved from `src`/`tap` by [`crate::mix::keys`], one block late; standalone: graph inputs
+//!   2/3 = gate key, 4/5 = dyn key). Without an external key the slot keys from itself. With a
+//!   [`KeyOut`] attached the strip publishes its taps IN..PFL to the key bank for other strips' keys, and
+//!   the key its gate/dyn slot detects on while `$solo` (key listen) is on.
 //! * **Telemetry** ([`StripTelemetry`]): peak level per tap point (peak-hold until polled), gate/dyn gain
 //!   reduction; published through [`Processor::telemetry`] as `TAP_PEAK` (block = tap) and
 //!   `GAIN_REDUCTION_DB` (block = [`block::GATE`] / [`block::DYN`]).
@@ -50,6 +53,7 @@ use wing_blocks::std_models::{flt_slot, in_slot, FilterModel, InputModel};
 use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
 use crate::latency::StripAlign;
 use crate::meters::{abs_max, word, StripMeter};
+use crate::mix::keys::{slot as key_slot, KeyOut};
 use crate::params::std_models::model_factory;
 use crate::params::strip::{ModelSlot, INPUT_LAYOUT, MODEL_XFADE_S, SLOT_LAYOUT};
 use crate::params::telemetry_kind as kind;
@@ -93,11 +97,66 @@ pub const TOOL_LAYOUT: BlockLayout = BlockLayout {
     targets: &["1", "2"],
 };
 
-/// `gatesc` / `dynsc`.
+/// `gatesc` / `dynsc`: key filter `type f q`, key source `src` + `tap`, key listen `$solo`.
 pub const SC_LAYOUT: BlockLayout = BlockLayout {
-    params: &[("type", 0), ("f", 1), ("q", 2), ("src", 3)],
+    params: &[
+        ("type", 0),
+        ("f", 1),
+        ("q", 2),
+        ("src", 3),
+        ("tap", 4),
+        ("$solo", 5),
+    ],
     targets: &[],
 };
+
+/// Side-chain settings of one gate/dynamics slot (`gatesc` / `dynsc`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SideChain {
+    pub filter: ScFilter,
+    pub freq: f32,
+    pub q: f32,
+    /// `src` enum index (0 = SELF).
+    pub src: u32,
+    /// `tap` enum index.
+    pub tap: u32,
+    /// Key listen (`$solo`).
+    pub listen: bool,
+}
+
+impl Default for SideChain {
+    fn default() -> Self {
+        Self {
+            filter: ScFilter::Off,
+            freq: 1000.0,
+            q: 2.0,
+            src: 0,
+            tap: 0,
+            listen: false,
+        }
+    }
+}
+
+impl SideChain {
+    /// Apply `SC_LAYOUT` parameter `param`; returns whether the key filter changed.
+    pub fn set(&mut self, param: u16, v: f32) -> bool {
+        match param {
+            0 => self.filter = sc_filter(v as u32),
+            1 => self.freq = v,
+            2 => self.q = v,
+            3 => self.src = v.max(0.0) as u32,
+            4 => self.tap = v.max(0.0) as u32,
+            5 => self.listen = v != 0.0,
+            _ => return false,
+        }
+        param <= 2
+    }
+
+    /// `src` != SELF.
+    pub fn external(&self) -> bool {
+        self.src != 0
+    }
+}
 
 /// `ch/N/dynxo`: dynamics crossover (T03C) `type` (OFF LO HI S6 S12 PEAK), `f`, `q`, `depth`.
 pub const XO_LAYOUT: BlockLayout = BlockLayout {
@@ -476,8 +535,10 @@ pub struct ChannelStrip {
     postins: InsertPoint,
     order: ProcOrder,
     ptap: Tap,
-    gate_sc: (ScFilter, f32, f32, bool),
-    dyn_sc: (ScFilter, f32, f32, bool),
+    gate_sc: SideChain,
+    dyn_sc: SideChain,
+    /// Key bank outputs (taps for other strips' keys, key listen); `None` standalone.
+    keys: Option<KeyOut>,
     tap_l: Vec<f32>,
     tap_r: Vec<f32>,
     tap_len: usize,
@@ -486,7 +547,7 @@ pub struct ChannelStrip {
     align: StripAlign,
 }
 
-fn sc_filter(i: u32) -> ScFilter {
+pub(crate) fn sc_filter(i: u32) -> ScFilter {
     match i {
         1 => ScFilter::Lp12,
         2 => ScFilter::Hp12,
@@ -509,6 +570,33 @@ pub(crate) fn slot_key_peak(
         _ if !kl.is_empty() => abs_max(kl).max(abs_max(kr)),
         Some((a, b)) => abs_max(a).max(abs_max(b)),
         None => input_peak,
+    }
+}
+
+/// Key listen, before the slot runs: publish the key it will detect on when no key gets formed (the
+/// external key, else the slot input).
+#[inline]
+pub(crate) fn listen_pre(
+    keys: &Option<KeyOut>,
+    slot: usize,
+    ext: Option<(&[f32], &[f32])>,
+    l: &[f32],
+    r: &[f32],
+) {
+    if let Some(k) = keys {
+        let (a, b) = ext.unwrap_or((l, r));
+        k.put(slot, a, b);
+    }
+}
+
+/// Key listen, after the slot ran: the filtered key it formed (if any) replaces [`listen_pre`]'s.
+#[inline]
+pub(crate) fn listen_post(keys: &Option<KeyOut>, slot: usize, s: &ModelSlot) {
+    if let Some(k) = keys {
+        let (a, b) = s.key_signal();
+        if !a.is_empty() {
+            k.put(slot, a, b);
+        }
     }
 }
 
@@ -567,8 +655,9 @@ impl ChannelStrip {
             postins: InsertPoint::default(),
             order: ProcOrder::DEFAULT,
             ptap: Tap::T5,
-            gate_sc: (ScFilter::Off, 1000.0, 2.0, false),
-            dyn_sc: (ScFilter::Off, 1000.0, 2.0, false),
+            gate_sc: SideChain::default(),
+            dyn_sc: SideChain::default(),
+            keys: None,
             tap_l: vec![0.0; max_block.max(1)],
             tap_r: vec![0.0; max_block.max(1)],
             tap_len: 0,
@@ -626,6 +715,28 @@ impl ChannelStrip {
 
     pub fn ptap(&self) -> Tap {
         self.ptap
+    }
+
+    /// Gate slot side-chain settings (`gatesc`).
+    pub fn gate_sc(&self) -> &SideChain {
+        &self.gate_sc
+    }
+
+    /// Dynamics slot side-chain settings (`dynsc`).
+    pub fn dyn_sc(&self) -> &SideChain {
+        &self.dyn_sc
+    }
+
+    /// Attach the strip's key bank outputs (off the RT thread).
+    pub fn set_key_out(&mut self, k: Option<KeyOut>) {
+        self.keys = k;
+    }
+
+    /// Cycle of the next block (key bank outputs). RT-safe.
+    pub fn set_cycle(&mut self, c: u64) {
+        if let Some(k) = &mut self.keys {
+            k.set_cycle(c);
+        }
     }
 
     pub fn input(&self) -> &InputModel {
@@ -742,14 +853,9 @@ impl ChannelStrip {
                 } else {
                     (&mut self.dyn_sc, &mut self.dyn_)
                 };
-                match param {
-                    0 => sc.0 = sc_filter(v as u32),
-                    1 => sc.1 = v,
-                    2 => sc.2 = v,
-                    3 => sc.3 = v as u32 != 0,
-                    _ => return,
+                if sc.set(param, v) {
+                    slot.set_key_filter(sc.filter, sc.freq, sc.q);
                 }
-                slot.set_key_filter(sc.0, sc.1, sc.2);
             }
             block::DYN_XO => {
                 let mut x = *self.dyn_.xover();
@@ -879,6 +985,9 @@ impl ChannelStrip {
                 m.level(word::PRE_R, pr);
             }
         }
+        if let Some(k) = &self.keys {
+            k.tap(t, l, r);
+        }
         if self.ptap.captured() == t {
             let n = l.len().min(self.tap_l.len());
             self.tap_l[..n].copy_from_slice(&l[..n]);
@@ -906,8 +1015,10 @@ impl ChannelStrip {
         self.align.sync(self.own_latency(), il, fx.align_target());
         Model::process(&mut self.input, l, r, None);
         self.tap(Tap::In as usize, l, r);
-        let gate_key = keys.gate.filter(|_| self.gate_sc.3);
-        let dyn_key = keys.dyn_.filter(|_| self.dyn_sc.3);
+        let gate_key = keys.gate.filter(|_| self.gate_sc.external());
+        let dyn_key = keys.dyn_.filter(|_| self.dyn_sc.external());
+        let gate_listen = self.gate_sc.listen && self.kind == StripKind::Channel;
+        let dyn_listen = self.dyn_sc.listen;
         let metered = self.meter.is_some();
         let (mut gate_in, mut dyn_in) = (0.0f32, 0.0f32);
         match self.kind {
@@ -927,7 +1038,13 @@ impl ChannelStrip {
                             if metered {
                                 gate_in = abs_max(l).max(abs_max(r));
                             }
-                            self.gate.process_keyed(l, r, gate_key)
+                            if gate_listen {
+                                listen_pre(&self.keys, key_slot::LISTEN_GATE, gate_key, l, r);
+                            }
+                            self.gate.process_keyed(l, r, gate_key);
+                            if gate_listen {
+                                listen_post(&self.keys, key_slot::LISTEN_GATE, &self.gate);
+                            }
                         }
                         ProcBlock::Eq => {
                             self.peq.process(l, r);
@@ -937,7 +1054,13 @@ impl ChannelStrip {
                             if metered {
                                 dyn_in = abs_max(l).max(abs_max(r));
                             }
-                            self.dyn_.process_keyed(l, r, dyn_key)
+                            if dyn_listen {
+                                listen_pre(&self.keys, key_slot::LISTEN_DYN, dyn_key, l, r);
+                            }
+                            self.dyn_.process_keyed(l, r, dyn_key);
+                            if dyn_listen {
+                                listen_post(&self.keys, key_slot::LISTEN_DYN, &self.dyn_);
+                            }
                         }
                         ProcBlock::Insert => {
                             if let Some(n) = self.postins.claimed() {
@@ -961,7 +1084,13 @@ impl ChannelStrip {
                 if metered {
                     dyn_in = abs_max(l).max(abs_max(r));
                 }
+                if dyn_listen {
+                    listen_pre(&self.keys, key_slot::LISTEN_DYN, dyn_key, l, r);
+                }
                 self.dyn_.process_keyed(l, r, dyn_key);
+                if dyn_listen {
+                    listen_post(&self.keys, key_slot::LISTEN_DYN, &self.dyn_);
+                }
                 self.tap(Tap::T5 as usize, l, r);
                 self.tap(Tap::Pfl as usize, l, r);
             }
