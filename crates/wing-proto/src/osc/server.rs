@@ -18,11 +18,12 @@ use wing_model::{Change, ParamStore};
 use super::codec::MAX_PACKET;
 use super::service::{OscService, SubState, DEFAULT_SUB_TIMEOUT};
 use crate::discovery::Identity;
+use crate::server::SceneLibrary;
 
 /// The WING OSC port.
 pub const OSC_PORT: u16 = 2223;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct OscConfig {
     /// Address to bind (default `0.0.0.0:2223`; use port 0 in tests).
     pub bind: SocketAddrV4,
@@ -32,6 +33,21 @@ pub struct OscConfig {
     pub advertise_ip: Option<Ipv4Addr>,
     /// Subscription lifetime without renewal.
     pub sub_timeout: Duration,
+    /// Scene library behind `$ctl/lib/$action` and `/wingsim/scene...` (T017/T065); `None`:
+    /// the `$ctl/lib` leaves are plain parameters and `/wingsim/` answers `NODE NOT FOUND`.
+    pub library: Option<Arc<dyn SceneLibrary>>,
+}
+
+impl std::fmt::Debug for OscConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OscConfig")
+            .field("bind", &self.bind)
+            .field("identity", &self.identity)
+            .field("advertise_ip", &self.advertise_ip)
+            .field("sub_timeout", &self.sub_timeout)
+            .field("library", &self.library.is_some())
+            .finish()
+    }
 }
 
 impl Default for OscConfig {
@@ -41,6 +57,7 @@ impl Default for OscConfig {
             identity: Identity::default(),
             advertise_ip: None,
             sub_timeout: DEFAULT_SUB_TIMEOUT,
+            library: None,
         }
     }
 }
@@ -87,13 +104,16 @@ impl OscServer {
         let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
         s.set_reuse_address(true)?;
         s.bind(&SocketAddr::V4(cfg.bind).into())?;
-        let svc = Arc::new(OscService::new(
-            store,
-            cfg.identity,
-            cfg.advertise_ip,
-            cfg.sub_timeout,
-            att.subs,
-        ));
+        let svc = Arc::new(
+            OscService::new(
+                store,
+                cfg.identity,
+                cfg.advertise_ip,
+                cfg.sub_timeout,
+                att.subs,
+            )
+            .with_library(cfg.library),
+        );
         Ok(OscServer {
             sock: s.into(),
             svc,

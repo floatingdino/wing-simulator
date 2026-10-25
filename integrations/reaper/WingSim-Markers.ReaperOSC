@@ -1,0 +1,23 @@
+# WingSim-Markers.ReaperOSC: REAPER OSC pattern config for the Wing Simulator (T065).
+#
+# Copy into REAPER's OSC folder (Preferences > Control/OSC/web > Add > OSC (Open Sound Control)
+# > Pattern config: "Open config directory"), then pick "WingSim-Markers" as the pattern config.
+# Device IP 127.0.0.1, device port 2223 (the simulator's OSC port). See
+# docs/user/reaper-integration.md.
+#
+# Only marker/region names are sent. REAPER sends the name of the last marker/region at or
+# before the play (or edit) cursor whenever it changes; the simulator recalls the scene when the
+# name is "WING:<scene name>" or "WING:#<n>" and ignores all other names and repeats.
+# Do not also run the "WING - Recall scenes at markers" script, or scenes are recalled twice.
+
+DEVICE_TRACK_COUNT 0
+DEVICE_SEND_COUNT 0
+DEVICE_RECEIVE_COUNT 0
+DEVICE_FX_COUNT 0
+DEVICE_FX_PARAM_COUNT 0
+DEVICE_FX_INST_PARAM_COUNT 0
+DEVICE_MARKER_COUNT 0
+DEVICE_REGION_COUNT 0
+
+LAST_MARKER_NAME s/wingsim/marker
+LAST_REGION_NAME s/wingsim/region
