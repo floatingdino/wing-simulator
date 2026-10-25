@@ -640,10 +640,12 @@ fn execute(
             env!("CARGO_PKG_VERSION"),
             std::process::id()
         )),
-        Command::Save(p) => {
+        Command::Save(p) | Command::Export(p) => {
             let n =
                 persist::save_state(store, doc, p).map_err(|e| format!("{}: {e}", p.display()))?;
-            local.scene_file = Some(p.display().to_string());
+            if matches!(cmd, Command::Save(_)) {
+                local.scene_file = Some(p.display().to_string());
+            }
             Ok(format!("saved {n} bytes to {}", p.display()))
         }
         Command::Load(p) => {

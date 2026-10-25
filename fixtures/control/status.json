@@ -1,0 +1,43 @@
+{
+  "running": true,
+  "pid": 4242,
+  "version": "0.1.0",
+  "name": "WINGSIM",
+  "updated_unix": 1793000000.5,
+  "uptime_s": 12.25,
+  "state_dir": "/Users/x/Library/Application Support/WingSimulator",
+  "native_clients": 1,
+  "meter_reports": 3,
+  "discovery_replies": 17,
+  "scene_file": "/Users/x/Scenes/Show.snap",
+  "active_scene": null,
+  "hostio_path": "/Users/x/Library/Application Support/WingSimulator/hostio.toml",
+  "hostio": "host outputs: mon/1 -> \"Scarlett 2i4 USB\" [1, 2]",
+  "audio": {
+    "attached": true,
+    "rate": 48000,
+    "driver": "running",
+    "load_pct": 23.5,
+    "peak_load_pct": 41.0,
+    "cycle_p50_us": 310,
+    "cycle_p99_us": 520,
+    "xruns": 2,
+    "underruns": 1,
+    "overruns": 1,
+    "slow_cycles": 0,
+    "bridges": [
+      {
+        "device": "Scarlett 2i4 USB",
+        "state": "Running",
+        "fill_ms": 21.0,
+        "target_ms": 21.0,
+        "e2e_ms": 23.25,
+        "correction_ppm": 1.5,
+        "drift_ppm": -0.5,
+        "underruns": 0,
+        "resyncs": 1
+      }
+    ],
+    "message": "audio: 48000 Hz, driver running"
+  }
+}

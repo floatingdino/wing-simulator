@@ -11,7 +11,9 @@
 //! ```text
 //! ping                  -> ok wing-sim <version> pid <pid>
 //! status                -> ok <DaemonStatus JSON, one line>
-//! save <path>           -> ok saved <bytes> bytes to <path>     (current state as a .snap)
+//! save <path>           -> ok saved <bytes> bytes to <path>     (current state as a .snap;
+//!                                                               becomes the scene file)
+//! export <path>         -> ok saved <bytes> bytes to <path>     (same, scene file unchanged)
 //! load <path>           -> ok loaded <path>: <load report>      (replaces the current state)
 //! reload-hostio [path]  -> ok <routes>   (re-read the --hostio TOML, or switch to <path>;
 //!                                         the audio session restarts with the new bridges)
@@ -110,6 +112,8 @@ pub enum Command {
     Ping,
     Status,
     Save(PathBuf),
+    /// Like `Save`, but the daemon's scene file is not changed (snapshots for diffs).
+    Export(PathBuf),
     Load(PathBuf),
     /// Re-read the host-output TOML (`None`: the current `--hostio` file).
     ReloadHostIo(Option<PathBuf>),
@@ -143,6 +147,7 @@ impl Command {
             "ping" => no_arg(Command::Ping),
             "status" => no_arg(Command::Status),
             "save" => path("save").map(Command::Save),
+            "export" => path("export").map(Command::Export),
             "load" => path("load").map(Command::Load),
             "reload-hostio" => Ok(Command::ReloadHostIo(
                 (!arg.is_empty()).then(|| PathBuf::from(arg)),
@@ -337,6 +342,10 @@ mod tests {
         assert_eq!(Command::parse("hostio-off"), Ok(Command::HostIoOff));
         assert_eq!(Command::parse("quit"), Ok(Command::Quit));
         assert!(Command::parse("save").is_err());
+        assert_eq!(
+            Command::parse("export /t/x.snap"),
+            Ok(Command::Export("/t/x.snap".into()))
+        );
         assert!(Command::parse("ping now").is_err());
         assert!(Command::parse("").is_err());
         assert!(Command::parse("rm -rf").is_err());
@@ -390,6 +399,7 @@ mod tests {
         let (mut a, mut b) = (String::new(), String::new());
         r.read_line(&mut a).unwrap();
         r.read_line(&mut b).unwrap();
+        drop(r); // closes the connection: the server goes back to accepting
         assert_eq!(
             (a.as_str(), b.as_str()),
             ("ok pong with newline\n", "ok stopping\n")
@@ -401,6 +411,58 @@ mod tests {
         server.stop();
         assert!(!path.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `fixtures/control/status.json` is the schema WingSimMenu's tests decode: keep in sync.
+    #[test]
+    fn status_matches_shared_fixture() {
+        use crate::audio::hostio::BridgeReport;
+        let dir = "/Users/x/Library/Application Support/WingSimulator";
+        let st = DaemonStatus {
+            running: true,
+            pid: 4242,
+            version: "0.1.0".into(),
+            name: "WINGSIM".into(),
+            updated_unix: 1_793_000_000.5,
+            uptime_s: 12.25,
+            state_dir: dir.into(),
+            native_clients: 1,
+            meter_reports: 3,
+            discovery_replies: 17,
+            scene_file: Some("/Users/x/Scenes/Show.snap".into()),
+            active_scene: None,
+            hostio_path: Some(format!("{dir}/hostio.toml")),
+            hostio: "host outputs: mon/1 -> \"Scarlett 2i4 USB\" [1, 2]".into(),
+            audio: Some(AudioReport {
+                attached: true,
+                rate: 48_000,
+                driver: "running".into(),
+                load_pct: 23.5,
+                peak_load_pct: 41.0,
+                cycle_p50_us: 310,
+                cycle_p99_us: 520,
+                xruns: 2,
+                underruns: 1,
+                overruns: 1,
+                slow_cycles: 0,
+                bridges: vec![BridgeReport {
+                    device: "Scarlett 2i4 USB".into(),
+                    state: "Running".into(),
+                    fill_ms: 21.0,
+                    target_ms: 21.0,
+                    e2e_ms: Some(23.25),
+                    correction_ppm: 1.5,
+                    drift_ppm: -0.5,
+                    underruns: 0,
+                    resyncs: 1,
+                }],
+                message: "audio: 48000 Hz, driver running".into(),
+            }),
+        };
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../../fixtures/control/status.json")).unwrap();
+        let ours: serde_json::Value = serde_json::from_str(&st.to_json()).unwrap();
+        assert_eq!(ours, fixture);
     }
 
     #[test]
