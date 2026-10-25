@@ -21,6 +21,7 @@
 //! [`Model::todo`]) so the whole catalog is selectable today; S4/S5 tasks replace them in [`create_model`].
 
 use crate::eq::EqVariant;
+use crate::models::comp_fet::{FetComp, FetKind};
 use crate::models::comp_vca::{VcaComp, VcaKind};
 use crate::models::filter_tool::FilterToolModel;
 use crate::std_models::{DynModel, GateModel, StdEqModel};
@@ -299,6 +300,8 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "D241C") => Box::new(VcaComp::new(VcaKind::D241C)),
         (BlockKind::Dynamics, "9000C") => Box::new(VcaComp::new(VcaKind::Ssl9000)),
         (BlockKind::Dynamics, "SBUS") => Box::new(VcaComp::new(VcaKind::SBus)),
+        (BlockKind::Dynamics, "76LA") => Box::new(FetComp::new(FetKind::La76)),
+        (BlockKind::Dynamics, "NSTR") => Box::new(FetComp::new(FetKind::Nstr)),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
@@ -426,7 +429,7 @@ mod tests {
     #[test]
     fn catalogs_create_and_stub_flags() {
         let implemented = [
-            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS",
+            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS", "76LA", "NSTR",
         ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);
@@ -477,6 +480,7 @@ mod tests {
         assert!(!reg.select(99));
         assert!(!reg.select_id("NOPE"));
         assert_eq!(reg.active_id(), "F670");
-        assert_eq!(reg.max_latency(), 0);
+        // 76LA / NSTR run 2x oversampled (linear-phase half-band round trip).
+        assert_eq!(reg.max_latency(), 39);
     }
 }

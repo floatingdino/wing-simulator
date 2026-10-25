@@ -2,10 +2,10 @@
 id: T04D
 title: FET comps: 76LA, NSTR
 stage: S4
-status: todo
-owner: -
+status: in_progress
+owner: agent-T04D
 depends: [T045, T034]
-branch: -
+branch: task/T04D
 ---
 
 ## Goal
