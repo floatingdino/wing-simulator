@@ -15,6 +15,8 @@
 //! * [`params`]: control -> RT parameter pipeline (bounded drain of wing-model's change queue,
 //!   dispatch tables, model-ordering, click-free model swaps via the [`params::strip::RtModel`]
 //!   trait) and RT -> control telemetry.
+//! * [`meters`]: lock-free per-block peak metering (strip taps, gain reduction, sources,
+//!   outputs) for the WING meter transport (T039).
 //! * [`rt`]: macOS time-constraint policy and `os_workgroup` membership.
 //! * [`clock`]: [`LiveClock`] (external callback) and [`OfflineClock`] (free-running).
 //! * [`stats`]: per-cycle duration, load and xrun counters, readable lock-free.
@@ -23,6 +25,7 @@ pub mod channel;
 pub mod clock;
 pub mod dummy;
 pub mod graph;
+pub mod meters;
 pub mod mix;
 pub mod params;
 pub mod routing;

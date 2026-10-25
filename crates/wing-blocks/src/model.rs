@@ -21,6 +21,8 @@
 //! [`Model::todo`]) so the whole catalog is selectable today; S4/S5 tasks replace them in [`create_model`].
 
 use crate::eq::EqVariant;
+use crate::models::comp_console::{ConsoleComp, ConsoleKind};
+use crate::models::comp_opto::{OptoComp, OptoKind};
 use crate::models::comp_vca::{VcaComp, VcaKind};
 use crate::models::eq_alt::{AltEq, AltKind};
 use crate::models::filter_tool::FilterToolModel;
@@ -309,6 +311,15 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "D241C") => Box::new(VcaComp::new(VcaKind::D241C)),
         (BlockKind::Dynamics, "9000C") => Box::new(VcaComp::new(VcaKind::Ssl9000)),
         (BlockKind::Dynamics, "SBUS") => Box::new(VcaComp::new(VcaKind::SBus)),
+        (BlockKind::Dynamics, "LA") => Box::new(OptoComp::new(OptoKind::La)),
+        (BlockKind::Dynamics, "L100") => Box::new(OptoComp::new(OptoKind::L100)),
+        (BlockKind::Dynamics, "F670") => Box::new(OptoComp::new(OptoKind::F670)),
+        (BlockKind::Dynamics, "BLISS") => Box::new(OptoComp::new(OptoKind::Bliss)),
+        (BlockKind::Dynamics, "ECL33") => Box::new(ConsoleComp::new(ConsoleKind::Ecl33)),
+        (BlockKind::Dynamics, "E88C") => Box::new(ConsoleComp::new(ConsoleKind::E88c)),
+        (BlockKind::Dynamics, "RED3") => Box::new(ConsoleComp::new(ConsoleKind::Red3)),
+        (BlockKind::Dynamics, "2250") => Box::new(ConsoleComp::new(ConsoleKind::Api2250)),
+        (BlockKind::Dynamics, "LMT") => Box::new(ConsoleComp::new(ConsoleKind::Lmt)),
         (BlockKind::Eq(v), "STD") => Box::new(StdEqModel::new(v)),
         (BlockKind::Eq(_), "SOUL") => Box::new(AltEq::new(AltKind::Soul)),
         (BlockKind::Eq(_), "E88") => Box::new(AltEq::new(AltKind::E88)),
@@ -441,10 +452,15 @@ mod tests {
     use super::*;
 
     #[test]
+    #[rustfmt::skip]
     fn catalogs_create_and_stub_flags() {
         let implemented = [
-            "GATE", "DUCK", "COMP", "EXP", "B160", "B560", "D241C", "9000C", "SBUS", "E88",
-            "9000G", "D241G",
+            // One line per model family; append yours on its own line to keep merges clean.
+            "GATE", "DUCK", "COMP", "EXP",
+            "B160", "B560", "D241C", "9000C", "SBUS",
+            "E88", "9000G", "D241G",
+            "ECL33", "E88C", "RED3", "2250", "LMT",
+            "LA", "L100", "F670", "BLISS",
         ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);
@@ -469,7 +485,7 @@ mod tests {
 
     #[test]
     fn stub_is_passthrough() {
-        let mut m = create_model(BlockKind::Dynamics, "LA");
+        let mut m = create_model(BlockKind::Dynamics, "3CMP");
         m.prepare(48_000.0, 64);
         m.set_param(1, ParamValue::Float(12.0));
         let mut l: Vec<f32> = (0..64).map(|i| (i as f32 * 0.1).sin()).collect();
@@ -490,11 +506,11 @@ mod tests {
         assert!(reg.select_id("COMP"));
         assert_eq!(reg.active_id(), "COMP");
         assert!(!reg.active_model().is_stub());
-        assert!(reg.select_id("F670"));
+        assert!(reg.select_id("3CMP"));
         assert!(reg.active_model().is_stub());
         assert!(!reg.select(99));
         assert!(!reg.select_id("NOPE"));
-        assert_eq!(reg.active_id(), "F670");
+        assert_eq!(reg.active_id(), "3CMP");
         assert_eq!(reg.max_latency(), 0);
     }
 }
