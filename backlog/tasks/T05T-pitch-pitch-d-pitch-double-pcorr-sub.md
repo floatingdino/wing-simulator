@@ -43,3 +43,8 @@ Pitch shifting/correction per models.md §6 (evaluate permissive libs per dsp-re
     D-PITCH 1.0 us, DOUBLE 1.5 us, PCORR 8.0 us, SUB 0.7 us.
   - Proposed follow-ups: (1) per-model latency for FX slots (or a lower-latency PCORR mode) if 7.5 ms on every
     FX insert is unacceptable; (2) measure WING's PITCH/PCORR latency and DOUBLE/SUB voicing on a console.
+- 2026-10-25 T05T-agent: merged main (T05C/T05E/T05Q/T05S/T05P, T05U task). Additive conflicts (Cargo benches,
+  mod list, registrations) kept both sides; took main's wing-engine/tests/fx.rs (latency from
+  `FxRack::slot_latency`) and only made `bus_insert_send_fx_returns_to_main_and_aux` wait until the strips'
+  latencies have settled before asserting (with PCORR's 360-sample slots the main saw nothing by block 8).
+  PCORR stays at 360. `make check` passes.

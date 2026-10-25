@@ -73,9 +73,33 @@ name = "fx_delay"
 harness = false
 
 [[bench]]
+name = "fx_eqdyn"
+harness = false
+
+[[bench]]
 name = "fx_mod"
 harness = false
 
 [[bench]]
 name = "fx_pitch"
+harness = false
+
+[[bench]]
+name = "fx_strip"
+harness = false
+
+[[bench]]
+name = "fx_enhance"
+harness = false
+
+[[bench]]
+name = "fx_reverb"
+harness = false
+
+[[bench]]
+name = "fx_reverb_special"
+harness = false
+
+[[bench]]
+name = "fx_plate"
 harness = false

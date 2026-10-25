@@ -11,8 +11,8 @@ use crate::graph::{Graph, GraphBuilder, GraphError, NodeId, Port};
 use crate::params::{BindError, BlockLayout, ParamMap, ParamMapBuilder};
 use crate::routing::{
     add_input_stage_with_feedback, add_usb_output, FeedbackWriter, InputRouter, IoNodes, MixGroup,
-    RoutingControl, Side, Strip, StripPoint, Tap, TapFeedback, TapPorts, INPUT_STRIPS, NO_TAPS,
-    USB_CHANNELS,
+    RoutingControl, Side, Strip, StripPoint, Tap, TapFeedback, TapPorts, EXT_SLOTS, INPUT_STRIPS,
+    NO_TAPS, USB_CHANNELS,
 };
 
 use super::logic::MixShared;
@@ -554,8 +554,19 @@ pub fn build_mix_graph(
     )?;
 
     // After the matrices (the last strip level): every slot has run when its SEND capture is read.
-    let mtx_ports: Vec<Port> = mtx.iter().map(|&n| Port::node(n, 0)).collect();
-    let fx = g.add_node("fx", SEND_OUTPUTS, &mtx_ports, rack.node())?;
+    let mut fx_inputs: Vec<Port> = mtx.iter().map(|&n| Port::node(n, 0)).collect();
+    // EXT returns (T05C): the input router's EXT outputs of FX slots 1..16, L then R
+    let ret_base = fx_inputs.len();
+    for k in 1..=EXT_SLOTS {
+        fx_inputs.push(InputRouter::ext_port(io.inputs, k, 0));
+        fx_inputs.push(InputRouter::ext_port(io.inputs, k, 1));
+    }
+    let fx = g.add_node(
+        "fx",
+        SEND_OUTPUTS,
+        &fx_inputs,
+        rack.node().with_returns(routing.subscribe(), ret_base),
+    )?;
 
     let mut nodes = MixNodes {
         io,

@@ -30,6 +30,7 @@ use crate::models::dyn_eq::{DeEsser902, DynEq};
 use crate::models::dyn_special::{AutoRider, TransientDesigner, WarmthPre};
 use crate::models::eq_alt::{AltEq, AltKind};
 use crate::models::filter_tool::FilterToolModel;
+use crate::models::fx_strip::{ChannelStrip, ExternalLoop, StripKind};
 use crate::models::gate_vintage::{VintageGate, VintageGateKind};
 use crate::models::pse::{PseKind, SourceExtractor};
 use crate::std_models::{DynModel, GateModel, StdEqModel};
@@ -358,6 +359,19 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Eq(_), "MACH4") => Box::new(AltEq::new(AltKind::Mach4)),
         (BlockKind::Eq(_), "PIA") => Box::new(AltEq::new(AltKind::Pia)),
         (BlockKind::Fx, "ST-DL") => Box::new(crate::models::fx_delay::StereoDelay::new()),
+        (BlockKind::Fx, "GEQ") => Box::new(crate::models::fx_eqdyn::GraphicEq::new()),
+        (BlockKind::Fx, "PIA") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::Pia)),
+        (BlockKind::Fx, "LIMITER") => Box::new(crate::models::fx_eqdyn::PrecisionLimiter::new()),
+        (BlockKind::Fx, "DE-S2") => Box::new(crate::models::fx_eqdyn::DeEsser2::new()),
+        (BlockKind::Fx, "SOUL") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::Soul)),
+        (BlockKind::Fx, "E88") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::E88)),
+        (BlockKind::Fx, "E84") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::E84)),
+        (BlockKind::Fx, "F110") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::F110)),
+        (BlockKind::Fx, "PULSAR") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::Pulsar)),
+        (BlockKind::Fx, "MACH4") => Box::new(crate::models::fx_eqdyn::FxEq::new(AltKind::Mach4)),
+        (BlockKind::Fx, "C5-CMB") => Box::new(crate::models::fx_eqdyn::Combinator::new()),
+        (BlockKind::Fx, "SPKMAN") => Box::new(crate::models::fx_eqdyn::SpeakerManager::new()),
+        (BlockKind::Fx, "DEQ3") => Box::new(crate::models::fx_eqdyn::TripleDeq::new()),
         (BlockKind::Fx, "TAP-DL") => Box::new(crate::models::fx_delay::TapDelay::new()),
         (BlockKind::Fx, "TAPE-DL") => Box::new(crate::models::fx_delay::TapeDelay::new()),
         (BlockKind::Fx, "OILCAN") => Box::new(crate::models::fx_delay::Oilcan::new()),
@@ -374,6 +388,31 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "DOUBLE") => Box::new(crate::models::fx_pitch::DoubleVocal::new()),
         (BlockKind::Fx, "PCORR") => Box::new(crate::models::fx_pitch::PitchFix::new()),
         (BlockKind::Fx, "SUB") => Box::new(crate::models::fx_pitch::SubOctaver::new()),
+        (BlockKind::Fx, "*EVEN*") => Box::new(ChannelStrip::new(StripKind::Even)),
+        (BlockKind::Fx, "*SOUL*") => Box::new(ChannelStrip::new(StripKind::Soul)),
+        (BlockKind::Fx, "*VINTAGE*") => Box::new(ChannelStrip::new(StripKind::Vintage)),
+        (BlockKind::Fx, "*BUS*") => Box::new(ChannelStrip::new(StripKind::Bus)),
+        (BlockKind::Fx, "*MASTER*") => Box::new(ChannelStrip::new(StripKind::Master)),
+        (BlockKind::Fx, "EXT") => Box::new(ExternalLoop::new()),
+        (BlockKind::Fx, "ENHANCE") => Box::new(crate::models::fx_enhance::UltraEnhancer::new()),
+        (BlockKind::Fx, "EXCITER") => Box::new(crate::models::fx_enhance::Exciter::new()),
+        (BlockKind::Fx, "P-BASS") => Box::new(crate::models::fx_enhance::PsychoBass::new()),
+        (BlockKind::Fx, "SUB-M") => Box::new(crate::models::fx_enhance::SubMonster::new()),
+        (BlockKind::Fx, "V-IMG") => Box::new(crate::models::fx_enhance::VelvetImager::new()),
+        (BlockKind::Fx, "TAPE") => Box::new(crate::models::fx_enhance::TapeMachine::new()),
+        (BlockKind::Fx, "HALL") => Box::new(crate::models::fx_reverb::hall()),
+        (BlockKind::Fx, "ROOM") => Box::new(crate::models::fx_reverb::room()),
+        (BlockKind::Fx, "CHAMBER") => Box::new(crate::models::fx_reverb::chamber()),
+        (BlockKind::Fx, "CONCERT") => Box::new(crate::models::fx_reverb::concert()),
+        (BlockKind::Fx, "AMBI") => Box::new(crate::models::fx_reverb::ambi()),
+        (BlockKind::Fx, "GATED") => Box::new(crate::models::fx_reverb::special::Gated::new()),
+        (BlockKind::Fx, "REVERSE") => Box::new(crate::models::fx_reverb::special::Reverse::new()),
+        (BlockKind::Fx, "DEL/REV") => Box::new(crate::models::fx_reverb::special::DelRev::new()),
+        (BlockKind::Fx, "SHIMMER") => Box::new(crate::models::fx_reverb::special::Shimmer::new()),
+        (BlockKind::Fx, "PLATE") => Box::new(crate::models::fx_reverb::plate()),
+        (BlockKind::Fx, "V-PLATE") => Box::new(crate::models::fx_reverb::vplate()),
+        (BlockKind::Fx, "BPLATE") => Box::new(crate::models::fx_reverb::bplate()),
+        (BlockKind::Fx, "SPRING") => Box::new(crate::models::fx_reverb::spring()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -532,8 +571,14 @@ mod tests {
             // One line per FX model family.
             "ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL",
             "ST-DL",
+            "GEQ", "PIA", "LIMITER", "DE-S2", "SOUL", "E88", "E84", "F110", "PULSAR", "MACH4", "C5-CMB", "SPKMAN", "DEQ3",
             "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
             "PITCH", "D-PITCH", "DOUBLE", "PCORR", "SUB",
+            "*EVEN*", "*SOUL*", "*VINTAGE*", "*BUS*", "*MASTER*", "EXT",
+            "ENHANCE", "EXCITER", "P-BASS", "SUB-M", "V-IMG", "TAPE",
+            "HALL", "ROOM", "CHAMBER", "CONCERT", "AMBI",
+            "GATED", "REVERSE", "DEL/REV", "SHIMMER",
+            "PLATE", "V-PLATE", "BPLATE", "SPRING",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);
@@ -546,7 +591,7 @@ mod tests {
     #[test]
     fn stub_is_passthrough() {
         // Every dynamics model is implemented now; FX models are still stubs (T05x).
-        let mut m = create_model(BlockKind::Fx, "HALL");
+        let mut m = create_model(BlockKind::Fx, "V-REV");
         m.prepare(48_000.0, 64);
         m.set_param(1, ParamValue::Float(12.0));
         let mut l: Vec<f32> = (0..64).map(|i| (i as f32 * 0.1).sin()).collect();

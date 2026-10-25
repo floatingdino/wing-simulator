@@ -95,17 +95,17 @@ fn mix_latency(s: Strip) -> usize {
     MixStrip::new(s, 48_000.0, BLOCK).latency()
 }
 
-/// Constant latency of an input strip whose insert claims a slot of latency `ins` (T05T: every slot
-/// hosts PCORR, so FX inserts are no longer zero-latency).
+/// Strip latency once an insert whose slot has latency `ins` is engaged. `ins` is always taken from
+/// `FxRack::slot_latency` (the max latency over the models the slot hosts, e.g. T05E oversamplers, the T05Q
+/// LIMITER look-ahead), never hard-coded; the strip's alignment pad absorbs it up to `natural`.
 fn input_latency_ins(ins: usize) -> usize {
-    let ch = ChannelStrip::channel(48_000.0, BLOCK);
-    ch.align().natural().max(ch.align().own() + ins)
+    let mut s = ChannelStrip::channel(48_000.0, BLOCK);
+    s.set_insert_latency(ins)
 }
 
-/// As [`input_latency_ins`] for a bus/main/matrix strip.
-fn mix_latency_ins(s: Strip, ins: usize) -> usize {
-    let m = MixStrip::new(s, 48_000.0, BLOCK);
-    m.align().natural().max(m.align().own() + ins)
+fn mix_latency_ins(st: Strip, ins: usize) -> usize {
+    let mut s = MixStrip::new(st, 48_000.0, BLOCK);
+    s.set_insert_latency(ins)
 }
 
 fn peak(x: &[f32]) -> f32 {
@@ -187,41 +187,40 @@ fn channel_insert_runs_slot_with_fxmix() {
         }
     }
 
-    // insert off: crossfades to dry over the 5 ms slot ramp (no click); the SEND leg stops
-    // The ramp runs at the slot output, i.e. `lat` (slot latency) samples after the slot input, so it
-    // blends input samples from `lat` before the switch on: keep dry/wet histories in input time.
-    let lat = r.fx.slot_latency(1);
+    // insert off: crossfades to dry over the 5 ms slot ramp (no click); the SEND leg stops. The ramp runs on the
+    // slot output (wet and dry are both aligned to the slot latency), so it starts at the switch in output time.
     setf(&store, "fx/1/fxmix", 100.0);
-    let (mut xd, mut xw) = (vec![0.0f32; hl.0.len()], hl.0.clone());
+    let mut hx = Hist::default();
     for _ in 0..10 {
         let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
         r.cycle(&[1]);
         let (mut wl, mut wr) = (x.clone(), x.clone());
         model.process(&mut wl, &mut wr, None);
         hl.push(&wl);
-        xd.extend_from_slice(&x);
-        xw.extend_from_slice(&wl);
+        hx.push(&x);
     }
     seti(&store, "ch/1/preins/on", 0);
     let ramp = 240.0f32;
-    let t_sw = hl.0.len();
-    assert!(lat <= 10 * BLOCK);
-    for _ in 0..8 {
+    // the ramp runs at the slot output: it reaches the strip output after the strip's alignment pad
+    let pad = d - r.fx.slot_latency(1);
+    for k in 0..8 {
         let x: Vec<f32> = (0..BLOCK as u64).map(|i| sig(0, r.t + i)).collect();
         r.cycle(&[1]);
         let (mut wl, mut wr) = (x.clone(), x.clone());
         model.process(&mut wl, &mut wr, None);
         hl.push(&wl);
-        xd.extend_from_slice(&x);
-        xw.extend_from_slice(&wl);
-        for s in t_sw - lat..hl.0.len() {
-            let u = s + lat; // slot output time
-            let w = (1.0 - (u - t_sw + 1) as f32 / ramp).max(0.0);
-            hl.0[s] = xd[s] + w * (xw[s] - xd[s]);
-        }
+        hx.push(&x);
+        let (wd, xd) = (hl.delayed(d), hx.delayed(d));
+        let expect: Vec<f32> = (0..BLOCK)
+            .map(|i| {
+                let n = (k * BLOCK + i + 1).saturating_sub(pad) as f32;
+                let w = (1.0 - n / ramp).max(0.0);
+                xd[i] + w * (wd[i] - xd[i])
+            })
+            .collect();
         assert_close(
             &r.input(0, I::Pfl, Side::L),
-            &hl.delayed(d),
+            &expect,
             1e-5,
             "switch-off crossfade",
         );
@@ -266,7 +265,7 @@ fn bus_insert_send_fx_returns_to_main_and_aux() {
         BLOCK + input_latency(),
     );
     let (mut hl, mut hr, mut hp) = (Hist::default(), Hist::default(), Hist::default());
-    // past the NONE -> ST-DL crossfade and the strips' latencies (FX slots: T05T PCORR)
+    // past the NONE -> ST-DL crossfade and the strips' latencies (slot latency from FxRack)
     let settle = (db + dm + da) / BLOCK + 8;
     for k in 0..settle + 32 {
         r.cycle(&[1]);

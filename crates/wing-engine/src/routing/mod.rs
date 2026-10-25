@@ -57,12 +57,12 @@ pub use addr::{
 pub use feedback::{FeedbackWriter, TapFeedback};
 pub use nodes::{
     add_input_stage, add_input_stage_with_feedback, add_usb_output, InputRouter, IoNodes,
-    Oscillators, TapPorts, UsbOutRouter, NO_TAPS,
+    Oscillators, TapPorts, UsbOutRouter, NO_TAPS, ROUTER_OUTPUTS,
 };
 pub use swap::{TableReader, TableSender};
 pub use table::{
     Feed, InputRoute, Leg, OscMode, OscParams, RoutingBuilder, RoutingControl, RoutingTable, Width,
-    INPUT_STRIPS, USB_CHANNELS,
+    EXT_SLOTS, INPUT_STRIPS, USB_CHANNELS,
 };
 
 /// RT-side reader of routing tables.
