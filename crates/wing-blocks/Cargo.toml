@@ -47,3 +47,7 @@ harness = false
 [[bench]]
 name = "comp_opto"
 harness = false
+
+[[bench]]
+name = "dyn_eq"
+harness = false

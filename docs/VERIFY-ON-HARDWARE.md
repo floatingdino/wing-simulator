@@ -21,6 +21,12 @@ Each item: what was assumed, where, and how to check on a console (or via a meas
 | Comp console | 2250 knob laws (thr 0..10 = +10..−20 dBu linear; ratio slope = knob/10), 10 dB soft knee, NEW RMS 1 ms, OLD peak feedback capped at 31:1 | T04C |
 | Comp console | LMT: ratio 20:1, attack 0.3 ms / release 150 ms, `comp` 0..100 = threshold 0..−40 dBFS; transient shaper laws (speed 50→2 ms, ±trans·0.1·Δenv dB); no LMC colouration | T04C |
 | Gate | ACCENT = 0–10 dB hysteresis; detector timing | T032 |
+| DEQ/DEQ2 | `filt` = band shape (BP peak, LP/HP = 1st/2nd-order shelves, OFF = wide band) rather than a side-chain-only filter; side-chain uses the same shape at f/Q | T048 |
+| DEQ/DEQ2 | DEQ bands use the STD EQ `wingcoef` sections as `eq.rs` calls them (BP `hqpeq`, LP12 `ls12` Q 0.707 f≤8 kHz, HP12 `hqhs12` f≥50 Hz, shelves ignore Q); LP6/HP6 = `hqls6`/`hqhs6`; side-chain = `hqbp`/`hqlp12`/`lp6`/`hqhp12`/`hqhp6` at f/Q | T048 |
+| DEQ/DEQ2 | `g` = maximum dynamic gain; gain law `min(|g|, max(0, over)·(1−1/ratio))`, mode high = above thr, low = below; thr vs RMS level (5 ms mean square, louder channel) | T048 |
+| DEQ/DEQ2 | att/rel are dB-domain time constants (tau, COMP convention), att while moving away from 0 dB; 8-sample control rate; f/Q glide 20 ms | T048 |
+| DS902 | detector = HF (12 dB/oct HP at f) / total energy ratio, onset −12 dB, slope 1 dB/dB, capped at range; 1 ms detector, 1 ms attack, 50 ms release | T048 |
+| DS902 | HF detector = `hqhp12` at f; HF mode = dynamic `hqhs12` high shelf at f; FULL = wide-band gain; external key replaces the detector input | T048 |
 | Input | balance law; stereo pair selection takes whole pair; L+R user-signal scaling; oscillator level | T031, T024 |
 | Snapshot | header written for migrated files accepted by a real WING; 1.x filter slopes 12 dB/oct; dynxo slope location | T019 |
 | Library | `$ctl/lib` semantics, 0-based indices, store/rename/delete actions | T017 |

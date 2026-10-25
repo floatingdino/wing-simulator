@@ -24,6 +24,7 @@ use crate::eq::EqVariant;
 use crate::models::comp_console::{ConsoleComp, ConsoleKind};
 use crate::models::comp_opto::{OptoComp, OptoKind};
 use crate::models::comp_vca::{VcaComp, VcaKind};
+use crate::models::dyn_eq::{DeEsser902, DynEq};
 use crate::models::eq_alt::{AltEq, AltKind};
 use crate::models::filter_tool::FilterToolModel;
 use crate::models::gate_vintage::{VintageGate, VintageGateKind};
@@ -304,6 +305,9 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Dynamics, "E88") => Box::new(VintageGate::new(VintageGateKind::E88)),
         (BlockKind::Dynamics, "9000G") => Box::new(VintageGate::new(VintageGateKind::Ssl9000)),
         (BlockKind::Dynamics, "D241G") => Box::new(VintageGate::new(VintageGateKind::D241)),
+        (BlockKind::Dynamics, "DS902") => Box::new(DeEsser902::new()),
+        (BlockKind::Dynamics, "DEQ") => Box::new(DynEq::single()),
+        (BlockKind::Dynamics, "DEQ2") => Box::new(DynEq::dual()),
         (BlockKind::Dynamics, "COMP") => Box::new(DynModel::comp()),
         (BlockKind::Dynamics, "EXP") => Box::new(DynModel::exp()),
         (BlockKind::Dynamics, "B160") => Box::new(VcaComp::new(VcaKind::B160)),
@@ -461,6 +465,7 @@ mod tests {
             "E88", "9000G", "D241G",
             "ECL33", "E88C", "RED3", "2250", "LMT",
             "LA", "L100", "F670", "BLISS",
+            "DS902", "DEQ", "DEQ2",
         ];
         for id in DYN_IDS {
             let m = create_model(BlockKind::Dynamics, id);
