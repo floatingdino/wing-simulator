@@ -53,3 +53,4 @@ SwiftUI menu bar app: device routing (USB out N/M -> host device ch), scene file
     then fails and shows the log tail. A daemon started before this change writes no status.json (shows stopped).
   - Proposed follow-ups: `--discovery-port` flag so the daemon can be integration-tested end to end;
     launch-at-login (SMAppService); per-route latency field in the routing editor; app icon.
+- 2026-10-25 coordinator: user confirmed menu-bar app works live.

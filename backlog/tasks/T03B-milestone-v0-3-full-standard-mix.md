@@ -16,3 +16,4 @@ PUBLIC.snap scene mixes the REAPER session in realtime with standard models; nul
 
 ## Log
 - 2026-10-25 coordinator: created.
+- 2026-10-25 coordinator: user live test — full mix works on a main tap, menu-bar app works; monitor tap stuck at -inf and DCA mutes ignored (T03F). v0.3 sign-off after T03F.
