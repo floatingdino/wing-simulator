@@ -31,3 +31,6 @@ merge conflicts); in-flight status is tracked by the coordinator outside the fil
 Merge convention for model families: each family adds its own `pub mod <family>;` line to
 crates/wing-blocks/src/models/mod.rs, one registration line per model in model.rs, and a separate `[[bench]]`
 block (name + harness = false) in crates/wing-blocks/Cargo.toml.
+
+Coordinator merge rule: `tools/merge-union.py` is only for additive files (Cargo.toml, `pub mod` lists, registration
+lines). Any conflict in real code → abort the merge and send it back to the task agent to merge `main` and resolve.

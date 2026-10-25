@@ -15,10 +15,16 @@
 //!
 //! Bus/main/matrix strip processing (EQ, dynamics, inserts, delay) is T037; the strips sum, fade
 //! and pan only.
+//!
+//! Meters (T039, when [`ConsoleConfig::meters`] is set): the input strips write their IN/PFL/key/GR
+//! cells while processing, and [`Console::cycle`] meters the mix graph's ports after each cycle
+//! (strip outs, bus/main/matrix in/out, USB In/Out, oscillators, mix-output sources; see
+//! `wing_engine::meters::PortMeters::for_mix`).
 
 use std::sync::Arc;
 use std::time::Instant;
 
+use wing_engine::meters::{LevelBank, PortMeters};
 use wing_engine::mix::{build_mix_graph, MixConfig, MixNodes};
 use wing_engine::params::{ParamMap, ParamPipeline, PipelineConfig};
 use wing_engine::routing::{Side, Strip, USB_CHANNELS};
@@ -48,6 +54,8 @@ pub struct ConsoleConfig {
     pub rt_workers: bool,
     /// Workgroup workers join (see `workgroup.rs`).
     pub workgroup: Option<RawWorkgroup>,
+    /// Level bank the console meters into (T039); `None`: no metering.
+    pub meters: Option<Arc<LevelBank>>,
 }
 
 impl Default for ConsoleConfig {
@@ -59,6 +67,7 @@ impl Default for ConsoleConfig {
             workers: d.workers,
             rt_workers: d.rt_workers,
             workgroup: None,
+            meters: None,
         }
     }
 }
@@ -116,6 +125,7 @@ pub fn build_engine(
         block_size: cfg.block,
         sample_rate: cfg.sample_rate as f32,
         logic: Some(ctl.logic.shared()),
+        meters: cfg.meters.clone(),
         ..MixConfig::default()
     };
     ctl.logic.refresh(store);
@@ -152,6 +162,7 @@ pub struct Console {
     feeds: Vec<BridgeFeed>,
     silence: Box<[f32]>,
     stats: Arc<AudioStats>,
+    port_meters: Option<PortMeters>,
     cfg: ConsoleConfig,
 }
 
@@ -182,6 +193,10 @@ impl Console {
             })
             .collect();
         stats.set_period_ns((cfg.block as f64 * 1e9 / cfg.sample_rate as f64) as u64);
+        let port_meters = cfg
+            .meters
+            .clone()
+            .map(|b| PortMeters::for_mix(b, &nodes.mix));
         Ok(Self {
             engine,
             pipeline,
@@ -189,6 +204,7 @@ impl Console {
             feeds,
             silence: vec![0.0; cfg.block].into(),
             stats,
+            port_meters,
             cfg,
         })
     }
@@ -234,7 +250,7 @@ impl Console {
     }
 
     /// One engine cycle: apply queued parameter changes, fill USB In 1..48 with `input(ch, buf)`,
-    /// process, hand USB Out 1..48 to `output(ch, buf)`, feed the host bridges, publish
+    /// process, meter the ports, hand USB Out 1..48 to `output(ch, buf)`, feed the host bridges, publish
     /// telemetry and record the cycle time. RT-safe (no allocation, locks or syscalls).
     #[inline]
     pub fn cycle(
@@ -248,6 +264,9 @@ impl Console {
             input(ch, self.engine.external_mut(ch));
         }
         self.engine.process_cycle();
+        if let Some(m) = &self.port_meters {
+            m.capture(&self.engine);
+        }
         let c = self.engine.cycle();
         self.pipeline.publish_telemetry(&mut self.engine, c);
         let usb = self.nodes.usb_out;

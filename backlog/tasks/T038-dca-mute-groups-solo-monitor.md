@@ -50,3 +50,9 @@ DCAs, mute groups, solo (PFL/AFL modes), monitor section output to host device.
   - Proposed follow-ups: verify A/B vs PH/SPK, STUDIO vs LIVE, pfldim and SIP scope on hardware; `cfg/solo/mute`,
     `$flip`, `eqbdtrim`, `dirin`, source-solo input selection (`$srcsgrp/$srcsin`), `$presolo`, `$mute`/`$fdr`
     mirrors, `muteovr`; smooth monitor delay changes; mtx direct inputs MON.PH/MON.SPK can now be fed.
+- 2026-10-25 engineer-T038: merged main (T039 metering, T04E/T04G/T04H) into task/T038; conflicts in
+  `mix/mod.rs` (MixConfig `logic` + `meters`), `apps/wing-sim/src/audio/console.rs`, `tests/audio.rs` resolved
+  keeping both. Metering: MonitorNode now has 8 outputs (4 monitor legs + solo bus 1/2 L/R);
+  `PortMeters::for_mix` meters `MON` source legs 1..4 and two new solo cells (`meters::solo_cell`, `SOLO_BASE`,
+  CELLS + 2); the daemon's monitor meter block (A9) = solo L/R, mon1 L/R, mon2 L/R from those cells.
+  Test `monitor_and_solo_meters`. `make check` passes.

@@ -36,8 +36,12 @@ use super::logic::{flag, MixShared};
 use super::nodes::{InputSignal, MixSignal};
 use super::MixConfig;
 
-/// Output channels: mon 1 L/R, mon 2 L/R.
+/// Monitor output channels (= MON legs 1..4): mon 1 L/R, mon 2 L/R.
 pub const MONITOR_OUTPUTS: u32 = 4;
+/// Node output channels: the [`MONITOR_OUTPUTS`], then the solo busses (sum of the soloed
+/// strips after their solo gains, before source, EQ and level; for metering): solo 1 L/R,
+/// solo 2 L/R.
+pub const MONITOR_CHANNELS: u32 = 8;
 /// Input ports per input strip (Pfl, Afl, Post; L/R).
 const IN_PORTS: usize = 6;
 /// Input ports per bus/main/matrix (Pfl, Post; L/R).
@@ -300,7 +304,7 @@ fn prime(solo: &mut [[Ramp<1>; 2]]) {
     }
 }
 
-/// The monitor section node. Inputs: [`monitor_inputs`]. Outputs: [`MONITOR_OUTPUTS`].
+/// The monitor section node. Inputs: [`monitor_inputs`]. Outputs: [`MONITOR_CHANNELS`].
 pub struct MonitorNode {
     shared: Arc<MixShared>,
     seen: u32,
@@ -535,22 +539,15 @@ impl Processor for MonitorNode {
         let ins = io.inputs();
         let b = io.block_size();
         let out = io.outputs();
-        let (o1, o2) = out.split_at_mut(2 * b);
+        let (mons, solos) = out.split_at_mut(4 * b);
+        let (o1, o2) = mons.split_at_mut(2 * b);
+        let (s1, s2) = solos.split_at_mut(2 * b);
         let (sl, sr) = (&mut self.sl[..b], &mut self.sr[..b]);
-        for (m, o) in self.mons.iter_mut().zip([o1, o2]) {
-            sl.fill(0.0);
-            sr.fill(0.0);
-            // source
-            let (g0, g1) = m.src.step();
-            if let Some(i) = source_strip(m.p.src) {
-                if g0[0] != 0.0 || g1[0] != 0.0 {
-                    let pi = port_of(i, Sig::Post);
-                    let s = [g0[0], 0.0, 0.0, g0[0]];
-                    let e = [g1[0], 0.0, 0.0, g1[0]];
-                    law::matrix_add(sl, sr, ins.get(pi), ins.get(pi + 1), s, e);
-                }
-            }
-            // solo bus
+        for ((m, o), so) in self.mons.iter_mut().zip([o1, o2]).zip([s1, s2]) {
+            // solo bus (also an output, for the solo meter)
+            let (bl, br) = so.split_at_mut(b);
+            bl.fill(0.0);
+            br.fill(0.0);
             for (i, r) in m.solo.iter_mut().enumerate() {
                 for (t, ramp) in r.iter_mut().enumerate() {
                     if ramp.is_silent() {
@@ -560,6 +557,18 @@ impl Processor for MonitorNode {
                     let pi = port_of(i, if t == 0 { Sig::Pfl } else { Sig::Afl });
                     let s = [a0[0], 0.0, 0.0, a0[0]];
                     let e = [a1[0], 0.0, 0.0, a1[0]];
+                    law::matrix_add(bl, br, ins.get(pi), ins.get(pi + 1), s, e);
+                }
+            }
+            sl.copy_from_slice(bl);
+            sr.copy_from_slice(br);
+            // source
+            let (g0, g1) = m.src.step();
+            if let Some(i) = source_strip(m.p.src) {
+                if g0[0] != 0.0 || g1[0] != 0.0 {
+                    let pi = port_of(i, Sig::Post);
+                    let s = [g0[0], 0.0, 0.0, g0[0]];
+                    let e = [g1[0], 0.0, 0.0, g1[0]];
                     law::matrix_add(sl, sr, ins.get(pi), ins.get(pi + 1), s, e);
                 }
             }

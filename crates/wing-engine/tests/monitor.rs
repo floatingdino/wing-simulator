@@ -516,3 +516,24 @@ fn monitor_eq_delay_and_limiter() {
     }
     assert_gain(&main[..main.len() - 4800], &mon[4800..], 1.0, "delay 4800");
 }
+
+#[test]
+fn monitor_and_solo_meters() {
+    use wing_engine::meters::{solo_cell, source_cell, LevelBank, PortMeters};
+    use wing_engine::routing::{SourceAddr, SrcGroup};
+    let mut t = T::new();
+    let bank = LevelBank::shared();
+    let pm = PortMeters::for_mix(bank.clone(), &t.r.nodes);
+    let mon_leg = |n| source_cell(SourceAddr::new(SrcGroup::Mon, n).unwrap());
+    pm.capture(&t.r.e);
+    let peak = |v: &[f32]| v.iter().fold(0.0f32, |a, &x| a.max(x.abs()));
+    assert_eq!(bank.take(mon_leg(1)), peak(&t.mon(1, Side::L)));
+    assert_eq!(bank.take(mon_leg(4)), peak(&t.mon(2, Side::R)));
+    assert_eq!(bank.take(solo_cell(0)), 0.0, "no solo");
+    t.set("cfg/mon/1/pfldim", "0");
+    t.set("ch/1/$solo", "1");
+    t.run(SETTLE);
+    pm.capture(&t.r.e);
+    assert_eq!(bank.take(solo_cell(0)), peak(&t.pfl(0)));
+    assert_eq!(bank.take(mon_leg(1)), peak(&t.mon(1, Side::L)));
+}

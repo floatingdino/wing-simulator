@@ -151,6 +151,10 @@ pub struct MixConfig {
     /// DCA / mute-group / solo state published by a [`MixLogic`] (default: a private, never
     /// updated state = no DCAs, mute groups or solos).
     pub logic: Option<Arc<MixShared>>,
+    /// Level bank the input strips meter into (T039; IN/PFL/keys/GR). The mix-level meters
+    /// (strip outs, bus/main/matrix in/out, mix-output sources) are port meters:
+    /// [`crate::meters::PortMeters::for_mix`].
+    pub meters: Option<std::sync::Arc<crate::meters::LevelBank>>,
 }
 
 impl Default for MixConfig {
@@ -165,6 +169,7 @@ impl Default for MixConfig {
             bus_order: BusOrder::FromScene,
             hooks: None,
             logic: None,
+            meters: None,
         }
     }
 }
@@ -181,6 +186,7 @@ impl std::fmt::Debug for MixConfig {
             .field("bus_order", &self.bus_order)
             .field("hooks", &self.hooks.is_some())
             .field("logic", &self.logic.is_some())
+            .field("meters", &self.meters.is_some())
             .finish()
     }
 }

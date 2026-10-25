@@ -15,7 +15,9 @@ use crate::routing::{
 };
 
 use super::logic::MixShared;
-use super::monitor::{bind_monitor_params, monitor_inputs, MonitorNode, MONITOR_OUTPUTS};
+use super::monitor::{
+    bind_monitor_params, monitor_inputs, MonitorNode, MONITOR_CHANNELS, MONITOR_OUTPUTS,
+};
 use super::nodes::{
     InputSignal, InputStripNode, MixSignal, MixStripNode, NoProcessing, SlotKind, SlotSpec,
     INPUT_OUTPUTS, MIX_OUTPUTS,
@@ -121,6 +123,14 @@ impl MixNodes {
     /// Monitor `m` (1 or 2) output.
     pub fn monitor_port(&self, m: usize, side: Side) -> Port {
         Port::node(self.monitor, 2 * (m as u32 - 1) + side as u32)
+    }
+
+    /// Solo bus of monitor `m` (1 or 2): the soloed strips after their solo gains (meters).
+    pub fn solo_port(&self, m: usize, side: Side) -> Port {
+        Port::node(
+            self.monitor,
+            MONITOR_OUTPUTS + 2 * (m as u32 - 1) + side as u32,
+        )
     }
 
     /// The output (POST) of any strip.
@@ -395,11 +405,17 @@ pub fn build_mix_graph(
 
     let mut inputs = [NodeId(0); INPUT_STRIPS];
     for (i, id) in inputs.iter_mut().enumerate() {
-        let (name, strip) = if i < 40 {
+        let (name, mut strip) = if i < 40 {
             (format!("ch{}", i + 1), ChannelStrip::channel(fs, bs))
         } else {
             (format!("aux{}", i - 39), ChannelStrip::aux(fs, bs))
         };
+        // input strip i (ch 1..40, aux 1..8) = the meters' flat strip index
+        strip.set_meter(
+            cfg.meters
+                .clone()
+                .map(|b| crate::meters::StripMeter::at(b, i)),
+        );
         let src = [
             InputRouter::port(io.inputs, i, 0),
             InputRouter::port(io.inputs, i, 1),
@@ -494,7 +510,7 @@ pub fn build_mix_graph(
     };
     let monitor = g.add_node(
         "monitor",
-        MONITOR_OUTPUTS,
+        MONITOR_CHANNELS,
         &monitor_inputs(strip_node),
         MonitorNode::new(logic.clone(), &cfg),
     )?;
