@@ -2,7 +2,7 @@
 id: T061
 title: Record/bounce outputs from the daemon
 stage: S6
-status: review
+status: done
 owner: engineering-agent
 depends: [T026, T037, T038]
 branch: task/T060-T061

@@ -2,7 +2,7 @@
 id: T060
 title: Offline renderer (wing-render)
 stage: S6
-status: review
+status: done
 owner: engineering-agent
 depends: [T026, T037, T038]
 branch: task/T060-T061
