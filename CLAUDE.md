@@ -16,6 +16,7 @@ See docs/ARCHITECTURE.md for the design and backlog/README.md for the task proto
 - `crates/wing-blocks`: WING processing blocks and alternate models
 - `crates/wing-engine`: graph, routing, busses, scheduling, metering, RT threading
 - `crates/wing-shm`: shared-memory ring layout shared with the C++ driver
+- `crates/wing-hostio`: host output bridge (CoreAudio HAL IO proc, SPSC ring, drift-compensating resampler, route config)
 - `apps/wing-sim`: daemon binary; `apps/wing-render`: offline renderer
 - `driver/` (C++ HAL plugin), `data/schema`, `fixtures/`, `docs/research` as per ARCHITECTURE.md
 

@@ -18,3 +18,7 @@ harness = false
 [[bench]]
 name = "input_filter_gate"
 harness = false
+
+[[bench]]
+name = "eq"
+harness = false
