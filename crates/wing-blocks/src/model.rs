@@ -380,6 +380,10 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "CHAMBER") => Box::new(crate::models::fx_reverb::chamber()),
         (BlockKind::Fx, "CONCERT") => Box::new(crate::models::fx_reverb::concert()),
         (BlockKind::Fx, "AMBI") => Box::new(crate::models::fx_reverb::ambi()),
+        (BlockKind::Fx, "GATED") => Box::new(crate::models::fx_reverb::special::Gated::new()),
+        (BlockKind::Fx, "REVERSE") => Box::new(crate::models::fx_reverb::special::Reverse::new()),
+        (BlockKind::Fx, "DEL/REV") => Box::new(crate::models::fx_reverb::special::DelRev::new()),
+        (BlockKind::Fx, "SHIMMER") => Box::new(crate::models::fx_reverb::special::Shimmer::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -541,6 +545,7 @@ mod tests {
             "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
             "ENHANCE", "EXCITER", "P-BASS", "SUB-M", "V-IMG", "TAPE",
             "HALL", "ROOM", "CHAMBER", "CONCERT", "AMBI",
+            "GATED", "REVERSE", "DEL/REV", "SHIMMER",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);

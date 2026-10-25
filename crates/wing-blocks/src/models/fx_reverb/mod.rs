@@ -27,6 +27,7 @@ pub mod concert;
 pub mod core;
 pub mod hall;
 pub mod room;
+pub mod special;
 
 use self::core::{Character, CoreParams, ReverbCore};
 use crate::model::{Model, ParamValue};
@@ -208,5 +209,7 @@ impl<const N: usize> Model for Reverb<N> {
     }
 }
 
+#[cfg(test)]
+mod special_tests;
 #[cfg(test)]
 mod tests;
