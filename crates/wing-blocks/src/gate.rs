@@ -1,42 +1,38 @@
 //! Standard gate-family models WING GATE (`GATE`) and WING DUCKER (`DUCK`) (models.md §3.1) with the gate
 //! side-chain `gatesc` (signal-flow.md §2: filter type/freq/Q, source, tap, key listen).
 //!
-//! Signal path (stereo-linked): key (self or external) -> side-chain filter -> peak detector (instant
-//! attack, [`DETECTOR_RELEASE_MS`] one-pole release, max of both sides) -> level in dB -> open/hold/release
-//! state machine -> gain in dB, slewed linearly in dB -> applied to both sides.
+//! Laws recovered from WING-Edit 3.3.4 (T03C: `gate_parchg/respf_xseries_gate|ducker`, see the T03C log):
+//! - Key filter: WING's `dynsc` biquads ([`crate::sidechain::key_filter_coeffs`]).
+//! - Detector: one-pole with a 40 Hz bilinear corner, `(1 - tan(40 pi/fs)) / (1 + tan(40 pi/fs))` (tau 3.98
+//!   ms). WING-Edit only posts the coefficient; it is used here as the release of an instant-attack peak
+//!   follower on `max(|L|, |R|)` **[I]**.
+//! - Gain law in the linear domain: open = 1; closed: GATE -> floor `10^(-range/20)` (0 = full mute when
+//!   `range` is at its last step, 60 dB = "oo"); 1:1.5..1:4 -> downward expander `(env/thr)^(r-1)` clamped to
+//!   the floor (i.e. `(r - 1) * (level - thr)` dB).
+//! - Ballistics (WING computes them per 8-sample block; applied per sample with the same time constants):
+//!   attack = one-pole with **10-90 % time = `att`** (`1 - exp(-2200 T / att)`; instant below 0.08 ms);
+//!   hold = `hld`; release: ratio GATE = **linear ramp of the linear gain**, full scale (1 -> 0) in `rel`;
+//!   expander ratios = one-pole with 10-90 % time `rel`.
+//! - DUCK: attenuates to `10^(-range/20)` while the key is above `thr`; the falling (ducking) one-pole uses
+//!   `att`, the rising (recovery) one-pole uses `rel` (10-90 % times), hold keeps it ducked.
+//! - ACCENT (`acc`): WING-Edit posts only `acc/50` (0..2) to the DSP; its meaning is not recoverable from
+//!   WING-Edit. Kept as threshold hysteresis `acc * [ACCENT_MAX_HYST_DB] / 100` **[unverified]**.
 //!
-//! GATE:
-//! - Opens when the key level exceeds `thr`; closes (after `hld`) once it falls below `thr - hysteresis`,
-//!   where hysteresis = `acc` (ACCENT 0..100 %) x [`ACCENT_MAX_HYST_DB`] (models.md: "acc = threshold
-//!   hysteresis until measured").
-//! - `ratio` `gate`: closed gain = `-range`. `1:1.5 .. 1:4`: downward expander, closed gain =
-//!   `(r - 1) * (level - thr)` clamped to `-range`.
-//! - Attack = time for the gain to traverse the full range upward (linear in dB, 0 = instant); release =
-//!   time to traverse the full range downward.
-//!
-//! DUCK: attenuates by `range` while the key is above `thr` (no hysteresis); attack = time to duck the full
-//! range, hold keeps it ducked after the key drops, release = time to recover.
-//!
-//! Range: 3 .. 60 dB; 60 dB is the "oo" end of the control (full mute): the internal floor is then
-//! [`MUTE_FLOOR_DB`] and the output is exactly zero once there.
-//!
-//! Parameter changes need no extra smoothing: gain only moves at the attack/release slew rates.
-//! The side-chain filter is a TPT SVF (safe under coefficient changes). Detector release, the accent law
-//! and the "time = full-range traverse" definition are assumptions to **verify** in T072.
+//! Parameter changes need no extra smoothing: the gain only moves at the attack/release rates.
 
-use wing_dsp::gain::{db_to_lin_fast, lin_to_db_fast};
-use wing_dsp::smooth::one_pole_coeff;
-use wing_dsp::svf::SvfMode;
-use wing_dsp::Svf;
+use crate::sidechain::{self, KeyFilterKind};
+use wing_dsp::gain::lin_to_db_fast;
 
-/// Detector release time constant (ms).
-pub const DETECTOR_RELEASE_MS: f64 = 10.0;
-/// Hysteresis at ACCENT = 100 %.
+/// Detector release time constant (ms): WING's 40 Hz one-pole, 1000 / (2 pi 40).
+pub const DETECTOR_RELEASE_MS: f64 = 3.978_873_6;
+/// Hysteresis at ACCENT = 100 % (unverified, see module doc).
 pub const ACCENT_MAX_HYST_DB: f32 = 10.0;
 /// `range` at or above this value means full mute ("oo dB").
 pub const RANGE_INF_DB: f32 = 60.0;
-/// Internal gain floor used for the "oo" range.
+/// Gain (dB) reported for full mute (WING's -144 dB silence sentinel is clamped to this for meters).
 pub const MUTE_FLOOR_DB: f32 = -120.0;
+/// WING's 10-90 % constant (`2200 ~ 1000 ln 9`, per ms).
+const TEN_NINETY: f64 = 2200.0;
 
 /// Gate-slot model handled by [`Gate`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -168,6 +164,45 @@ impl GateParams {
             self.range_db.max(3.0)
         }
     }
+
+    /// Closed/ducked gain floor (linear) as WING posts it: `10^(-range/20)`, 0 for "oo".
+    pub fn floor_lin(&self) -> f32 {
+        if self.range_db >= RANGE_INF_DB {
+            0.0
+        } else {
+            crate::wingcoef::db2lin(-self.range_db.max(3.0))
+        }
+    }
+
+    /// Static gain (dB) for a steady key level, WING-Edit's `respf` law: GATE: 0 at/above `thr`; below it
+    /// `-R` (ratio GATE) or `max((r-1)(level-thr), -R)` with `R = trunc(range)` (144 = oo at the last step).
+    /// DUCK: `-range` above `thr`, else 0.
+    pub fn static_gain_db(&self, level_db: f32) -> f32 {
+        match self.model {
+            GateModel::Gate => {
+                if level_db >= self.threshold_db {
+                    return 0.0;
+                }
+                let r = if self.range_db >= RANGE_INF_DB {
+                    144.0
+                } else {
+                    self.range_db.trunc()
+                };
+                let g = match self.ratio.expansion() {
+                    None => -144.0,
+                    Some(x) => (level_db - self.threshold_db) * (x - 1.0),
+                };
+                g.max(-r)
+            }
+            GateModel::Duck => {
+                if level_db > self.threshold_db {
+                    -self.range_db
+                } else {
+                    0.0
+                }
+            }
+        }
+    }
 }
 
 /// `gatesc.type`.
@@ -179,6 +214,19 @@ pub enum ScFilter {
     Hp12,
     Bp,
     Notch,
+}
+
+impl ScFilter {
+    /// The equivalent [`KeyFilterKind`] (same WING biquads for `gatesc` and `dynsc`).
+    pub fn kind(self) -> KeyFilterKind {
+        match self {
+            ScFilter::Off => KeyFilterKind::Off,
+            ScFilter::Lp12 => KeyFilterKind::Lp12,
+            ScFilter::Hp12 => KeyFilterKind::Hp12,
+            ScFilter::Bp => KeyFilterKind::Bp,
+            ScFilter::Notch => KeyFilterKind::Notch,
+        }
+    }
 }
 
 /// `gatesc.src`: the key source. The engine resolves the buffer and passes it to [`Gate::process`].
@@ -247,16 +295,21 @@ pub struct Gate {
     // Derived per-parameter values.
     thr: f32,
     thr_close: f32,
-    depth: f32,
-    up_rate: f32,
-    down_rate: f32,
+    floor: f32,
+    /// One-pole coefficient (fraction of the remaining distance per sample) for a rising gain.
+    up_c: f32,
+    /// Same for a falling gain (one-pole), or 0 when `down_lin` is used.
+    down_c: f32,
+    /// Linear-gain decrement per sample (GATE ratio release), 0 = one-pole.
+    down_lin: f32,
     hold_samples: u32,
     // State.
     /// Peak envelope (instant attack, one-pole release; holds exactly on a constant input).
     env: f32,
     env_rel: f32,
-    sc_filt: [Svf; 2],
-    gain_db: f32,
+    sc_filt: sidechain::KeyFilter,
+    /// Linear gain (f64 so slow one-poles reach their target).
+    gain: f64,
     engaged: bool,
     hold_ctr: u32,
     key_l: Vec<f32>,
@@ -270,12 +323,12 @@ impl Default for Gate {
     }
 }
 
-/// dB per sample to traverse `depth` dB in `ms`; 0 ms = instant.
-fn rate(depth: f32, ms: f32, fs: f64) -> f32 {
-    if ms <= 0.0 {
-        f32::INFINITY
+/// Per-sample one-pole step for a WING 10-90 % time `ms` (1 = instant).
+fn ten_ninety(ms: f32, fs: f64) -> f32 {
+    if (ms as f64) / 8.0 < 0.01 {
+        1.0
     } else {
-        (depth as f64 / (ms as f64 * 1e-3 * fs)) as f32
+        (1.0 - (-TEN_NINETY / (fs * ms as f64)).exp()) as f32
     }
 }
 
@@ -287,14 +340,15 @@ impl Gate {
             fs: 48_000.0,
             thr: 0.0,
             thr_close: 0.0,
-            depth: 0.0,
-            up_rate: 0.0,
-            down_rate: 0.0,
+            floor: 0.0,
+            up_c: 1.0,
+            down_c: 1.0,
+            down_lin: 0.0,
             hold_samples: 0,
             env: 0.0,
             env_rel: 0.0,
-            sc_filt: [Svf::default(); 2],
-            gain_db: 0.0,
+            sc_filt: sidechain::KeyFilter::default(),
+            gain: 1.0,
             engaged: false,
             hold_ctr: 0,
             key_l: Vec::new(),
@@ -311,7 +365,9 @@ impl Gate {
         let n = max_block.max(1);
         self.key_l = vec![0.0; n];
         self.key_r = vec![0.0; n];
-        self.env_rel = one_pole_coeff(DETECTOR_RELEASE_MS * 1e-3, sample_rate) as f32;
+        // WING: (1 - tanf(40 pi/fs)) / (1 + tanf(40 pi/fs)).
+        let t = (crate::wingcoef::Ctx::new(sample_rate).pi_over_fs() * 8.0 * 5.0).tan();
+        self.env_rel = (1.0 - t) / (1.0 + t);
         let (p, s) = (self.params, self.sc);
         self.set_params(&p);
         self.set_sidechain(&s);
@@ -321,19 +377,17 @@ impl Gate {
     /// Clear detector/filter state and return to the idle gain (GATE closed, DUCK released).
     pub fn reset(&mut self) {
         self.env = 0.0;
-        for f in &mut self.sc_filt {
-            f.reset();
-        }
+        self.sc_filt.reset();
         self.engaged = false;
         self.hold_ctr = 0;
-        self.gain_db = self.idle_gain();
+        self.gain = self.idle_gain();
         self.key_len = 0;
     }
 
-    fn idle_gain(&self) -> f32 {
+    fn idle_gain(&self) -> f64 {
         match self.params.model {
-            GateModel::Gate => -self.depth,
-            GateModel::Duck => 0.0,
+            GateModel::Gate => self.floor as f64,
+            GateModel::Duck => 1.0,
         }
     }
 
@@ -351,38 +405,48 @@ impl Gate {
         self.params = p;
         self.thr = p.threshold_db;
         self.thr_close = p.threshold_db - p.hysteresis_db();
-        self.depth = p.depth_db();
-        let (a, r) = (
-            rate(self.depth, p.attack_ms, self.fs),
-            rate(self.depth, p.release_ms, self.fs),
-        );
-        (self.up_rate, self.down_rate) = match p.model {
-            GateModel::Gate => (a, r),
-            GateModel::Duck => (r, a),
-        };
-        self.hold_samples = (p.hold_ms as f64 * 1e-3 * self.fs).round() as u32;
-        self.gain_db = self.gain_db.clamp(-self.depth, 0.0);
+        self.floor = p.floor_lin();
+        let fs = self.fs;
+        match p.model {
+            GateModel::Gate => {
+                self.up_c = ten_ninety(p.attack_ms, fs);
+                if p.ratio == GateRatio::Gate {
+                    self.down_c = 0.0;
+                    self.down_lin = (1000.0 / (fs * p.release_ms as f64)) as f32;
+                } else {
+                    self.down_c = ten_ninety(p.release_ms, fs);
+                    self.down_lin = 0.0;
+                }
+            }
+            GateModel::Duck => {
+                self.up_c = ten_ninety(p.release_ms, fs);
+                self.down_c = ten_ninety(p.attack_ms, fs);
+                self.down_lin = 0.0;
+            }
+        }
+        self.hold_samples = (p.hold_ms as f64 * 1e-3 * fs).round() as u32;
+        self.gain = self.gain.clamp(self.floor as f64, 1.0);
     }
 
     /// Update side-chain parameters (RT-safe).
     pub fn set_sidechain(&mut self, s: &SidechainParams) {
         let s = s.clamped();
         self.sc = s;
-        let mode = match s.filter {
-            ScFilter::Off => return,
-            ScFilter::Lp12 => SvfMode::Lowpass,
-            ScFilter::Hp12 => SvfMode::Highpass,
-            ScFilter::Bp => SvfMode::Bandpass,
-            ScFilter::Notch => SvfMode::Notch,
-        };
-        for f in &mut self.sc_filt {
-            f.set(mode, self.fs, s.freq as f64, s.q as f64, 0.0);
-        }
+        self.sc_filt.set(s.filter.kind(), s.freq, s.q, self.fs);
     }
 
     /// Current gain in dB (0 = open / not ducking). For gain-reduction metering.
     pub fn gain_db(&self) -> f32 {
-        self.gain_db
+        if self.gain <= 0.0 {
+            MUTE_FLOOR_DB
+        } else {
+            ((20.0 * self.gain.log10()) as f32).max(MUTE_FLOOR_DB)
+        }
+    }
+
+    /// Current linear gain.
+    pub fn gain_lin(&self) -> f32 {
+        self.gain as f32
     }
 
     /// GATE: open (or holding). DUCK: ducking (or holding).
@@ -429,19 +493,18 @@ impl Gate {
         self.key_l[..n].copy_from_slice(src_l);
         self.key_r[..n].copy_from_slice(src_r);
         self.key_len = n;
-        if self.sc.filter != ScFilter::Off {
-            self.sc_filt[0].process_block(&mut self.key_l[..n]);
-            self.sc_filt[1].process_block(&mut self.key_r[..n]);
-            for f in &mut self.sc_filt {
-                f.flush_denormals();
-            }
+        if self.sc_filt.is_on() {
+            self.sc_filt.process_block(0, &mut self.key_l[..n]);
+            self.sc_filt.process_block(1, &mut self.key_r[..n]);
+            self.sc_filt.flush_denormals();
         }
         let p = self.params;
         let expansion = match p.model {
             GateModel::Gate => p.ratio.expansion(),
             GateModel::Duck => None,
         };
-        let floor = -self.depth;
+        let floor = self.floor;
+        let thr_lin = crate::wingcoef::db2lin(self.thr);
         for i in 0..n {
             let k = self.key_l[i].abs().max(self.key_r[i].abs());
             self.env = if k >= self.env {
@@ -466,11 +529,17 @@ impl Gate {
             let target = match p.model {
                 GateModel::Gate => {
                     if self.engaged {
-                        0.0
+                        1.0
                     } else {
                         match expansion {
                             None => floor,
-                            Some(r) => ((r - 1.0) * (level - self.thr)).clamp(floor, 0.0),
+                            Some(r) => {
+                                if thr_lin > 0.0 {
+                                    (self.env / thr_lin).powf(r - 1.0).clamp(floor, 1.0)
+                                } else {
+                                    1.0
+                                }
+                            }
                         }
                     }
                 }
@@ -478,21 +547,22 @@ impl Gate {
                     if self.engaged {
                         floor
                     } else {
-                        0.0
+                        1.0
                     }
                 }
             };
-            let g = self.gain_db;
-            self.gain_db = if target > g {
-                (g + self.up_rate).min(target)
+            let (g, target) = (self.gain, target as f64);
+            self.gain = if target > g {
+                g + (target - g) * self.up_c as f64
+            } else if self.down_lin > 0.0 {
+                (g - self.down_lin as f64).max(target)
             } else {
-                (g - self.down_rate).max(target)
+                g + (target - g) * self.down_c as f64
             };
-            let lin = if self.gain_db <= MUTE_FLOOR_DB + 1e-3 {
-                0.0
-            } else {
-                db_to_lin_fast(self.gain_db)
-            };
+            if (target - self.gain).abs() < 1e-9 {
+                self.gain = target;
+            }
+            let lin = self.gain as f32;
             left[i] *= lin;
             right[i] *= lin;
         }
@@ -629,13 +699,23 @@ mod tests {
             release_ms: rel as f32,
             ..GateParams::gate_default()
         });
-        // Attack: closed (-40) -> open (0) linearly in dB over `att`.
-        let t = trace(&mut g, Some(-20.0), ms(200.0) as usize);
-        let open_at = t.iter().position(|&x| x == 0.0).unwrap() as f64;
-        assert!((open_at - ms(att)).abs() <= 2.0, "attack {open_at}");
-        let mid = t[ms(att / 2.0) as usize];
-        assert!((mid + 20.0).abs() < 0.2, "attack midpoint {mid}");
-        // Key off: the detector falls from -20 dB to thr (-40) in tau*ln(10); then hold; then release.
+        // Attack: closed (floor 0.01) -> open (1) as a one-pole in linear gain, 10-90 % time = `att`.
+        let lin = |db: f32| 10f32.powf(db / 20.0);
+        let t: Vec<f32> = trace(&mut g, Some(-20.0), ms(200.0) as usize)
+            .into_iter()
+            .map(lin)
+            .collect();
+        let (lo, hi) = (0.01 + 0.1 * 0.99, 0.01 + 0.9 * 0.99);
+        let t10 = t.iter().position(|&x| x >= lo).unwrap() as f64;
+        let t90 = t.iter().position(|&x| x >= hi).unwrap() as f64;
+        assert!(
+            (t90 - t10 - ms(att)).abs() <= 2.0,
+            "attack 10-90 {}",
+            t90 - t10
+        );
+        assert!((t.last().unwrap() - 1.0).abs() < 1e-6, "fully open");
+        // Key off: the detector falls from -20 dB to thr (-40) in tau*ln(10); then hold; then a linear ramp of
+        // the linear gain, 1 -> 0 in `rel` (stopping at the floor).
         let fall = DETECTOR_RELEASE_MS * (10f64).ln();
         let t = trace(&mut g, None, ms(400.0) as usize);
         let rel_start = t.iter().position(|&x| x < 0.0).unwrap() as f64;
@@ -644,12 +724,14 @@ mod tests {
             "release start {rel_start} vs {}",
             ms(fall + hld)
         );
-        let closed_at = t.iter().position(|&x| x <= -40.0).unwrap() as f64;
+        let closed_at = t.iter().position(|&x| x <= -40.0 + 1e-3).unwrap() as f64;
         assert!(
-            (closed_at - rel_start - ms(rel)).abs() <= 2.0,
+            (closed_at - rel_start - ms(rel * 0.99)).abs() <= 2.0,
             "release {}",
             closed_at - rel_start
         );
+        let mid = 10f32.powf(t[(rel_start + ms(rel / 2.0)) as usize] / 20.0);
+        assert!((mid - 0.5).abs() < 0.01, "linear ramp midpoint {mid}");
     }
 
     #[test]
@@ -682,16 +764,16 @@ mod tests {
             out
         };
         assert!((run(&mut g, None, 100) - 1.0).abs() < 1e-6);
-        // Key above thr (-20): ducks by range (20 dB) within attack.
-        run(&mut g, Some(-10.0), (ms(20.0) as usize).div_ceil(n) + 1);
+        // Key above thr (-20): ducks by range (20 dB), one-pole with 10-90 % time = attack.
+        run(&mut g, Some(-10.0), (ms(200.0) as usize).div_ceil(n));
         assert!((g.gain_db() + 20.0).abs() < 1e-3, "{}", g.gain_db());
         let y = run(&mut g, Some(-10.0), 10);
         assert!((y - 0.1).abs() < 1e-4);
         // Key off: held, then released over 200 ms.
         run(&mut g, None, (ms(30.0) as usize) / n);
         assert!(g.gain_db() <= -19.99, "held: {}", g.gain_db());
-        run(&mut g, None, (ms(400.0) as usize) / n);
-        assert_eq!(g.gain_db(), 0.0);
+        run(&mut g, None, (ms(2000.0) as usize) / n);
+        assert!(g.gain_db() > -1e-3, "recovered: {}", g.gain_db());
         // SELF source ignores the external key.
         g.set_sidechain(&SidechainParams::default());
         let mut l = vec![db_to_lin(-40.0); n];

@@ -6,6 +6,8 @@
 pub mod filter;
 pub mod gate;
 pub mod input;
+pub mod sidechain;
+pub mod wingcoef;
 
 pub mod dynamics;
 pub mod eq;

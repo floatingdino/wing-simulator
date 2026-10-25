@@ -29,6 +29,10 @@ impl RtModel for Box<dyn Model> {
         Model::commit(&mut **self);
     }
 
+    fn set_gain_scale(&mut self, mix_pct: f32) {
+        Model::set_gain_scale(&mut **self, mix_pct);
+    }
+
     fn reset(&mut self) {
         Model::reset(&mut **self);
     }
