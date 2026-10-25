@@ -2,7 +2,7 @@
 id: T047
 title: Vintage console gates: E88, 9000G, D241G
 stage: S4
-status: review
+status: done
 owner: agent-T047
 depends: [T045, T032]
 branch: task/T047
