@@ -79,8 +79,8 @@ impl Default for AudioOptions {
 }
 
 /// Process every complete engine block the driver has made available: USB In → console →
-/// USB Out → commit. Partial blocks wait for the next driver cycle. Returns frames processed.
-/// RT-safe.
+/// USB Out → commit, then stamp the host bridges once for the whole burst (T027). Partial
+/// blocks wait for the next driver cycle. Returns frames processed. RT-safe.
 #[inline]
 pub fn service(link: &mut DaemonLink, console: &mut Console) -> usize {
     let block = console.block();
@@ -97,8 +97,19 @@ pub fn service(link: &mut DaemonLink, console: &mut Console) -> usize {
         link.commit(&b);
         done += b.frames;
     }
+    if done > 0 {
+        let burst = link.header().input_frames.load(Relaxed) as usize;
+        console.end_burst(wing_hostio::host_time_ns(), burst.max(block));
+    }
     done
 }
+
+/// Engine cycles run on silence when the driver starts a new IO epoch (DAW pressed play on
+/// its device), before its first buffer arrives: after an idle period the workers sleep and
+/// caches are cold, and the first bursts would otherwise run late (T027 startup underruns).
+pub const EPOCH_WARM_UP_CYCLES: usize = 8;
+/// Engine cycles run on silence before a session's RT thread starts.
+pub const SESSION_WARM_UP_CYCLES: usize = 32;
 
 /// Why an RT session ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,6 +152,30 @@ pub fn rt_loop(
         .and_then(|w| WorkgroupMembership::join(w.raw()).ok());
     shared.joined_workgroup.store(membership.is_some(), Relaxed);
     let mut policy_frames = 0u64;
+    // Real-time policy before the first driver cycle (not lazily on its wake-up), sized for
+    // the driver's current buffer (or 512 frames while it is idle).
+    let mut apply_policy = |buf: u64| {
+        if rt && buf != policy_frames {
+            // One syscall per driver buffer-size change (like CoreAudio's own IO threads).
+            policy_frames = buf;
+            let period_ns = buf * 1_000_000_000 / fs as u64;
+            let st = match set_current_thread_time_constraint(TimeConstraint::for_period(period_ns))
+            {
+                Ok(()) => 1,
+                Err(wing_engine::RtError::Policy(k)) => 2 + k as u32 as u64,
+                Err(_) => 2,
+            };
+            shared.policy.store(st, Relaxed);
+            shared.policy_frames.store(buf, Relaxed);
+        }
+    };
+    let initial = link.header().input_frames.load(Relaxed) as u64;
+    apply_policy(if initial == 0 {
+        512
+    } else {
+        initial.max(block)
+    });
+    let mut epoch = link.header().io_epoch.load(Relaxed);
     let exit = loop {
         if shared.stop.load(Relaxed) {
             break Exit::Stopped;
@@ -154,17 +189,14 @@ pub fn rt_loop(
         }
         let buf = (h.input_frames.load(Relaxed) as u64).max(block);
         let period_ns = buf * 1_000_000_000 / fs as u64;
-        if rt && buf != policy_frames {
-            // One syscall per driver buffer-size change (like CoreAudio's own IO threads).
-            policy_frames = buf;
-            let st = match set_current_thread_time_constraint(TimeConstraint::for_period(period_ns))
-            {
-                Ok(()) => 1,
-                Err(wing_engine::RtError::Policy(k)) => 2 + k as u32 as u64,
-                Err(_) => 2,
-            };
-            shared.policy.store(st, Relaxed);
-            shared.policy_frames.store(buf, Relaxed);
+        apply_policy(buf);
+        let e = h.io_epoch.load(Relaxed);
+        if e != epoch {
+            epoch = e;
+            // Driver IO (re)started: warm up while its first buffer is still on the way.
+            if h.to_daemon.write_time.load(Relaxed) == 0 {
+                console.warm_up(EPOCH_WARM_UP_CYCLES);
+            }
         }
         let interval = membership.is_some()
             && wi.as_ref().is_some_and(|w| {
@@ -403,10 +435,14 @@ impl Control {
         }
     }
 
+    /// Initial producer burst for the host bridges: the driver's IO buffer (512 while it is
+    /// idle). The bridges follow the actual buffer at run time (`Console::end_burst`).
     fn burst(&self, link: &DaemonLink) -> usize {
-        (link.header().input_frames.load(Relaxed) as usize)
-            .max(512)
-            .max(self.opts.console.block)
+        match link.header().input_frames.load(Relaxed) as usize {
+            0 => 512,
+            n => n,
+        }
+        .max(self.opts.console.block)
     }
 
     fn build_console(&mut self, rate: u32, burst: usize) -> Result<(Console, HostOutputs), String> {
@@ -421,7 +457,7 @@ impl Control {
         for e in errs {
             (self.log)(&format!("audio: {e}"));
         }
-        let console = Console::build(
+        let mut console = Console::build(
             cfg.clone(),
             &self.store,
             &mut self.routing,
@@ -429,10 +465,13 @@ impl Control {
             feeds,
             self.stats.clone(),
         )?;
+        // Prime: fault in buffers and wake the workers before the first driver cycle.
+        let built_ms = t0.elapsed().as_secs_f64() * 1e3;
+        console.warm_up(SESSION_WARM_UP_CYCLES);
         (self.log)(&format!(
-            "audio: console built in {:.0} ms: {rate} Hz, block {}, {} workers{}, {} host \
-             bridge(s)",
-            t0.elapsed().as_secs_f64() * 1e3,
+            "audio: console built in {built_ms:.0} ms (+{:.0} ms warm-up): {rate} Hz, block {}, \
+             {} workers{}, {} host bridge(s)",
+            t0.elapsed().as_secs_f64() * 1e3 - built_ms,
             cfg.block,
             console.engine().num_workers(),
             if cfg.workgroup.is_some() {
@@ -575,6 +614,12 @@ impl Control {
             1 => format!("rt ok ({} fr)", s.shared.policy_frames.load(Relaxed)),
             n => format!("rt FAILED ({})", n as i64 - 2),
         };
+        // Daemon share of the end-to-end latency: processing one driver buffer's worth of
+        // engine blocks (median cycle time).
+        let burst = (s.watch.header().input_frames.load(Relaxed) as u64)
+            .max(self.opts.console.block as u64);
+        let upstream_ms =
+            d.percentile_ns(0.5) as f64 * 1e-6 * burst as f64 / self.opts.console.block as f64;
         let under = st.from_daemon.underruns.wrapping_sub(s.base_underruns);
         let over = st.to_daemon.overruns.wrapping_sub(s.base_overruns);
         format!(
@@ -592,7 +637,7 @@ impl Control {
             } else {
                 ""
             },
-            s.hosts.status(s.rate)
+            s.hosts.status(s.rate, upstream_ms)
         )
     }
 }

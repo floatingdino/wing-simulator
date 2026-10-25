@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use wing_hostio::{
     bridge, BridgeConfig, BridgeConsumer, BridgeProducer, BridgeStats, HostIoConfig, Route,
-    TapChannel,
+    StatsSnapshot, TapChannel,
 };
 
 /// Device used by the default route when present.
@@ -191,22 +191,15 @@ impl HostOutputs {
         (Self { outputs }, feeds, errors)
     }
 
-    /// `name: state fill corr underruns` per bridge.
-    pub fn status(&self, rate: u32) -> String {
+    /// `name: state fill/target, end-to-end latency, correction (drift), counters` per bridge.
+    /// `upstream_ms`: time from the driver handing over a buffer to the daemon pushing it into
+    /// the bridges (the daemon's processing of one burst), added to each bridge's own latency
+    /// to give the end-to-end latency DAW out -> device out (`e2e`).
+    pub fn status(&self, rate: u32, upstream_ms: f64) -> String {
         let v: Vec<String> = self
             .outputs
             .iter()
-            .map(|(name, st, _)| {
-                let s = st.snapshot();
-                format!(
-                    "{name:?} {:?} fill {:.1}ms corr {:+.1}ppm underruns {} resyncs {}",
-                    s.state,
-                    s.fill_ms(rate as f64),
-                    s.correction_ppm,
-                    s.underruns,
-                    s.resyncs
-                )
-            })
+            .map(|(name, st, _)| bridge_status(name, &st.snapshot(), rate, upstream_ms))
             .collect();
         if v.is_empty() {
             "bridges: none".into()
@@ -214,6 +207,26 @@ impl HostOutputs {
             format!("bridges: {}", v.join("; "))
         }
     }
+}
+
+/// One bridge's status (see [`HostOutputs::status`]).
+pub fn bridge_status(name: &str, s: &StatsSnapshot, rate: u32, upstream_ms: f64) -> String {
+    let fs = rate as f64;
+    let e2e = match s.latency_ms(fs) {
+        Some(l) => format!("{:.1}ms", l + upstream_ms),
+        None => "-".into(),
+    };
+    format!(
+        "{name:?} {:?} fill {:.1}/{:.1}ms e2e {e2e} corr {:+.1}ppm (drift {:+.1}) underruns {} \
+         resyncs {}",
+        s.state,
+        s.fill_ms(fs),
+        s.target_frames / fs * 1e3,
+        s.correction_ppm,
+        s.drift_ppm,
+        s.underruns,
+        s.resyncs
+    )
 }
 
 #[cfg(test)]
@@ -236,5 +249,32 @@ mod tests {
         assert!(HostIoSetting::Off.resolve().0.is_none());
         let ex = HostIoSetting::Config(HostIoConfig::example());
         assert!(ex.resolve().1.contains("mon/1"));
+    }
+
+    #[test]
+    fn status_reports_end_to_end_latency() {
+        let p = plan(
+            &HostIoConfig {
+                routes: vec![Route::parse(DEFAULT_ROUTE).unwrap()],
+                ..HostIoConfig::default()
+            },
+            48_000,
+            512,
+        )
+        .unwrap()
+        .pop()
+        .unwrap();
+        let mut snap = p.producer.stats().snapshot();
+        let line = bridge_status("dev", &snap, 48_000, 1.0);
+        assert!(line.contains("Stopped") && line.contains("e2e -"), "{line}");
+        snap.state = wing_hostio::BridgeState::Running;
+        snap.fill_frames = 1008.0;
+        snap.target_frames = 1008.0;
+        snap.burst_frames = 512;
+        snap.resampler_frames = 0.0;
+        snap.output_latency_s = 0.012;
+        // (1008 - 512) / 48 = 10.333 ms + 12 ms + 1 ms upstream
+        let line = bridge_status("dev", &snap, 48_000, 1.0);
+        assert!(line.contains("fill 21.0/21.0ms e2e 23.3ms"), "{line}");
     }
 }

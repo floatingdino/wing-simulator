@@ -243,17 +243,44 @@ impl Console {
             output(ch, self.engine.port(Port::node(usb, ch as u32)));
         }
         if !self.feeds.is_empty() {
-            let now = wing_hostio::host_time_ns();
+            // Unstamped: the burst is stamped once by `end_burst` (T027).
             let n = self.cfg.block;
             let (engine, silence) = (&self.engine, &*self.silence);
             for f in &mut self.feeds {
                 let ports = &f.ports;
-                f.producer.push_with(n, now, |i| match ports[i] {
+                f.producer.push_with(n, 0, |i| match ports[i] {
                     Some(p) => engine.port(p),
                     None => silence,
                 });
             }
         }
         self.stats.record(t0.elapsed().as_nanos() as u64);
+    }
+
+    /// End of a burst of cycles (everything one driver IO cycle made available): stamp the
+    /// host bridges' producer position with the host time `now_ns`
+    /// ([`wing_hostio::host_time_ns`]) and report the driver IO buffer `burst_frames`, from
+    /// which the bridges derive their latency target. RT-safe.
+    #[inline]
+    pub fn end_burst(&mut self, now_ns: u64, burst_frames: usize) {
+        if !self.feeds.is_empty() {
+            let now = now_ns;
+            for f in &mut self.feeds {
+                f.producer.end_burst(now, burst_frames);
+            }
+        }
+    }
+
+    /// Run `cycles` engine cycles on silence without touching the driver or the host bridges
+    /// and without recording cycle statistics: faults in buffers, warms caches and wakes the
+    /// workers before real-time work arrives (session start, driver IO start). RT-safe.
+    pub fn warm_up(&mut self, cycles: usize) {
+        for _ in 0..cycles {
+            self.pipeline.apply(&mut self.engine);
+            for ch in 0..USB_CHANNELS {
+                self.engine.external_mut(ch).fill(0.0);
+            }
+            self.engine.process_cycle();
+        }
     }
 }
