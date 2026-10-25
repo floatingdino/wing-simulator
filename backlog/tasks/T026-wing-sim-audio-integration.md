@@ -2,7 +2,7 @@
 id: T026
 title: wing-sim audio integration (shm -> engine -> USB outs + host bridge)
 stage: S2
-status: review
+status: done
 owner: agent-T026
 depends: [T020, T022, T023, T024, T03A, T035]
 branch: task/T026
