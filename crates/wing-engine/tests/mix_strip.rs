@@ -179,12 +179,22 @@ fn process_order_and_bypass() {
     let t = m.take_telemetry();
     let p = |k: MixTap| t.tap_peak[k as usize];
     let trim = 10f32.powf(6.0 / 20.0);
-    assert!((p(MixTap::In) / (0.1 * trim) - 1.0).abs() < 0.02, "IN {}", p(MixTap::In));
+    assert!(
+        (p(MixTap::In) / (0.1 * trim) - 1.0).abs() < 0.02,
+        "IN {}",
+        p(MixTap::In)
+    );
     assert!((p(MixTap::Ins1) / p(MixTap::In) - 2.0).abs() < 1e-4, "INS1");
     assert_eq!(p(MixTap::Eq), p(MixTap::Ins1), "EQ off is bypassed");
-    assert!(p(MixTap::Dyn) < p(MixTap::Eq) * 0.8, "dyn after Ins1 compresses");
+    assert!(
+        p(MixTap::Dyn) < p(MixTap::Eq) * 0.8,
+        "dyn after Ins1 compresses"
+    );
     assert!(t.dyn_gr_db > 1.0);
-    assert!((p(MixTap::Pfl) / p(MixTap::Dyn) - 0.5).abs() < 1e-4, "Ins2 after dyn");
+    assert!(
+        (p(MixTap::Pfl) / p(MixTap::Dyn) - 0.5).abs() < 1e-4,
+        "Ins2 after dyn"
+    );
 
     // polarity is inverted
     let (mut l, mut r) = (x.clone(), x.clone());
@@ -253,7 +263,11 @@ fn output_delay_accuracy() {
     // M: 3.43 m at 343 m/s = 10 ms
     let y = impulse_delay(0, 3.43);
     let s: f32 = y[488..493].iter().sum();
-    assert!((s - 1.0).abs() < 1e-4 && y[490] > 0.999, "{:?}", &y[488..493]);
+    assert!(
+        (s - 1.0).abs() < 1e-4 && y[490] > 0.999,
+        "{:?}",
+        &y[488..493]
+    );
     // FT: 10 ft = 3.048 m = 426.53 samples (linear interpolation between 426 and 427)
     let d = 10.0 * 0.3048 / 343.0 * FS;
     let y = impulse_delay(1, 10.0);

@@ -55,11 +55,11 @@ pub mod strip;
 
 pub use build::{bind_mix_params, build_mix_graph, bus_tiers, MixError, MixGraph, MixNodes};
 pub use law::PanLaw;
-pub use strip::{bind_mix_strip, MixStrip, MixStripTelemetry, MixTap};
 pub use nodes::{
     InputSignal, InputStripNode, MixSignal, MixStripNode, NoProcessing, SendMode, SendParams,
     SlotKind, SlotSpec, StripHook, INPUT_OUTPUTS, MIX_OUTPUTS,
 };
+pub use strip::{bind_mix_strip, MixStrip, MixStripTelemetry, MixTap};
 
 use crate::routing::Strip;
 

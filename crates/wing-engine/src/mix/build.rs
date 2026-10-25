@@ -14,8 +14,8 @@ use crate::routing::{
 };
 
 use super::nodes::{
-    InputSignal, InputStripNode, MixSignal, MixStripNode, SlotKind, SlotSpec,
-    INPUT_OUTPUTS, MIX_OUTPUTS,
+    InputSignal, InputStripNode, MixSignal, MixStripNode, SlotKind, SlotSpec, INPUT_OUTPUTS,
+    MIX_OUTPUTS,
 };
 use super::strip::{bind_mix_strip, MixStrip};
 use super::{block, param, BusOrder, MixConfig};

@@ -4,7 +4,9 @@
 mod common;
 
 use common::rig::*;
-use wing_engine::mix::{bus_tiers, no_processing, BusOrder, InputSignal as I, MixConfig, MixSignal as M, PanLaw};
+use wing_engine::mix::{
+    bus_tiers, no_processing, BusOrder, InputSignal as I, MixConfig, MixSignal as M, PanLaw,
+};
 use wing_engine::routing::{Side, Strip};
 use wing_engine::Port;
 use wing_model::ParamStore;

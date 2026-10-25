@@ -96,9 +96,9 @@ fn mix_graph_is_allocation_free_on_rt_side() {
                 "mtx/4/in/set/inv",
                 "bus/1/preins/on",
             ]
-                .iter()
-                .map(|p| id(&store, p))
-                .collect();
+            .iter()
+            .map(|p| id(&store, p))
+            .collect();
             let mode = id(&store, "ch/4/send/4/mode");
             let bus_dyn = id(&store, "bus/9/dyn/mdl");
             let mtx_eq = id(&store, "mtx/4/eq/mdl");

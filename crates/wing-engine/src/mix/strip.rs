@@ -33,7 +33,9 @@ use crate::graph::NodeId;
 use crate::params::std_models::{block_kind, model_factory};
 use crate::params::strip::{ModelSlot, SLOT_LAYOUT};
 use crate::params::telemetry_kind as kind;
-use crate::params::{BindError, BlockLayout, ParamMapBuilder, ParamMsg, TelemetryWriter, TARGET_BASE};
+use crate::params::{
+    BindError, BlockLayout, ParamMapBuilder, ParamMsg, TelemetryWriter, TARGET_BASE,
+};
 use crate::routing::Strip;
 
 use super::law::{self, Ramp};
@@ -444,7 +446,11 @@ impl StripHook for MixStrip {
 
 /// Bind the processing blocks of `bus/N`, `main/N` or `mtx/N` to the [`MixStrip`] hook of `node`
 /// and register the node for telemetry.
-pub fn bind_mix_strip(b: &mut ParamMapBuilder, strip: Strip, node: NodeId) -> Result<(), BindError> {
+pub fn bind_mix_strip(
+    b: &mut ParamMapBuilder,
+    strip: Strip,
+    node: NodeId,
+) -> Result<(), BindError> {
     let p = match strip {
         Strip::Bus(n) => format!("bus/{n}"),
         Strip::Main(n) => format!("main/{n}"),

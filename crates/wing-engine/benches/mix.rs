@@ -3,6 +3,10 @@
 //!
 //! * `mix/public_*`: the PUBLIC.snap scene (channel EQ/dynamics, sends, bus->bus tiers) with every
 //!   input strip moved to a live USB input.
+//! * `mix/public_busproc_*`: PUBLIC.snap with every bus/main/matrix strip fully processing (T037:
+//!   trim, STD bus EQ with all bands, COMP, output delay on; EQ/dyn models are the scene's where
+//!   implemented, else STD/COMP).
+//! * `mix/mixstrip_all_on`: one bus/main/matrix [`MixStrip`] (all blocks on), one 64-sample block.
 //! * `mix/dense_*`: worst-case summing: every input strip sends to all 16 busses, 8 matrices and 4
 //!   mains, every bus to all mains and matrices, all faders open (factory strip processing).
 //!
@@ -12,9 +16,12 @@
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use wing_engine::mix::{build_mix_graph, MixConfig};
+use wing_engine::mix::strip::hook;
+use wing_engine::mix::{build_mix_graph, MixConfig, MixStrip};
+use wing_engine::params::{ParamMsg, TARGET_BASE};
 use wing_engine::params::{ParamPipeline, PipelineConfig};
 use wing_engine::routing::RoutingControl;
+use wing_engine::routing::Strip;
 use wing_engine::{Engine, EngineConfig};
 use wing_model::{ParamStore, Snapshot, Value};
 
@@ -49,6 +56,31 @@ fn public() -> ParamStore {
     let text = std::fs::read_to_string(PUBLIC_SNAP).unwrap();
     Snapshot::load(&store, &text).unwrap();
     connect_all(&store);
+    store
+}
+
+/// PUBLIC.snap with all bus/main/matrix processing on.
+fn public_busproc() -> ParamStore {
+    let store = public();
+    let strips = (1..=16)
+        .map(|n| format!("bus/{n}"))
+        .chain((1..=4).map(|n| format!("main/{n}")))
+        .chain((1..=8).map(|n| format!("mtx/{n}")));
+    for p in strips {
+        sett(&store, &format!("{p}/eq/mdl"), "STD");
+        sett(&store, &format!("{p}/dyn/mdl"), "COMP");
+        for k in ["eq/on", "dyn/on", "dly/on"] {
+            set(&store, &format!("{p}/{k}"), Value::Int(1));
+        }
+        set(&store, &format!("{p}/in/set/trim"), Value::Float(-1.0));
+        for b in [1, 5, 8, 11, 14, 17, 20, 23] {
+            set(&store, &format!("{p}/eq/{b}"), Value::Float(2.0));
+        }
+        set(&store, &format!("{p}/dyn/1"), Value::Float(-30.0));
+        sett(&store, &format!("{p}/dly/mode"), "MS");
+        set(&store, &format!("{p}/dly/dly"), Value::Float(12.5));
+        set(&store, &format!("{p}/fdr"), Value::Float(0.0));
+    }
     store
 }
 
@@ -130,7 +162,11 @@ fn engine(store: &ParamStore, workers: Option<usize>) -> (Engine, RoutingControl
 
 fn bench(c: &mut Criterion) {
     type Scene = fn() -> ParamStore;
-    let scenes: [(&str, Scene); 2] = [("public", public), ("dense", dense)];
+    let scenes: [(&str, Scene); 3] = [
+        ("public", public),
+        ("public_busproc", public_busproc),
+        ("dense", dense),
+    ];
     for (name, scene) in scenes {
         let store = scene();
         let (mut e, _r) = engine(&store, None);
@@ -147,5 +183,48 @@ fn bench(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench);
+fn bench_mix_strip(c: &mut Criterion) {
+    let mut m = MixStrip::new(Strip::Main(1), 48_000.0, 64);
+    let set = |m: &mut MixStrip, block, param, value| {
+        m.apply(&ParamMsg::Set {
+            block,
+            param,
+            value,
+        })
+    };
+    m.apply(&ParamMsg::Model {
+        block: hook::EQ,
+        model: 0,
+    });
+    m.apply(&ParamMsg::Model {
+        block: hook::DYN,
+        model: 13,
+    });
+    m.apply(&ParamMsg::Model {
+        block: hook::DLY,
+        model: 2,
+    });
+    set(&mut m, hook::INPUT, 0, -1.0);
+    for blk in [hook::EQ, hook::DYN, hook::DLY] {
+        set(&mut m, blk, 0, 1.0);
+    }
+    set(&mut m, hook::EQ, 1, 100.0);
+    set(&mut m, hook::DYN, 1, 100.0);
+    for b in [0u16, 4, 7, 10, 13, 16, 19, 22] {
+        set(&mut m, hook::EQ, TARGET_BASE + b, 2.0);
+    }
+    set(&mut m, hook::DYN, TARGET_BASE, -30.0);
+    set(&mut m, hook::DLY, TARGET_BASE, 12.5);
+    m.settle();
+    let mut l: Vec<f32> = (0..64).map(|i| (i as f32 * 0.05).sin() * 0.5).collect();
+    let mut r = l.clone();
+    c.bench_function("mix/mixstrip_all_on", |b| {
+        b.iter(|| {
+            m.process_pre(&mut l, &mut r);
+            m.process_out(&mut l, &mut r);
+        })
+    });
+}
+
+criterion_group!(benches, bench, bench_mix_strip);
 criterion_main!(benches);
