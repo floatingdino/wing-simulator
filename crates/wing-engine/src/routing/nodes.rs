@@ -8,7 +8,7 @@ use crate::graph::{
 use super::addr::{TapId, TAP_COUNT};
 use super::feedback::TapFeedback;
 use super::table::{
-    Feed, InputRoute, Leg, OscMode, RoutingTable, Width, INPUT_STRIPS, USB_CHANNELS,
+    Feed, InputRoute, Leg, OscMode, RoutingTable, Width, EXT_SLOTS, INPUT_STRIPS, USB_CHANNELS,
 };
 use super::RoutingReader;
 
@@ -135,8 +135,12 @@ impl Processor for Oscillators {
     }
 }
 
+/// Outputs of the [`InputRouter`]: 48 input strips x L/R, then the 16 EXT returns x L/R.
+pub const ROUTER_OUTPUTS: usize = (INPUT_STRIPS + EXT_SLOTS) * 2;
+
 /// Input router: inputs = USB In 1..48 then oscillators 1..2; outputs = 48 input strips x L/R
-/// (`2*i` / `2*i+1`, strips 0..40 = ch 1..40, 40..48 = aux 1..8).
+/// (`2*i` / `2*i+1`, strips 0..40 = ch 1..40, 40..48 = aux 1..8), then the external returns of FX slots
+/// 1..16 x L/R (`2*(48+k-1)` / `+1`, [`InputRouter::ext_port`]; silent unless the slot runs `EXT`).
 ///
 /// Mix-output and user-signal sources (feeds [`Feed::Tap`]/[`Feed::TapMono`]) are feedback
 /// paths: with a [`TapFeedback`] (see [`super::feedback`]) they read the previous cycle's tap
@@ -168,6 +172,11 @@ impl InputRouter {
             .map(Port::External)
             .chain((0..2).map(|k| Port::node(osc, k)))
             .collect()
+    }
+
+    /// Return port of FX slot `slot` (1..16), side `side` (0 = L, 1 = R).
+    pub fn ext_port(router: NodeId, slot: usize, side: usize) -> Port {
+        Port::node(router, ((INPUT_STRIPS + slot - 1) * 2 + side) as u32)
     }
 
     /// Output port of strip `i` (0..48), side `side` (0 = L, 1 = R).
@@ -223,9 +232,18 @@ impl Processor for InputRouter {
         let ins = io.inputs();
         let b = io.block_size();
         let outs = io.outputs();
-        for (i, pair) in outs.chunks_exact_mut(2 * b).take(INPUT_STRIPS).enumerate() {
+        for (i, pair) in outs
+            .chunks_exact_mut(2 * b)
+            .take(INPUT_STRIPS + EXT_SLOTS)
+            .enumerate()
+        {
             let (l, r) = pair.split_at_mut(b);
-            route_strip(t.input(i), &ins, self.feedback.as_ref(), l, r);
+            let route = if i < INPUT_STRIPS {
+                t.input(i)
+            } else {
+                t.ext(i - INPUT_STRIPS + 1)
+            };
+            route_strip(route, &ins, self.feedback.as_ref(), l, r);
         }
     }
 }
@@ -297,7 +315,7 @@ impl Processor for UsbOutRouter {
 pub struct IoNodes {
     /// Oscillators (2 outputs).
     pub osc: NodeId,
-    /// Input router (96 outputs, see [`InputRouter::port`]).
+    /// Input router ([`ROUTER_OUTPUTS`] outputs, see [`InputRouter::port`], [`InputRouter::ext_port`]).
     pub inputs: NodeId,
 }
 
@@ -331,7 +349,7 @@ fn add_input_stage_impl(
     };
     let inputs = g.add_node(
         "input-router",
-        (INPUT_STRIPS * 2) as u32,
+        ROUTER_OUTPUTS as u32,
         &InputRouter::inputs(osc),
         router,
     )?;

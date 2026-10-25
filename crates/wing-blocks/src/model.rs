@@ -30,6 +30,7 @@ use crate::models::dyn_eq::{DeEsser902, DynEq};
 use crate::models::dyn_special::{AutoRider, TransientDesigner, WarmthPre};
 use crate::models::eq_alt::{AltEq, AltKind};
 use crate::models::filter_tool::FilterToolModel;
+use crate::models::fx_strip::{ChannelStrip, ExternalLoop, StripKind};
 use crate::models::gate_vintage::{VintageGate, VintageGateKind};
 use crate::models::pse::{PseKind, SourceExtractor};
 use crate::std_models::{DynModel, GateModel, StdEqModel};
@@ -369,6 +370,12 @@ pub fn create_model(kind: BlockKind, id: &'static str) -> Box<dyn Model> {
         (BlockKind::Fx, "ROTARY") => Box::new(crate::models::fx_mod::Rotary::new()),
         (BlockKind::Fx, "PANNER") => Box::new(crate::models::fx_mod::Panner::new()),
         (BlockKind::Fx, "MOOD") => Box::new(crate::models::fx_mod::MoodFilter::new()),
+        (BlockKind::Fx, "*EVEN*") => Box::new(ChannelStrip::new(StripKind::Even)),
+        (BlockKind::Fx, "*SOUL*") => Box::new(ChannelStrip::new(StripKind::Soul)),
+        (BlockKind::Fx, "*VINTAGE*") => Box::new(ChannelStrip::new(StripKind::Vintage)),
+        (BlockKind::Fx, "*BUS*") => Box::new(ChannelStrip::new(StripKind::Bus)),
+        (BlockKind::Fx, "*MASTER*") => Box::new(ChannelStrip::new(StripKind::Master)),
+        (BlockKind::Fx, "EXT") => Box::new(ExternalLoop::new()),
         (BlockKind::FilterTool, "TILT") => Box::new(FilterToolModel::tilt()),
         (BlockKind::FilterTool, "MAX") => Box::new(FilterToolModel::maxer()),
         (BlockKind::FilterTool, "AP1") => Box::new(FilterToolModel::ap1()),
@@ -528,6 +535,7 @@ mod tests {
             "ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL",
             "ST-DL",
             "DIMCRS", "CHORUS", "FLANGER", "PHASER", "ROTARY", "PANNER", "MOOD",
+            "*EVEN*", "*SOUL*", "*VINTAGE*", "*BUS*", "*MASTER*", "EXT",
         ];
         for id in FX_IDS {
             let m = create_model(BlockKind::Fx, id);

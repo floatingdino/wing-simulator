@@ -23,8 +23,13 @@
 //!   Tempo / tap: the schema has no global tempo or tap key; time-based models carry their own `time` and
 //!   note `fact`or (ST-DL), so nothing global is bound.
 //! * **FX SEND legs** (`SEND` output group, 32 legs = 16 stereo): the signal entering each slot while it is
-//!   processed (silence otherwise), routable to any output (e.g. USB to process in a DAW; the EXT model's
-//!   return, `egrp/ein`, is T05C).
+//!   processed (silence otherwise), routable to any output (e.g. USB to process in a DAW).
+//! * **EXT returns** (T05C): a slot running the `EXT` model takes the external device's return from the
+//!   source its `egrp`/`ein`/`emode` name (resolved by the routing table, [`crate::routing::RoutingTable::ext`],
+//!   and the input router's EXT outputs). The [`FxRackNode`] captures the return legs at the end of a cycle
+//!   (its extra graph inputs, [`FxRackNode::with_returns`]) and the owning strip hands them to the model as
+//!   its side-chain key in the next cycle: like every re-input path the return arrives one block late
+//!   (the external loop has a round trip anyway). A slot whose EXT has no return source (OFF) gets no key.
 //! * **Automix** (channel `postins.mode` AUTO_X / AUTO_Y, weight `w`, groups enabled by `cfg/amix/x|y`):
 //!   Dugan-style gain sharing. Each member's level is a smoothed mean-square power `P_i` (5 ms attack,
 //!   100 ms release) weighted by `10^(w/10)`; its gain is `sqrt(Pw_i / sum_j Pw_j)` (constant total power:
@@ -66,7 +71,7 @@ use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
 use crate::params::std_models::model_factory;
 use crate::params::strip::{ModelSlot, RtModel};
 use crate::params::{BindError, BlockLayout, ParamMapBuilder, ParamMsg, TARGET_BASE};
-use crate::routing::{Strip, STRIP_COUNT};
+use crate::routing::{RoutingReader, Strip, STRIP_COUNT};
 
 /// Number of FX slots.
 pub const FX_SLOTS: usize = 16;
@@ -155,6 +160,11 @@ pub struct FxSlot {
     feed_r: Vec<f32>,
     feed_len: usize,
     fed: bool,
+    /// EXT return captured at the end of the previous cycle (valid when `ret_on`).
+    ret_l: Vec<f32>,
+    ret_r: Vec<f32>,
+    ret_len: usize,
+    ret_on: bool,
 }
 
 impl FxSlot {
@@ -180,6 +190,10 @@ impl FxSlot {
             feed_r: vec![0.0; b],
             feed_len: 0,
             fed: false,
+            ret_l: vec![0.0; b],
+            ret_r: vec![0.0; b],
+            ret_len: 0,
+            ret_on: false,
         }
     }
 
@@ -248,7 +262,33 @@ impl FxSlot {
             self.feed_len = n;
             self.fed = true;
         }
-        self.slot.process(l, r);
+        if self.ret_on && on {
+            self.slot.process_keyed(
+                l,
+                r,
+                Some((&self.ret_l[..self.ret_len], &self.ret_r[..self.ret_len])),
+            );
+        } else {
+            self.slot.process(l, r);
+        }
+    }
+
+    /// Store the EXT return of the cycle that just ended (`None` = no return source); the slot hands it to
+    /// the model in the next cycle. RT-safe.
+    pub fn set_return(&mut self, ret: Option<(&[f32], &[f32])>) {
+        match ret {
+            Some((a, b)) => {
+                let n = a.len().min(b.len()).min(self.ret_l.len());
+                self.ret_l[..n].copy_from_slice(&a[..n]);
+                self.ret_r[..n].copy_from_slice(&b[..n]);
+                self.ret_len = n;
+                self.ret_on = true;
+            }
+            None => {
+                self.ret_on = false;
+                self.ret_len = 0;
+            }
+        }
     }
 
     /// Input captured during the current cycle, if the slot ran.
@@ -422,6 +462,7 @@ impl FxRack {
     pub fn node(&self) -> FxRackNode {
         FxRackNode {
             shared: self.shared.clone(),
+            returns: None,
         }
     }
 
@@ -617,9 +658,18 @@ impl InsertHost for RackHost {
 /// blocks: slot `n` = block `n - 1` ([`FX_LAYOUT`]), [`block::AMIX`] ([`AMIX_LAYOUT`]).
 pub struct FxRackNode {
     shared: Arc<Shared>,
+    /// EXT returns: routing reader and the index of the first return input (slot k = L at `base + 2(k-1)`).
+    returns: Option<(RoutingReader, usize)>,
 }
 
 impl FxRackNode {
+    /// Capture EXT returns: graph inputs `base + 2(k-1)` / `+1` are the L / R return legs of slot `k`
+    /// ([`crate::routing::InputRouter::ext_port`]); `reader` says which slots have an active EXT.
+    pub fn with_returns(mut self, reader: RoutingReader, base: usize) -> Self {
+        self.returns = Some((reader, base));
+        self
+    }
+
     /// End-of-cycle work: publish nothing, just clear the SEND captures and sum the automix groups
     /// (used by [`Processor::process`]; tests driving strips without a graph call it directly).
     pub fn end_cycle(&mut self) {
@@ -648,6 +698,21 @@ impl FxRackNode {
 impl Processor for FxRackNode {
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
         let b = io.block_size();
+        if let Some((reader, base)) = self.returns.as_mut() {
+            reader.update();
+            let t = reader.get();
+            let ins = io.inputs();
+            for k in 0..FX_SLOTS {
+                // SAFETY: runs after every strip level (see SlotCell).
+                let slot = unsafe { self.shared.slot_mut(k) };
+                let i = *base + 2 * k;
+                if t.ext(k + 1).source().is_some() && i + 1 < ins.len() {
+                    slot.set_return(Some((ins.get(i), ins.get(i + 1))));
+                } else {
+                    slot.set_return(None);
+                }
+            }
+        }
         let n_out = io.num_outputs().min(SEND_OUTPUTS as usize);
         let out = io.outputs();
         for k in 0..FX_SLOTS {

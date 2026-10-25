@@ -12,5 +12,6 @@ pub mod eq_alt;
 pub mod filter_tool;
 pub mod fx_delay;
 pub mod fx_mod;
+pub mod fx_strip;
 pub mod gate_vintage;
 pub mod pse;

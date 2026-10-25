@@ -75,3 +75,7 @@ harness = false
 [[bench]]
 name = "fx_mod"
 harness = false
+
+[[bench]]
+name = "fx_strip"
+harness = false
