@@ -95,8 +95,9 @@ fn mix_latency(s: Strip) -> usize {
     MixStrip::new(s, 48_000.0, BLOCK).latency()
 }
 
-/// Strip latency once an insert whose slot has latency `ins` is engaged (every slot hosts the T05E enhancers,
-/// so slots carry their 46-sample oversampler latency; the strip's alignment pad absorbs it up to `natural`).
+/// Strip latency once an insert whose slot has latency `ins` is engaged. `ins` is always taken from
+/// `FxRack::slot_latency` (the max latency over the models the slot hosts, e.g. T05E oversamplers, the T05Q
+/// LIMITER look-ahead), never hard-coded; the strip's alignment pad absorbs it up to `natural`.
 fn input_latency_ins(ins: usize) -> usize {
     let mut s = ChannelStrip::channel(48_000.0, BLOCK);
     s.set_insert_latency(ins)

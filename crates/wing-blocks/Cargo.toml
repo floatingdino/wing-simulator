@@ -73,6 +73,10 @@ name = "fx_delay"
 harness = false
 
 [[bench]]
+name = "fx_eqdyn"
+harness = false
+
+[[bench]]
 name = "fx_mod"
 harness = false
 
