@@ -8,6 +8,8 @@ publish.workspace = true
 [dependencies]
 libc.workspace = true
 wing-model = { path = "../wing-model" }
+wing-blocks = { path = "../wing-blocks" }
+wing-dsp = { path = "../wing-dsp" }
 
 [dev-dependencies]
 criterion.workspace = true
@@ -19,4 +21,8 @@ harness = false
 
 [[bench]]
 name = "routing"
+harness = false
+
+[[bench]]
+name = "params"
 harness = false
