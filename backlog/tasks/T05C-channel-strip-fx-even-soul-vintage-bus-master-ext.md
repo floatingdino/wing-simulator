@@ -2,7 +2,7 @@
 id: T05C
 title: Channel-strip FX: *EVEN*, *SOUL*, *VINTAGE*, *BUS*, *MASTER* + EXT
 stage: S5
-status: review
+status: done
 owner: agent-T05C
 depends: [T050, T04G, T04C]
 branch: task/T05C
