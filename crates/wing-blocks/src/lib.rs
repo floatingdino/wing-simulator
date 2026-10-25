@@ -8,6 +8,7 @@ pub mod gate;
 pub mod input;
 
 pub mod dynamics;
+pub mod eq;
 
 #[cfg(test)]
 mod tests {
