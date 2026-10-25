@@ -120,6 +120,15 @@ pub trait Model: Send {
     /// [`Model::load_defaults`]; staged like `set_param`.
     fn set_gain_scale(&mut self, _mix_pct: f32) {}
 
+    /// True for a model with its own dry/wet parameter that *is* the block's MIX (WARM `wmix`, T085): the
+    /// hosting slot then does not apply its block-level `mix` on top (the blend happens once, in the model).
+    /// WING-Edit's legacy-scene upgrade writes the old WARM `mix` to both `wmix` and the 3.x block `mix`
+    /// (`gate.wmix = gate.mix`, the block key kept), so applying both would square every upgraded mix
+    /// (5 % -> 0.25 %). Default: false (the slot blends with `mix`).
+    fn owns_mix(&self) -> bool {
+        false
+    }
+
     /// Apply staged parameter changes now (block rate). Models that apply lazily may do nothing.
     fn commit(&mut self) {}
 

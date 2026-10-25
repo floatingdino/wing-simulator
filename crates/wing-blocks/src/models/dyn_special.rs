@@ -838,6 +838,11 @@ impl Model for WarmthPre {
         "WARM"
     }
 
+    /// `wmix` is WARM's MIX: the hosting slot does not blend with its block `mix` again (T085).
+    fn owns_mix(&self) -> bool {
+        true
+    }
+
     fn prepare(&mut self, sample_rate: f64, max_block: usize) {
         self.fs = sample_rate;
         self.max_block = max_block.max(1);

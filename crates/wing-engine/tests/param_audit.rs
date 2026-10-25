@@ -19,6 +19,11 @@
 //! * **repeatability / finiteness**: two renders at the same setting are bit-identical (`reset` clears every
 //!   state, else `NonDet`) and never contain NaN / inf (`NonFinite`).
 //!
+//! T085 adds, for the 32 models the gate and dynamics slots share: **slot parity** (each model hosted in
+//! `ch/1/gate` and in `ch/1/dyn`, every parameter written explicitly, defaults and range ends: bit-identical
+//! output) and the **block wrapper** of both slots (`gain` live, `mix` live, except for a model that owns its
+//! mix, WARM, where the block `mix` must have no effect), plus the user's exact ch 21 gate-slot WARM case.
+//!
 //! `make check` runs the sampled audit: binding + readback of every parameter of every group (no audio), and
 //! audio for every model of the channel groups and FX slot 1 on a rotating subset of parameters (range ends,
 //! short signal). `make check-full` adds the full sweep of every parameter of every group (`full_*`,
@@ -1046,4 +1051,213 @@ fn warm_drive_is_audible_through_the_pipeline() {
         d_def > -25.0,
         "drive 33 -> 125 changes the output by only {d_def:.1} dB"
     );
+}
+
+// ---- T085: gate slot vs dynamics slot, block wrapper ----------------------------------------------------
+
+/// A channel strip bound as `ch/<ch>` behind the real pipeline: apply `sets` (text, as WING-Edit's values
+/// arrive) in order, then render `secs` of the programme.
+fn ch_render(ch: u32, sets: &[(String, String)], secs: f64) -> Vec<f32> {
+    let store = ParamStore::new();
+    let mut b = ParamMapBuilder::new();
+    bind_channel_strip(&mut b, ch, NodeId(0)).unwrap();
+    let mut host = One(Host::Ch(Box::new(ChannelStrip::channel(FS, BLOCK))));
+    let mut pipe = ParamPipeline::new(&store, b.build(), PipelineConfig::default()).unwrap();
+    pipe.sync_all(&store, &mut host);
+    for (p, v) in sets {
+        let id = store.lookup(p).unwrap_or_else(|| panic!("{p}"));
+        store
+            .set_text(id, v, 0)
+            .unwrap_or_else(|e| panic!("{p} = {v}: {e:?}"));
+        while pipe.apply(&mut host).changes > 0 {}
+    }
+    host.0.settle();
+    let (xl, xr) = programme(secs);
+    let mut out = Vec::with_capacity(2 * xl.len());
+    let (mut l, mut r) = (vec![0.0f32; BLOCK], vec![0.0f32; BLOCK]);
+    for (a, c) in xl.chunks(BLOCK).zip(xr.chunks(BLOCK)) {
+        let n = a.len();
+        l[..n].copy_from_slice(a);
+        r[..n].copy_from_slice(c);
+        host.0.process(&mut l[..n], &mut r[..n]);
+        out.extend_from_slice(&l[..n]);
+        out.extend_from_slice(&r[..n]);
+    }
+    out
+}
+
+fn sets(v: &[(&str, &str)]) -> Vec<(String, String)> {
+    v.iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect()
+}
+
+/// T085 regression, the user's exact state and path: ch 21 (VOX2) with WARM in the *gate* slot as WING-Edit
+/// pushes it after its legacy-scene upgrade (`gate.wmix = gate.mix`, block `mix` kept: both 5 %), then the
+/// live session's sets `ch/21/gate/5` (MIX) = 100 % and `ch/21/gate/1` (DRIVE) 10 -> 125 %. Before the fix the
+/// slot blended WARM at the block's 5 % on top of `wmix`, so drive changed this programme by only -35 dB (a
+/// -18 dBFS 220 Hz tone by -49 dB: inaudible); now -9 dB, as with block mix 100 %.
+#[test]
+fn warm_in_gate_slot_drive_is_audible_with_upgraded_block_mix() {
+    let scene = [
+        ("ch/21/gate/mdl", "WARM"),
+        ("ch/21/gate/on", "1"),
+        ("ch/21/gate/mix", "5"),
+        ("ch/21/gate/gain", "0"),
+        ("ch/21/gate/1", "100"),
+        ("ch/21/gate/2", "100"),
+        ("ch/21/gate/3", "0.1"),
+        ("ch/21/gate/4", "0"),
+        ("ch/21/gate/5", "5"),
+    ];
+    let with = |slot: &str, extra: &[(&str, &str)]| {
+        let mut v: Vec<(String, String)> = sets(&scene)
+            .into_iter()
+            .chain(sets(extra))
+            .map(|(p, x)| (p.replace("/gate/", &format!("/{slot}/")), x))
+            .collect();
+        v.dedup();
+        ch_render(21, &v, 1.5)
+    };
+    for slot in ["gate", "dyn"] {
+        let lo = with(slot, &[("ch/21/gate/5", "100"), ("ch/21/gate/1", "10")]);
+        let hi = with(slot, &[("ch/21/gate/5", "100"), ("ch/21/gate/1", "125")]);
+        let d = rel_db(&lo, &hi);
+        assert!(
+            d > -20.0,
+            "{slot} WARM drive 10 -> 125 % changes the output by only {d:.1} dB"
+        );
+        // WARM's MIX (wmix) is the block MIX: one blend, not mix * wmix
+        let a = with(slot, &[]);
+        let b = with(slot, &[("ch/21/gate/mix", "100")]);
+        assert_eq!(
+            rel_db(&a, &b),
+            f64::NEG_INFINITY,
+            "{slot}: block mix applied on top of wmix"
+        );
+    }
+}
+
+/// Every dynamics model (all 32 of the shared gate/dyn table) hosted in the gate slot and in the dynamics
+/// slot, set through `ch/1/gate/*` resp. `ch/1/dyn/*`: the outputs are bit-identical at the model defaults and
+/// with each parameter at either range end (`stride` > 1: a rotating subset of the parameters). Every
+/// parameter is written explicitly in both slots: the factory scene's dyn values (e.g. COMP `rel` 150.33 ms)
+/// differ from the model's pardef defaults a freshly selected gate model gets (150 ms), which is state, not
+/// slot processing.
+fn slot_parity(stride: usize, secs: f64) {
+    let s = Schema::get();
+    let gate = s.groups().iter().find(|g| g.key == "ch/*/gate").unwrap();
+    let dynm = s.groups().iter().find(|g| g.key == "ch/*/dyn").unwrap();
+    let gm: Vec<_> = s.models(gate).iter().map(|m| m.name).collect();
+    let dm: Vec<_> = s.models(dynm).iter().map(|m| m.name).collect();
+    assert_eq!(gm, dm, "gate and dyn offer the same models");
+    assert_eq!(gm.len(), 32);
+    let tmp = ParamStore::new();
+    let mut bad = Vec::new();
+    for (mi, m) in s.models(gate).iter().enumerate() {
+        // (target, value text) settings to compare; None = model defaults
+        let mut cases: Vec<Option<(&str, String)>> = vec![None];
+        tmp.set_text(tmp.lookup("ch/1/gate/mdl").unwrap(), m.name, 0)
+            .unwrap();
+        let params: Vec<_> = s.model_params(m).filter(|(_, d)| !d.unused_slot).collect();
+        let text = |t: &str, raw: u32| {
+            let id = tmp.lookup(&format!("ch/1/gate/{t}")).unwrap();
+            tmp.set_raw(id, raw, 0).unwrap();
+            let mut txt = String::new();
+            tmp.format_token(id, &mut txt).unwrap();
+            txt
+        };
+        let defaults: Vec<(&str, String)> = params
+            .iter()
+            .map(|(t, d)| (*t, text(t, d.default_raw)))
+            .collect();
+        for (pi, (t, d)) in params.iter().enumerate() {
+            if (pi + mi) % stride != 0 {
+                continue;
+            }
+            for p in [0.0, 1.0] {
+                cases.push(Some((t, text(t, d.from_norm(p).unwrap()))));
+            }
+        }
+        for case in cases {
+            let run = |slot: &str| {
+                // the hosting slot first in the process order, so both see the strip input on the
+                // same sample grid (behind the other, idle slot the input arrives delayed by that slot's
+                // constant latency, which shifts block-rate control updates)
+                let order = if slot == "gate" { "GEDI" } else { "DGEI" };
+                let mut v = vec![
+                    ("ch/1/proc".to_string(), order.to_string()),
+                    (format!("ch/1/{slot}/mdl"), m.name.to_string()),
+                    (format!("ch/1/{slot}/on"), "1".to_string()),
+                ];
+                v.extend(
+                    defaults
+                        .iter()
+                        .map(|(t, x)| (format!("ch/1/{slot}/{t}"), x.clone())),
+                );
+                if let Some((t, txt)) = &case {
+                    v.push((format!("ch/1/{slot}/{t}"), txt.clone()));
+                }
+                ch_render(1, &v, secs)
+            };
+            let diff = rel_db(&run("gate"), &run("dyn"));
+            if diff != f64::NEG_INFINITY {
+                bad.push(format!("{} {case:?}: gate vs dyn {diff:.1} dB", m.name));
+            }
+        }
+    }
+    assert!(bad.is_empty(), "gate/dyn slot parity:\n{}", bad.join("\n"));
+}
+
+#[test]
+fn gate_and_dyn_slot_parity_sampled() {
+    slot_parity(4, 0.3);
+}
+
+#[test]
+#[ignore = "slow: run with make check-full"]
+fn full_gate_and_dyn_slot_parity() {
+    slot_parity(1, 1.0);
+}
+
+/// The block wrapper (`on`, `mix`, `gain`) of both slots for every model: `gain` always acts; `mix` blends
+/// dry/wet unless the model owns its mix (WARM: `wmix` is the MIX and the block `mix` is not applied again,
+/// T085), in which case it must have no effect at all.
+#[test]
+fn slot_wrapper_audit_gate_and_dyn() {
+    let s = Schema::get();
+    let gate = s.groups().iter().find(|g| g.key == "ch/*/gate").unwrap();
+    let mut bad = Vec::new();
+    for m in s.models(gate) {
+        let owns = create_model(BlockKind::Dynamics, m.name).owns_mix();
+        for slot in ["gate", "dyn"] {
+            let r = |extra: &[(&str, &str)]| {
+                let mut v = vec![
+                    (format!("ch/1/{slot}/mdl"), m.name.to_string()),
+                    (format!("ch/1/{slot}/on"), "1".to_string()),
+                ];
+                v.extend(
+                    extra
+                        .iter()
+                        .map(|(k, x)| (format!("ch/1/{slot}/{k}"), x.to_string())),
+                );
+                ch_render(1, &v, 0.3)
+            };
+            let full = r(&[]);
+            let model_live = rel_db(&full, &r(&[("on", "0")])) > LIVE_DB;
+            if rel_db(&full, &r(&[("gain", "6")])) <= LIVE_DB {
+                bad.push(format!("{slot} {}: gain dead", m.name));
+            }
+            let mix_live = rel_db(&full, &r(&[("mix", "30")])) > LIVE_DB;
+            match (owns, model_live, mix_live) {
+                (true, _, true) => bad.push(format!(
+                    "{slot} {}: block mix applied on top of the model's own",
+                    m.name
+                )),
+                (false, true, false) => bad.push(format!("{slot} {}: block mix dead", m.name)),
+                _ => {}
+            }
+        }
+    }
+    assert!(bad.is_empty(), "slot wrapper:\n{}", bad.join("\n"));
 }
