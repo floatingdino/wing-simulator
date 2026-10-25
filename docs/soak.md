@@ -115,3 +115,27 @@ Findings:
 
 Not run here. Use the command above (`--minutes 480`); at 10 s sampling the CSV is ~2900 rows. Compare its
 RSS trend (`rss_mb` column) and `rt_alloc_events`; the RSS limit is only evaluated for runs of 20+ minutes.
+
+## 60-minute run — 2026-10-26 (fixed harness)
+
+```
+run: 60.5 min wall (60.0 min measured), 2695508 engine cycles measured, 1536661 HAL cycles, 7 workers, rt true, bursts [64, 512], phase 300 s
+cycle time over the whole run: p50 80 us, p99 190 us, p99.9 245 us, max 1112 us (peak of any interval), mean load 6.4% of the 1333 us period (worst interval 9.4%), slow cycles (> period): 0
+client load: 341730 OSC sets, 341265 native sets, 80 storms, 362 model swaps, 120 A/B toggles, 12 scene recalls, 725 control-socket polls, 0 client errors
+driver reads that went ahead of the daemon (daemon not done by 90% of the period): 0
+simulated host device: 680636 callbacks, 0 started > 1 ms late (max 175 us late: harness scheduling lag)
+memory: RSS 241.9 MB at first sample, 249.7 MB at the end, max 249.7 MB; trend +2.42 MB/h (least squares over the last 58 min)
+
+PASS  ran past the warm-up: 362 samples
+PASS  driver xruns (underruns + overruns) in settled periods: 0 (during the 15 s after each IO restart: 1)
+PASS  daemon stayed attached (no loopback fallback, no detached status): 0 loopback cycles, 0 detached samples
+PASS  clean detach at shutdown (driver back in loopback): daemon heartbeat cleared
+PASS  allocations on RT threads (wing-audio-rt, wing-worker-*): 0 allocs, 0 deallocs, 0 reallocs, 0 bytes
+PASS  cycles slower than one engine period: 0 (0.00000% of cycles; harness-induced scheduling or machine load possible)
+PASS  cycle p99.9 within the T070 budget (50% of the period): 245 us vs 667 us
+PASS  host bridge underruns / resyncs in settled periods: 0 underruns, 0 resyncs (in transition periods: 6 underruns, 0 resyncs)
+PASS  bridge fill within target in settled periods: max |fill - target| 0.47 ms (limit 2 ms), overflow frames dropped 0
+INFO  bridge drift tracking: max |controller drift estimate + true device error| 35 ppm in settled periods (sign convention: estimate = -device error), max |ratio correction| 217 ppm
+PASS  RSS growth: +2.42 MB/h (limit 4 MB/h)
+
+RESULT: PASS```
