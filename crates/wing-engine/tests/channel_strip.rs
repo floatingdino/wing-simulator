@@ -450,3 +450,58 @@ fn schema_binding_through_pipeline() {
     }
     assert_eq!(peaks, 3);
 }
+
+/// T039: the strip's meter cells: IN/PFL L/R peaks of a known sine, dyn key and GR equal to the strip
+/// telemetry, gate key from the external key.
+#[test]
+fn strip_meters_levels_keys_and_gain_reduction() {
+    use wing_engine::meters::{strip_cell, word, LevelBank, StripMeter};
+    let bank = LevelBank::shared();
+    let mut s = ChannelStrip::channel(FS, N);
+    s.set_meter(StripMeter::at(bank.clone(), 2).into()); // ch 3
+    set(&mut s, block::INPUT, 0, 6.0); // trim +6 dB
+    set(&mut s, block::INPUT, 4, 1.0); // stereo source
+    model(&mut s, block::DYN, 13); // COMP
+    set(&mut s, block::DYN, TARGET_BASE, -30.0); // thr
+    set(&mut s, block::DYN, TARGET_BASE + 1, 4.0); // ratio
+    set(&mut s, block::DYN, 0, 1.0);
+    set(&mut s, block::GATE_SC, 3, 1.0); // gate keyed externally (gate itself off)
+    s.settle();
+    let amp_l = 0.1f32; // -20 dBFS peak; R at half
+    let key = vec![0.3f32; N];
+    let mut n = 0usize;
+    let mut run = |s: &mut ChannelStrip, blocks: usize| {
+        for _ in 0..blocks {
+            let mut l: Vec<f32> = (0..N)
+                .map(|i| amp_l * ((n + i) as f32 * 2.0 * std::f32::consts::PI * 1000.0 / 48_000.0).sin())
+                .collect();
+            let mut r: Vec<f32> = l.iter().map(|v| v * 0.5).collect();
+            n += N;
+            let keys = StripKeys {
+                gate: Some((&key, &key)),
+                dyn_: None,
+            };
+            s.process_with(&mut l, &mut r, keys, &mut NoInserts);
+        }
+    };
+    run(&mut s, 200);
+    bank.clear();
+    run(&mut s, 20);
+    let cell = |w| bank.get(strip_cell(2, w));
+    let db = |v: f32| 20.0 * v.log10();
+    // IN = after +6 dB trim: -14 dBFS (L), -20 dBFS (R)
+    assert!((db(cell(word::IN_L)) + 14.0).abs() < 0.05, "{}", db(cell(word::IN_L)));
+    assert!((db(cell(word::IN_R)) + 20.0).abs() < 0.05);
+    // PFL after the compressor: below IN
+    assert!(cell(word::PRE_L) < cell(word::IN_L) * 0.9);
+    let t = s.telemetry();
+    assert!(t.dyn_gr_db > 3.0, "comp reduces: {}", t.dyn_gr_db);
+    assert!((cell(word::DYN_GR) - t.dyn_gr_db).abs() < 0.5, "GR {} vs {}", cell(word::DYN_GR), t.dyn_gr_db);
+    // dyn key = its input (GEDI: post EQ = IN level here)
+    assert!((db(cell(word::DYN_KEY)) + 14.0).abs() < 0.05);
+    // gate is off: GR 0; its key meter reads the selected external key
+    assert_eq!(cell(word::GATE_GR), 0.0);
+    assert_eq!(cell(word::GATE_KEY), 0.3);
+    // post-fader words are the mix node's
+    assert_eq!(cell(word::OUT_L), 0.0);
+}

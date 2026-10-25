@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use wing_engine::meters::LevelBank;
 use wing_engine::routing::RoutingControl;
 use wing_hostio::{BridgeState, HostIoConfig, Route};
 use wing_model::ParamStore;
@@ -106,6 +107,8 @@ fn console_cfg() -> ConsoleConfig {
         workers: 2,
         rt_workers: false,
         workgroup: None,
+        // metering on: the alloc and load tests cover it (T039)
+        meters: Some(LevelBank::shared()),
     }
 }
 

@@ -13,6 +13,11 @@
 //! host bridges read any of: main/1 (mon/1..2 = main/1 until T038), usb_out/n.
 //! ```
 //!
+//! Meters (T039, when [`ConsoleConfig::meters`] is set): the strips write their IN/PFL/key/GR
+//! cells, the provisional main writes every strip's post-fader level, main 1 in/out and the
+//! `$MAIN` 1/2 source legs, and [`Console::cycle`] meters USB In 1..48, the oscillators and
+//! USB Out 1..48 after the cycle (see `wing_engine::meters`).
+//!
 //! TODO(T036): the provisional main sum is a stand-in for busses/mains/matrices, sends and the
 //! proper WING pan law. It sums every input strip post-fader into main 1 when the strip's
 //! `main/1/on` is set (at `main/1/lvl`), with a linear balance pan, then applies `main/1`
@@ -22,12 +27,16 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use wing_engine::channel::{bind_aux_strip, bind_channel_strip, ChannelStrip};
+use wing_engine::meters::{
+    abs_max, output_cell, source_cell, strip_cell, word, LevelBank, PortMeters, StripMeter,
+};
 use wing_engine::params::{
     BindError, BlockLayout, ParamMap, ParamMapBuilder, ParamMsg, ParamPipeline, PipelineConfig,
 };
 use wing_engine::routing::{
-    add_input_stage, add_usb_output, InputRouter, IoNodes, MixGroup, RoutingControl, Side, Strip,
-    StripPoint, Tap as RTap, TapPorts, NO_TAPS, USB_CHANNELS,
+    add_input_stage, add_usb_output, InputRouter, IoNodes, MixGroup, OutAddr, OutGroup,
+    RoutingControl, Side, SourceAddr, SrcGroup, Strip, StripPoint, Tap as RTap, TapPorts, NO_TAPS,
+    USB_CHANNELS,
 };
 use wing_engine::{
     Engine, EngineConfig, GraphBuilder, NodeId, NodeIo, Port, ProcessCtx, Processor, RawWorkgroup,
@@ -60,6 +69,8 @@ pub struct ConsoleConfig {
     pub rt_workers: bool,
     /// Workgroup workers join (see `workgroup.rs`).
     pub workgroup: Option<RawWorkgroup>,
+    /// Level bank the console meters into (T039); `None`: no metering.
+    pub meters: Option<Arc<LevelBank>>,
 }
 
 impl Default for ConsoleConfig {
@@ -71,6 +82,7 @@ impl Default for ConsoleConfig {
             workers: d.workers,
             rt_workers: d.rt_workers,
             workgroup: None,
+            meters: None,
         }
     }
 }
@@ -137,6 +149,8 @@ struct MixGain {
     lvl_db: f32,
     cur: [f32; 2],
     target: [f32; 2],
+    /// Post-fader gain per side without the send (fader, mute, pan), for the strip out meter.
+    meter: [f32; 2],
 }
 
 impl MixGain {
@@ -149,6 +163,7 @@ impl MixGain {
             lvl_db: 0.0,
             cur: [0.0; 2],
             target: [0.0; 2],
+            meter: [0.0; 2],
         }
     }
 
@@ -161,13 +176,19 @@ impl MixGain {
             4 => self.lvl_db = v,
             _ => return,
         }
-        let g = if self.mute || !self.on {
+        let post = if self.mute {
             0.0
         } else {
-            fader_lin(self.fdr_db) * fader_lin(self.lvl_db)
+            fader_lin(self.fdr_db)
+        };
+        let g = if self.on {
+            post * fader_lin(self.lvl_db)
+        } else {
+            0.0
         };
         let (l, r) = balance(self.pan);
         self.target = [g * l, g * r];
+        self.meter = [post * l, post * r];
     }
 
     fn silent(&self) -> bool {
@@ -214,18 +235,35 @@ impl MixGain {
 pub struct ProvisionalMain {
     strips: [MixGain; STRIPS],
     main: MixGain,
+    meters: Option<Arc<LevelBank>>,
+    /// Cells of `$MAIN` 1/2 (main 1 L/R as a source).
+    main_src: [usize; 2],
 }
 
 impl Default for ProvisionalMain {
     fn default() -> Self {
         let mut main = MixGain::new();
         main.on = true;
+        let src = |n| SourceAddr::new(SrcGroup::Main, n).map_or(usize::MAX, source_cell);
         Self {
             strips: [MixGain::new(); STRIPS],
             main,
+            meters: None,
+            main_src: [src(1), src(2)],
         }
     }
 }
+
+impl ProvisionalMain {
+    /// Meter into `bank`: every input strip's post-fader out, main 1 in/pre/out and `$MAIN` 1/2.
+    pub fn with_meters(mut self, bank: Option<Arc<LevelBank>>) -> Self {
+        self.meters = bank;
+        self
+    }
+}
+
+/// Main 1's flat strip index.
+const MAIN1_STRIP: usize = 64;
 
 impl Processor for ProvisionalMain {
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut NodeIo<'_>) {
@@ -237,16 +275,46 @@ impl Processor for ProvisionalMain {
         l.fill(0.0);
         r.fill(0.0);
         for (i, g) in self.strips.iter_mut().enumerate() {
-            if 2 * i + 1 >= ins.len() || g.silent() {
+            if 2 * i + 1 >= ins.len() {
+                continue;
+            }
+            if let Some(m) = &self.meters {
+                // post-fader out = input (PFL) peak x fader/mute/pan gain
+                for side in 0..2 {
+                    if g.meter[side] != 0.0 {
+                        let v = abs_max(ins.get(2 * i + side)) * g.meter[side];
+                        m.peak(strip_cell(i, word::OUT_L + side), v);
+                    }
+                }
+            }
+            if g.silent() {
                 continue;
             }
             g.accumulate(0, ins.get(2 * i), l);
             g.accumulate(1, ins.get(2 * i + 1), r);
             g.advance();
         }
+        if let Some(m) = &self.meters {
+            let (pl, pr) = (abs_max(l), abs_max(r));
+            for (w, v) in [
+                (word::IN_L, pl),
+                (word::IN_R, pr),
+                (word::PRE_L, pl),
+                (word::PRE_R, pr),
+            ] {
+                m.peak(strip_cell(MAIN1_STRIP, w), v);
+            }
+        }
         self.main.apply(0, l);
         self.main.apply(1, r);
         self.main.advance();
+        if let Some(m) = &self.meters {
+            let (ol, or) = (abs_max(l), abs_max(r));
+            m.peak(strip_cell(MAIN1_STRIP, word::OUT_L), ol);
+            m.peak(strip_cell(MAIN1_STRIP, word::OUT_R), or);
+            m.peak(self.main_src[0], ol);
+            m.peak(self.main_src[1], or);
+        }
     }
 
     fn set_param(&mut self, msg: &ParamMsg) {
@@ -280,7 +348,7 @@ pub fn build_engine(
     let io = add_input_stage(&mut g, routing).map_err(e)?;
     let mut strips = [NodeId(0); STRIPS];
     for (i, s) in strips.iter_mut().enumerate() {
-        let (name, proc_) = if i < CHANNELS {
+        let (name, mut proc_) = if i < CHANNELS {
             (format!("ch{}", i + 1), ChannelStrip::channel(fs, cfg.block))
         } else {
             (
@@ -288,6 +356,8 @@ pub fn build_engine(
                 ChannelStrip::aux(fs, cfg.block),
             )
         };
+        // strip i = ch 1..40 then aux 1..8 = the meters' flat strip index
+        proc_.set_meter(cfg.meters.clone().map(|b| StripMeter::at(b, i)));
         let ins = [
             InputRouter::port(io.inputs, i, 0),
             InputRouter::port(io.inputs, i, 1),
@@ -299,7 +369,12 @@ pub fn build_engine(
         .flat_map(|&n| [Port::node(n, 0), Port::node(n, 1)])
         .collect();
     let main = g
-        .add_node("main1-provisional", 2, &mix_in, ProvisionalMain::default())
+        .add_node(
+            "main1-provisional",
+            2,
+            &mix_in,
+            ProvisionalMain::default().with_meters(cfg.meters.clone()),
+        )
         .map_err(e)?;
     let mut taps: TapPorts = NO_TAPS;
     let mut wire = |t: RTap, p: Port| {
@@ -396,7 +471,27 @@ pub struct Console {
     feeds: Vec<BridgeFeed>,
     silence: Box<[f32]>,
     stats: Arc<AudioStats>,
+    port_meters: Option<PortMeters>,
     cfg: ConsoleConfig,
+}
+
+/// Ports metered after each cycle: USB In 1..48 and OSC 1/2 (sources), USB Out 1..48 (outputs).
+pub fn port_meters(bank: Arc<LevelBank>, nodes: &ConsoleNodes) -> PortMeters {
+    let mut e = Vec::with_capacity(2 * USB_CHANNELS + 2);
+    for k in 0..USB_CHANNELS {
+        if let Some(a) = SourceAddr::new(SrcGroup::Usb, k as u16 + 1) {
+            e.push((Port::External(k as u32), source_cell(a)));
+        }
+        if let Some(a) = OutAddr::new(OutGroup::Usb, k as u16 + 1) {
+            e.push((Port::node(nodes.usb_out, k as u32), output_cell(a)));
+        }
+    }
+    for k in 0..2u16 {
+        if let Some(a) = SourceAddr::new(SrcGroup::Osc, k + 1) {
+            e.push((Port::node(nodes.io.osc, k as u32), source_cell(a)));
+        }
+    }
+    PortMeters::new(bank, e)
 }
 
 impl Console {
@@ -430,6 +525,7 @@ impl Console {
             })
             .collect();
         stats.set_period_ns((cfg.block as f64 * 1e9 / cfg.sample_rate as f64) as u64);
+        let port_meters = cfg.meters.clone().map(|b| port_meters(b, &nodes));
         Ok(Self {
             engine,
             pipeline,
@@ -437,6 +533,7 @@ impl Console {
             feeds,
             silence: vec![0.0; cfg.block].into(),
             stats,
+            port_meters,
             cfg,
         })
     }
@@ -482,8 +579,8 @@ impl Console {
     }
 
     /// One engine cycle: apply queued parameter changes, fill USB In 1..48 with `input(ch, buf)`,
-    /// process, hand USB Out 1..48 to `output(ch, buf)`, feed the host bridges, publish
-    /// telemetry and record the cycle time. RT-safe (no allocation, locks or syscalls).
+    /// process, meter the ports, hand USB Out 1..48 to `output(ch, buf)`, feed the host bridges,
+    /// publish telemetry and record the cycle time. RT-safe (no allocation, locks or syscalls).
     #[inline]
     pub fn cycle(
         &mut self,
@@ -496,6 +593,9 @@ impl Console {
             input(ch, self.engine.external_mut(ch));
         }
         self.engine.process_cycle();
+        if let Some(m) = &self.port_meters {
+            m.capture(&self.engine);
+        }
         let c = self.engine.cycle();
         self.pipeline.publish_telemetry(&mut self.engine, c);
         let usb = self.nodes.usb_out;

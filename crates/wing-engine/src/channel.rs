@@ -29,6 +29,10 @@
 //! * **Telemetry** ([`StripTelemetry`]): peak level per tap point (peak-hold until polled), gate/dyn gain
 //!   reduction; published through [`Processor::telemetry`] as `TAP_PEAK` (block = tap) and
 //!   `GAIN_REDUCTION_DB` (block = [`block::GATE`] / [`block::DYN`]).
+//! * **Meters** (T039, optional [`StripMeter`]): per block, the L/R peaks at taps IN and PFL, the gate and
+//!   dynamics key peaks (the filtered side-chain when the slot forms one, else the slot input) and their
+//!   gain reduction are folded into the engine's [`crate::meters::LevelBank`] (lock-free, no allocation).
+//!   The post-fader words belong to the node that applies the fader.
 //! * **Tap capture**: the signal at `ptap` is copied into [`ChannelStrip::tap_signal`] (and graph outputs
 //!   2/3 when the node has 4 outputs) for PRE sends.
 
@@ -38,6 +42,7 @@ use wing_blocks::model::{BlockKind, Model, ParamValue};
 use wing_blocks::std_models::{flt_slot, in_slot, FilterModel, InputModel};
 
 use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
+use crate::meters::{abs_max, word, StripMeter};
 use crate::params::std_models::model_factory;
 use crate::params::strip::{ModelSlot, INPUT_LAYOUT, SLOT_LAYOUT};
 use crate::params::telemetry_kind as kind;
@@ -355,6 +360,7 @@ pub struct ChannelStrip {
     tap_r: Vec<f32>,
     tap_len: usize,
     telem: StripTelemetry,
+    meter: Option<StripMeter>,
 }
 
 fn sc_filter(i: u32) -> ScFilter {
@@ -367,13 +373,16 @@ fn sc_filter(i: u32) -> ScFilter {
     }
 }
 
+/// Key level of a dynamics slot after processing: the filtered key when the slot formed one, else the
+/// external key when one is selected, else the level of the slot input (`input_peak`).
 #[inline]
-fn peak(l: &[f32], r: &[f32]) -> f32 {
-    let mut p = 0.0f32;
-    for (a, b) in l.iter().zip(r) {
-        p = p.max(a.abs()).max(b.abs());
+fn slot_key_peak(slot: &ModelSlot, ext: Option<(&[f32], &[f32])>, input_peak: f32) -> f32 {
+    let (kl, kr) = slot.key_signal();
+    match ext {
+        _ if !kl.is_empty() => abs_max(kl).max(abs_max(kr)),
+        Some((a, b)) => abs_max(a).max(abs_max(b)),
+        None => input_peak,
     }
-    p
 }
 
 impl ChannelStrip {
@@ -437,6 +446,7 @@ impl ChannelStrip {
             tap_r: vec![0.0; max_block.max(1)],
             tap_len: 0,
             telem: StripTelemetry::default(),
+            meter: None,
         };
         // Factory model choices (the pipeline's sync_all overrides them from the store).
         s.tool.select(0);
@@ -450,6 +460,15 @@ impl ChannelStrip {
 
     pub fn kind(&self) -> StripKind {
         self.kind
+    }
+
+    /// Attach (or detach) the strip's meter cells. Call off the RT thread.
+    pub fn set_meter(&mut self, m: Option<StripMeter>) {
+        self.meter = m;
+    }
+
+    pub fn meter(&self) -> Option<&StripMeter> {
+        self.meter.as_ref()
     }
 
     pub fn order(&self) -> ProcOrder {
@@ -665,8 +684,18 @@ impl ChannelStrip {
 
     #[inline]
     fn tap(&mut self, t: usize, l: &[f32], r: &[f32]) {
+        let (pl, pr) = (abs_max(l), abs_max(r));
         let p = &mut self.telem.tap_peak[t];
-        *p = p.max(peak(l, r));
+        *p = p.max(pl).max(pr);
+        if let Some(m) = &self.meter {
+            if t == Tap::In as usize {
+                m.level(word::IN_L, pl);
+                m.level(word::IN_R, pr);
+            } else if t == Tap::Pfl as usize {
+                m.level(word::PRE_L, pl);
+                m.level(word::PRE_R, pr);
+            }
+        }
         if self.ptap.captured() == t {
             let n = l.len().min(self.tap_l.len());
             self.tap_l[..n].copy_from_slice(&l[..n]);
@@ -693,6 +722,8 @@ impl ChannelStrip {
         self.tap(Tap::In as usize, l, r);
         let gate_key = keys.gate.filter(|_| self.gate_sc.3);
         let dyn_key = keys.dyn_.filter(|_| self.dyn_sc.3);
+        let metered = self.meter.is_some();
+        let (mut gate_in, mut dyn_in) = (0.0f32, 0.0f32);
         match self.kind {
             StripKind::Channel => {
                 if !self.filter.is_off() {
@@ -706,12 +737,22 @@ impl ChannelStrip {
                 let order = self.order.0;
                 for (k, b) in order.into_iter().enumerate() {
                     match b {
-                        ProcBlock::Gate => self.gate.process_keyed(l, r, gate_key),
+                        ProcBlock::Gate => {
+                            if metered {
+                                gate_in = abs_max(l).max(abs_max(r));
+                            }
+                            self.gate.process_keyed(l, r, gate_key)
+                        }
                         ProcBlock::Eq => {
                             self.peq.process(l, r);
                             self.eq.process(l, r);
                         }
-                        ProcBlock::Dyn => self.dyn_.process_keyed(l, r, dyn_key),
+                        ProcBlock::Dyn => {
+                            if metered {
+                                dyn_in = abs_max(l).max(abs_max(r));
+                            }
+                            self.dyn_.process_keyed(l, r, dyn_key)
+                        }
                         ProcBlock::Insert => {
                             if let Some(n) = self.postins.engaged() {
                                 fx.process_insert(n, l, r);
@@ -729,6 +770,9 @@ impl ChannelStrip {
                 self.tap(Tap::T3 as usize, l, r);
                 self.eq.process(l, r);
                 self.tap(Tap::T4 as usize, l, r);
+                if metered {
+                    dyn_in = abs_max(l).max(abs_max(r));
+                }
                 self.dyn_.process_keyed(l, r, dyn_key);
                 self.tap(Tap::T5 as usize, l, r);
                 self.tap(Tap::Pfl as usize, l, r);
@@ -736,6 +780,14 @@ impl ChannelStrip {
         }
         self.telem.gate_gr_db = self.gate.gain_reduction_db();
         self.telem.dyn_gr_db = self.dyn_.gain_reduction_db();
+        if let Some(m) = &self.meter {
+            if self.kind == StripKind::Channel {
+                m.level(word::GATE_KEY, slot_key_peak(&self.gate, gate_key, gate_in));
+                m.level(word::GATE_GR, self.telem.gate_gr_db);
+            }
+            m.level(word::DYN_KEY, slot_key_peak(&self.dyn_, dyn_key, dyn_in));
+            m.level(word::DYN_GR, self.telem.dyn_gr_db);
+        }
     }
 }
 
