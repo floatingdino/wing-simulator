@@ -2,7 +2,7 @@
 id: T085
 title: BUG: Soul Warmth Pre drive inaudible in the GATE slot (VOX channels)
 stage: S4
-status: review
+status: done
 owner: claude-T085
 depends: [T081]
 branch: task/T085
