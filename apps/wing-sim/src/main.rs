@@ -27,7 +27,9 @@
 mod library;
 mod persist;
 
+use wing_engine::meters::LevelBank;
 use wing_sim::audio::{self, AudioOptions, AudioService, ConsoleConfig, HostIoSetting};
+use wing_sim::meters::meter_source;
 
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::path::PathBuf;
@@ -43,7 +45,7 @@ use wing_proto::osc::{OscAttachment, OscConfig, OscServer, OSC_PORT};
 use wing_proto::server::meters::METER_INTERVAL;
 use wing_proto::server::{
     EventFn, Hub, LiveInfo, MeterBank, MeterStreamer, MeterSubscriptions, NativeServer,
-    ServerConfig, ServerEvent, ServerShared, SyntheticMeters, NATIVE_PORT,
+    ServerConfig, ServerEvent, ServerShared, NATIVE_PORT,
 };
 
 static STOP: AtomicBool = AtomicBool::new(false);
@@ -316,19 +318,21 @@ fn run(args: Args) -> Result<(), String> {
     // ---- meters ----
     let subs = Arc::new(MeterSubscriptions::new());
     let bank = Arc::new(MeterBank::for_schema());
-    let (synth, streamer) = if args.meters {
-        (
-            Some(
-                SyntheticMeters::spawn(bank.clone(), Some(store.clone()), METER_INTERVAL)
-                    .map_err(|e| e.to_string())?,
-            ),
-            Some(
-                MeterStreamer::spawn(subs.clone(), bank.clone(), meter_sock, METER_INTERVAL)
-                    .map_err(|e| e.to_string())?,
-            ),
+    // Real meters (T039) from the audio engine while a session is attached, synthetic otherwise.
+    let levels = (args.meters && routing.is_some()).then(LevelBank::shared);
+    let streamer = if args.meters {
+        Some(
+            MeterStreamer::spawn_with_source(
+                subs.clone(),
+                bank.clone(),
+                meter_sock,
+                METER_INTERVAL,
+                meter_source(levels.clone(), Some(store.clone())),
+            )
+            .map_err(|e| e.to_string())?,
         )
     } else {
-        (None, None)
+        None
     };
 
     // ---- native server ----
@@ -421,7 +425,11 @@ fn run(args: Args) -> Result<(), String> {
         server.local_addr(),
         osc.as_ref()
             .map_or("off".to_string(), |o| o.local_addr().to_string()),
-        if args.meters { "on (synthetic)" } else { "off" },
+        match (args.meters, levels.is_some()) {
+            (false, _) => "off",
+            (true, true) => "on (real while audio is attached, else synthetic)",
+            (true, false) => "on (synthetic)",
+        },
         args.idle
     ));
 
@@ -433,6 +441,7 @@ fn run(args: Args) -> Result<(), String> {
             let mut console = ConsoleConfig {
                 block: args.block,
                 rt_workers: args.rt,
+                meters: levels.clone(),
                 ..ConsoleConfig::default()
             };
             if let Some(w) = args.workers {
@@ -496,9 +505,6 @@ fn run(args: Args) -> Result<(), String> {
         o.stop();
     }
     if let Some(s) = streamer {
-        s.stop();
-    }
-    if let Some(s) = synth {
         s.stop();
     }
     discovery.stop();
