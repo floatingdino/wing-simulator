@@ -2,7 +2,7 @@
 id: T05T
 title: Pitch: PITCH, D-PITCH, DOUBLE, PCORR, SUB
 stage: S5
-status: review
+status: done
 owner: T05T-agent
 depends: [T050]
 branch: task/T05T
