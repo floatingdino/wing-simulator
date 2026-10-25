@@ -17,9 +17,11 @@
 //! no evidence of transformer/tube colour in WING's implementation (the vintage colour of the hardware, e.g.
 //! the Pultec make-up stage or Neve transformers, is not in the parameter set or the coefficient code). Not added.
 //!
-//! **`mix` (wrapper, 0..125 %):** WING-Edit passes `mix/100` into every `parchg`, which scales the knob gains
-//! (125 % = exaggerated EQ, extra table columns). The slot host currently implements `mix` as dry/wet, so these
-//! models run at 100 %; [`AltEq::set_gain_scale`] exposes the WING behaviour for a host that wants it.
+//! **`mix` (wrapper, 0..125 %):** `ae::Cequalizer::update` calls every model's `parchg` through the same
+//! `f_table_{ch,bus,aux}` entry with `s0 = mix / 100.0f` (T04J, disassembly at 0x1000327b4/0x100032c48/
+//! 0x100032cb8), and each model's parchg scales its knob gains with it (125 % = exaggerated EQ, extra table
+//! columns). There is no dry/wet anywhere. [`Model::set_gain_scale`] takes `mix` (%); the scale glides like a
+//! knob. The slot host forwards `mix` to every EQ model this way (wing-engine `ModelSlot`, EQ groups).
 //!
 //! Real-time behaviour: `prepare` sizes nothing (all state is inline arrays), so nothing allocates after
 //! construction. Continuous parameters (knobs, gains) glide with a 20 ms one-pole; while gliding the sections
@@ -441,7 +443,9 @@ pub struct AltEq {
     target: [f32; MAX_PARAMS],
     /// Values the current coefficients were designed from.
     cur: [f32; MAX_PARAMS],
-    gain_scale: f32,
+    /// `mix/100` requested by the host and the value the current coefficients were designed with.
+    scale_target: f32,
+    scale_cur: f32,
     smooth_a: f32,
     chains: [Chain; 2],
     active: usize,
@@ -461,7 +465,8 @@ impl AltEq {
             nparams: kind.slots().len(),
             target: [0.0; MAX_PARAMS],
             cur: [0.0; MAX_PARAMS],
-            gain_scale: 1.0,
+            scale_target: 1.0,
+            scale_cur: 1.0,
             smooth_a: 0.0,
             chains: [Chain::default(); 2],
             active: 0,
@@ -480,13 +485,9 @@ impl AltEq {
         self.kind
     }
 
-    /// WING's `mix/100` gain scale (0..1.25; default 1). See the module doc.
-    pub fn set_gain_scale(&mut self, m: f32) {
-        let m = m.clamp(0.0, 1.25);
-        if m != self.gain_scale {
-            self.gain_scale = m;
-            self.dirty = true;
-        }
+    /// Current target gain scale `mix/100` (0..1.25).
+    pub fn gain_scale(&self) -> f32 {
+        self.scale_target
     }
 
     /// Current (target) value of slot index `idx`.
@@ -499,7 +500,7 @@ impl AltEq {
         self.kind.design(
             &self.ctx,
             &self.target[..self.nparams],
-            self.gain_scale,
+            self.scale_target,
             out,
         )
     }
@@ -517,7 +518,7 @@ impl AltEq {
         self.kind.design(
             &self.ctx,
             &self.cur[..self.nparams],
-            self.gain_scale,
+            self.scale_cur,
             &mut self.scratch,
         )
     }
@@ -525,6 +526,7 @@ impl AltEq {
     /// Settle everything at the targets (no glide, no fade).
     fn snap(&mut self) {
         self.cur = self.target;
+        self.scale_cur = self.scale_target;
         let layout = self.redesign();
         let s = self.scratch;
         self.chains[self.active].load(&s, layout);
@@ -556,6 +558,15 @@ impl AltEq {
                 }
             }
         }
+        if self.scale_cur != self.scale_target {
+            let d = self.scale_target - self.scale_cur;
+            if d.abs() < 1e-4 {
+                self.scale_cur = self.scale_target;
+            } else {
+                self.scale_cur += d * self.smooth_a;
+                gliding = true;
+            }
+        }
         let layout = self.redesign();
         let s = self.scratch;
         if discrete {
@@ -579,10 +590,10 @@ impl AltEq {
                 ch.load(&s, layout);
             }
         }
-        self.dirty = gliding || self.cur[..self.nparams] != self.target[..self.nparams];
-        if !self.dirty {
-            // Final coefficients are exactly the target design (ramp ends on it).
-        }
+        // Final coefficients are exactly the target design (the last ramp ends on it).
+        self.dirty = gliding
+            || self.scale_cur != self.scale_target
+            || self.cur[..self.nparams] != self.target[..self.nparams];
     }
 }
 
@@ -673,6 +684,15 @@ impl Model for AltEq {
     fn load_defaults(&mut self) {
         self.target[..self.nparams].copy_from_slice(self.kind.defaults());
         self.dirty = true;
+    }
+
+    /// WING EQ mix law: `mix/100` (float32, as `Cequalizer::update` computes it) scales the knob gains.
+    fn set_gain_scale(&mut self, mix_pct: f32) {
+        let m = (mix_pct / 100.0).clamp(0.0, 1.25);
+        if m.is_finite() && m != self.scale_target {
+            self.scale_target = m;
+            self.dirty = true;
+        }
     }
 
     fn commit(&mut self) {}

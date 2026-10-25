@@ -6,6 +6,9 @@
 //! response (what it processes) matches `mag_db` to [`TOL_DB`] wherever the reference is above -100 dB.
 //! Dynamics: the static curves of GATE/DUCK/COMP/EXP equal WING-Edit's `respf` output to [`TOL_DB`].
 //! Each test prints its worst case; tests skip when the reference file is absent.
+//!
+//! T04J: the same checks run at fs = 44.1 kHz against `44k1/*.json` (WING-Edit emulated with its engine sample rate
+//! patched to 44.1 kHz, `tools/curve-extract/curves44k1.py`), whose STD grids include EQ `mix` 0..125 %.
 
 use serde_json::Value;
 use std::path::PathBuf;
@@ -20,6 +23,11 @@ const TOL_DB: f64 = 0.01;
 /// Coefficient tolerance (relative to max(1, |ref|)).
 const TOL_COEF: f64 = 2e-5;
 const FS: f64 = 48_000.0;
+
+/// Sample rate of a reference file (`fs`, 48 kHz if absent).
+fn file_fs(d: &Value) -> f64 {
+    d["fs"].as_f64().unwrap_or(FS)
+}
 
 fn load(name: &str) -> Option<Value> {
     let dir = std::env::var_os("WING_REFERENCE_CURVES")
@@ -132,7 +140,17 @@ fn mag_err(freqs: &[f64], reference: &[f64], got: impl Fn(f64) -> f64) -> (f64, 
 
 #[test]
 fn filter_lc_hc_match_wing_edit() {
-    let Some(d) = load("filter.json") else { return };
+    filter_lc_hc("filter.json");
+}
+
+#[test]
+fn filter_lc_hc_match_wing_edit_44k1() {
+    filter_lc_hc("44k1/filter.json");
+}
+
+fn filter_lc_hc(file: &str) {
+    let Some(d) = load(file) else { return };
+    let fs = file_fs(&d);
     let freqs = arr_f64(&d["freq_hz"]);
     let mut w = Worst::default();
     for c in d["curves"].as_array().unwrap() {
@@ -160,7 +178,7 @@ fn filter_lc_hc_match_wing_edit() {
         };
         let mut b = FilterBlock::new();
         b.set_params(&fp);
-        b.prepare(FS, 64);
+        b.prepare(fs, 64);
         let refs = biquads(c);
         let (secs, n) = b.wing_sections();
         let tag = || format!("{} {}", c["case"], p);
@@ -171,7 +189,7 @@ fn filter_lc_hc_match_wing_edit() {
         w.db(e, || format!("{} @ {f} Hz", tag()));
         w.n += 1;
     }
-    w.report("filter LC/HC");
+    w.report(&format!("filter LC/HC ({file})"));
 }
 
 // ---- STD EQ ----------------------------------------------------------------------------------------------
@@ -211,6 +229,9 @@ fn eq_params(variant: EqVariant, p: &Value) -> EqParams {
     if let Some(t) = num(p, "tilt") {
         e.tilt_db = t;
     }
+    if let Some(m) = num(p, "mix") {
+        e.mix = m;
+    }
     e
 }
 
@@ -220,10 +241,11 @@ fn defined_sections(variant: EqVariant, case: &str, p: &Value) -> Vec<usize> {
     let n = variant.peak_bands();
     let off = usize::from(bus);
     let hi = off + 1 + n;
+    let scale = num(p, "mix").unwrap_or(100.0) / 100.0;
     let mut v = Vec::new();
     if case.starts_with("mid") {
         for b in 1..=n {
-            if num(p, &format!("{b}g")).unwrap_or(0.0) != 0.0 {
+            if num(p, &format!("{b}g")).unwrap_or(0.0) * scale != 0.0 {
                 v.push(off + b);
             }
         }
@@ -254,6 +276,7 @@ fn defined_sections(variant: EqVariant, case: &str, p: &Value) -> Vec<usize> {
 
 fn std_eq(file: &str, variant: EqVariant) {
     let Some(d) = load(file) else { return };
+    let fs = file_fs(&d);
     let freqs = arr_f64(&d["freq_hz"]);
     let mut w = Worst::default();
     for c in d["curves"].as_array().unwrap() {
@@ -261,7 +284,7 @@ fn std_eq(file: &str, variant: EqVariant) {
         let case = c["case"].as_str().unwrap();
         let mut eq = StdEq::new(variant);
         eq.set_params(&eq_params(variant, p));
-        eq.prepare(FS, 64);
+        eq.prepare(fs, 64);
         let refs = biquads(c);
         let (secs, n) = eq.wing_sections();
         assert_eq!(n, refs.len(), "section count");
@@ -282,7 +305,7 @@ fn std_eq(file: &str, variant: EqVariant) {
         let want: Vec<f64> = freqs
             .iter()
             .zip(arr_f64(&c["mag_db"]))
-            .map(|(&f, m)| m - wingcoef::response(FS, &stale, f).db())
+            .map(|(&f, m)| m - wingcoef::response(fs, &stale, f).db())
             .collect();
         // Parameters are exported as printed read-backs; a Cpar's float can be 1 ulp from the printed value
         // (e.g. "6.0" is 6.0000005 on the gain grid, worth 0.015 dB at 20 Hz for a 50 Hz shelf). Accept the
@@ -326,6 +349,13 @@ fn std_eq_aux_matches_wing_edit() {
 #[test]
 fn std_eq_bus_matches_wing_edit() {
     std_eq("eq-std-bus.json", EqVariant::Bus);
+}
+
+#[test]
+fn std_eq_44k1_with_mix_matches_wing_edit() {
+    std_eq("44k1/eq-std-ch.json", EqVariant::Channel);
+    std_eq("44k1/eq-std-aux.json", EqVariant::Aux);
+    std_eq("44k1/eq-std-bus.json", EqVariant::Bus);
 }
 
 // ---- dynamics key filter (dynsc/gatesc) and crossover (dynxo) ---------------------------------------------

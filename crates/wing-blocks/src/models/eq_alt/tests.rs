@@ -433,3 +433,116 @@ fn glides_and_switches_settle() {
         assert!(m.magnitude_db(1000.0).abs() < 0.5, "{} defaults", kind.id());
     }
 }
+
+/// T04J: every model at fs = 44.1 kHz and mix 0..125 % against WING-Edit's own coefficients
+/// (`44k1/eq-alt.json`, emulated with the engine sample rate patched to 44.1 kHz), configured only through the
+/// `Model` interface (`set_param`, `set_gain_scale(mix %)`, `reset`): coefficients to a relative 1e-5 and the
+/// runtime filter's magnitude to 0.01 dB.
+#[test]
+fn fidelity_44k1_with_mix() {
+    let Some(refs) = FreqCurves::load("44k1/eq-alt.json").expect("reference file") else {
+        eprintln!("SKIP: 44k1/eq-alt.json absent");
+        return;
+    };
+    assert_eq!(refs.fs, 44_100.0);
+    let mut worst = (0.0f64, 0.0f64, String::new());
+    let mut mixes = Vec::new();
+    for c in &refs.curves {
+        let kind = AltKind::from_id(&c.case).unwrap();
+        let p = params_from(kind, &defaults(kind), &c.params);
+        let mix = c.params.num("mix").unwrap() as f32;
+        if !mixes.contains(&(kind, mix as i32)) {
+            mixes.push((kind, mix as i32));
+        }
+        let mut m = AltEq::new(kind);
+        m.prepare(refs.fs, 64);
+        for (i, &v) in p[..kind.slots().len()].iter().enumerate() {
+            m.set_param(i as u16 + 1, ParamValue::Float(v));
+        }
+        Model::set_gain_scale(&mut m, mix);
+        m.reset();
+        let mut q = [prims::UNITY; MAX_SECS];
+        let layout = m.design_now(&mut q);
+        assert_eq!(layout.n, c.biquads.len(), "{} section count", c.case);
+        for (k, (ours, r)) in q.iter().zip(&c.biquads).enumerate() {
+            let e = ours
+                .iter()
+                .zip(r)
+                .map(|(&x, &y)| (x as f64 - y).abs() / y.abs().max(1.0))
+                .fold(0.0, f64::max);
+            if e > worst.1 {
+                worst.1 = e;
+                worst.2 = format!("{} mix {mix} sec {k}", c.case);
+            }
+        }
+        for (&f, &r) in refs.freq_hz.iter().zip(&c.mag_db) {
+            if r < -100.0 {
+                continue;
+            }
+            let e = (m.magnitude_db(f) - r).abs();
+            assert!(
+                e < 0.01,
+                "{} mix {mix} {:?} @ {f} Hz: {e} dB",
+                c.case,
+                c.params
+            );
+            worst.0 = worst.0.max(e);
+        }
+    }
+    eprintln!(
+        "44.1k alt EQs: {} curves, max {:.6} dB, max coef err {:.2e} ({})",
+        refs.curves.len(),
+        worst.0,
+        worst.1,
+        worst.2
+    );
+    assert!(
+        worst.1 < 1e-5,
+        "coefficients: {:.2e} at {}",
+        worst.1,
+        worst.2
+    );
+    // every model is covered at several mix values, including 0 and 125 %
+    for k in AltKind::ALL {
+        let n = mixes.iter().filter(|(kk, _)| *kk == k).count();
+        assert!(n >= 4, "{}: {n} mix values", k.id());
+    }
+}
+
+/// `mix` glides (no zipper) and settles exactly on the scaled design; it survives `load_defaults`.
+#[test]
+fn gain_scale_glides_and_settles() {
+    for kind in AltKind::ALL {
+        let p = busy(kind);
+        let mut m = AltEq::new(kind);
+        m.prepare(48_000.0, 64);
+        for (i, &v) in p.iter().enumerate() {
+            m.set_param(i as u16 + 1, ParamValue::Float(v));
+        }
+        m.reset();
+        Model::set_gain_scale(&mut m, 50.0);
+        let (mut l, mut r) = (vec![0.0f32; 64], vec![0.0f32; 64]);
+        let mut seen = Vec::new();
+        for _ in 0..200 {
+            m.process(&mut l, &mut r, None);
+            seen.push(m.magnitude_db(3000.0));
+        }
+        assert!(
+            seen.windows(2).filter(|w| w[0] != w[1]).count() > 3,
+            "{} glides",
+            kind.id()
+        );
+        let mut q = [prims::UNITY; MAX_SECS];
+        let layout = kind.design(&Ctx::new(48_000.0), &p, 0.5, &mut q);
+        let want = layout_db(&q, layout, 3000.0);
+        assert!(
+            (m.magnitude_db(3000.0) - want).abs() < 1e-6,
+            "{} settles",
+            kind.id()
+        );
+        assert_eq!(m.gain_scale(), 0.5);
+        m.load_defaults();
+        m.reset();
+        assert_eq!(m.gain_scale(), 0.5, "mix survives load_defaults");
+    }
+}

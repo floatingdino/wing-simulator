@@ -1,24 +1,22 @@
 //! Filter-tool models (T046, models.md §2): `TILT` (TILT EQ), `MAX` (MAXER), `AP1` (AP 90), `AP2` (AP 180).
 //!
 //! WING-Edit computes **every** tool filter as one biquad (4th section of `Cchfilter`, see
-//! `data/reference-curves/filter.json`), so each model here is one stereo-linked 2nd-order section, designed in
-//! f64 and run in f64 (poles at 100-160 Hz are too close to z = 1 for f32 coefficients):
+//! `data/reference-curves/filter.json`). Since T04J the designs are a port of `ae::Cchfilter::update`
+//! (0x1000111e4..0x1000114f4, float32 arithmetic and fused multiply-adds as in the arm64 code), so the
+//! coefficients equal WING-Edit's at every sample rate (checked at 48 and 44.1 kHz); T046 had fitted 48 kHz
+//! constants. Each model is one stereo-linked 2nd-order section run in f64 (poles at 100-160 Hz are too close to
+//! z = 1 for an f32 filter state):
 //!
-//! - **TILT** `tilt` -6..+6 dB (slot 1). Two real pole/zero pairs in the bilinear K-plane (`u = tan(w/2)`):
-//!   `H(u) = (1/g) (u + g k1)(u + g k2) / ((u + k1)(u + k2))`, `g = 10^(tilt/20)`, `k1 = K1/sqrt(g)`,
-//!   `k2 = K2/sqrt(g)`. DC gain = +tilt dB, Nyquist = -tilt dB, 0 dB at the geometric pivot ~ 656 Hz
-//!   (`K0 = sqrt(K1 K2)`), shelves ~137 Hz / ~3.1 kHz. **Positive tilt = more low end** (the reference curves,
-//!   not the "positive = brighter" guess of the STD-EQ tilt). K1/K2 are fitted to the reference
-//!   (max 0.003 dB, 0.012 deg).
-//! - **MAX** `low` (LOW CONT, slot 1), `proc` (HIGH PROC, slot 2), both 0..100 %. `H = (A(z) + proc*kappa*(1 -
-//!   z^-1)^2 + low*c) / D(z)` where `D` has real poles at ~161 Hz and ~3.19 kHz and `A` is its mirror
-//!   polynomial: at `low = proc = 0` the unit is a 2nd-order **all-pass** (the BBE-style low-band delay /
-//!   phase realignment). `proc` adds an HF boost (0 dB at DC, about +10.8 dB at Nyquist for 100 %), `low`
-//!   adds a constant to the numerator = LF contour boost (about +10.9 dB at DC for 100 %, tapering off above
-//!   ~160 Hz). The coefficients are exact (linear in `low`, `proc`).
-//! - **AP1** `f` 100..10000 Hz (slot 1): 1st-order all-pass, -90 deg at `f` (bilinear, pre-warped).
-//! - **AP2** `f` (slot 1), `q` 0.5..5 (slot 2): RBJ-form 2nd-order all-pass but with `alpha = tan(w0/(2Q))`
-//!   instead of `sin(w0)/(2Q)` (verified on all 20 reference curves; differs visibly near Nyquist).
+//! - **TILT** `tilt` -6..+6 dB (slot 1): `10^(tilt/20) * hs12(fc, -2 tilt, Q 0.2)` (WING's bilinear high shelf,
+//!   [`crate::wingcoef::hs12`]), `fc` interpolated 650 -> 780 -> 925 Hz for |tilt| 0 -> 3 -> 6 dB. DC = +tilt,
+//!   Nyquist = -tilt: **positive tilt = more low end**.
+//! - **MAX** `low` (LOW CONT, slot 1), `proc` (HIGH PROC, slot 2), both 0..100 %. Poles from
+//!   `s1 = 2 sin(pi 252.4/fs)`, `s2 = 2 sin(pi 1688.7/fs)`; at `low = proc = 0` the section is a 2nd-order
+//!   **all-pass** (BBE-style low-band phase realignment); `proc` raises `b2 = 1 + 0.02015 proc` (HF boost, about
+//!   +10.8 dB at Nyquist for 100 %), `low` scales the `s1 s2` numerator term by `1 + 0.025 low` (LF contour).
+//! - **AP1** `f` 100..10000 Hz (slot 1): 1st-order all-pass, `K = tanf(pi f/fs)`, -90 deg at `f`.
+//! - **AP2** `f` (slot 1), `q` 0.5..5 (slot 2): 2nd-order all-pass with `alpha = tanf(w0/(2Q))` instead of RBJ's
+//!   `sin(w0)/(2Q)`.
 //!
 //! **Linear vs not:** all four are LTI. The BBE Sonic Maximizer's level-dependent processing (VCA-driven HF
 //! boost) is *not* in WING's MAX: the curves show a fixed linear filter, so none is modelled (`proc` boosts
@@ -29,7 +27,7 @@
 //! region). No allocation after construction; `prepare` only stores the sample rate.
 
 use crate::model::{Model, ParamValue};
-use core::f64::consts::PI;
+use crate::wingcoef::{self, Bq, Ctx};
 use wing_dsp::biquad::Coeffs;
 
 /// Coefficient ramp time after a parameter change.
@@ -43,17 +41,20 @@ pub const AP_Q_MAX: f32 = 5.0;
 pub const AP_Q_DEFAULT: f32 = 2.5;
 pub const AP_F_DEFAULT: f32 = 1000.0;
 
-/// Reference sample rate of the fitted constants (the curves are exported at 48 kHz).
-const REF_FS: f64 = 48_000.0;
+// `ae::Cchfilter::update` constants (T04J port, see the module doc).
+const TILT_Q: f32 = f32::from_bits(0x3e4c_cccd); // 0.2
+const LN10_20: f64 = f64::from_bits(0x3fbd_791c_6109_b02d);
+const MAX_F1: f64 = f64::from_bits(0x406f_8ccc_cccc_cccd); // 252.4 Hz
+const MAX_F2: f64 = f64::from_bits(0x409a_62cc_cccc_cccd); // 1688.7 Hz
+const MAX_K: f64 = f64::from_bits(0xbffa_589b_7694_20e2); // -1.6466
+const MAX_C: f64 = f64::from_bits(0x3fe3_6f00_68db_8bac); // 0.6073
+const MAX_PROC: f64 = f64::from_bits(0x4000_1eb8_51eb_851f); // 2.015
+const AP2_NYQ: f64 = f64::from_bits(0x3fdf_5c28_f5c2_8f5c); // 0.49
 
-// TILT: K-plane (tan(w/2) at 48 kHz) of the low / high pole pair at tilt = 0, fitted to filter.json.
-const TILT_K1: f64 = 0.008_962_1;
-const TILT_K2: f64 = 0.205_741_8;
-// MAX: K-plane poles at 48 kHz (~160.9 Hz, ~3190 Hz), HF-process and LF-contour slopes per percent.
-const MAX_K1: f64 = 0.010_530_298;
-const MAX_K2: f64 = 0.211_897_16;
-const MAX_KAPPA: f64 = 0.020_15;
-const MAX_LOW: f64 = 1.822_03e-4;
+fn coeffs(q: Bq) -> Coeffs {
+    let [b0, b1, b2, a1, a2] = q.map(f64::from);
+    Coeffs { b0, b1, b2, a1, a2 }
+}
 
 /// Which tool filter.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,84 +65,68 @@ pub enum ToolKind {
     Ap2,
 }
 
-/// `K = tan(pi f / fs)` at `fs` of the analog frequency that maps to `k48` at 48 kHz.
-fn rescale_k(k48: f64, fs: f64) -> f64 {
-    if (fs - REF_FS).abs() < 1e-9 {
-        return k48;
-    }
-    let f = k48.atan() * REF_FS / PI;
-    (PI * f.min(fs * 0.499) / fs).tan()
-}
-
-/// TILT EQ section, `tilt_db` -6..+6 (positive = low boost / high cut).
+/// TILT EQ section, `tilt_db` -6..+6 (positive = low boost / high cut): `10^(t/20) * hs12(fc, -2t, 0.2)`, `fc`
+/// interpolated 650 -> 780 -> 925 Hz over |t| = 0 -> 3 -> 6 dB.
 pub fn tilt_coeffs(fs: f64, tilt_db: f64) -> Coeffs {
-    let g = 10f64.powf(tilt_db.clamp(-6.0, 6.0) / 20.0);
-    let sg = g.sqrt();
-    let k1 = rescale_k(TILT_K1, fs) / sg;
-    let k2 = rescale_k(TILT_K2, fs) / sg;
-    // (u + K) -> [(1+K) - (1-K) z^-1] / (1 + z^-1)
-    let (n1a, n1b) = (1.0 + g * k1, 1.0 - g * k1);
-    let (n2a, n2b) = (1.0 + g * k2, 1.0 - g * k2);
-    let (d1a, d1b) = (1.0 + k1, 1.0 - k1);
-    let (d2a, d2b) = (1.0 + k2, 1.0 - k2);
-    let gi = 1.0 / g;
-    let a0 = d1a * d2a;
-    Coeffs {
-        b0: gi * n1a * n2a / a0,
-        b1: -gi * (n1a * n2b + n1b * n2a) / a0,
-        b2: gi * n1b * n2b / a0,
-        a1: -(d1a * d2b + d1b * d2a) / a0,
-        a2: d1b * d2b / a0,
-    }
+    let c = Ctx::new(fs);
+    let t = (tilt_db as f32).clamp(-TILT_MAX_DB, TILT_MAX_DB);
+    let x = ((t.abs() + t.abs()) / 6.0).min(2.0);
+    let fc = if x >= 1.0 {
+        (x - 1.0).mul_add(925.0, (2.0 - x) * 780.0)
+    } else {
+        x.mul_add(780.0, (1.0 - x) * 650.0)
+    };
+    let [b0, b1, b2, a1, a2] = wingcoef::hs12(&c, fc, t * -2.0, TILT_Q);
+    let g = if t > -98.0 {
+        (t as f64 * LN10_20).exp() as f32
+    } else {
+        0.0
+    };
+    coeffs([g * b0, g * b1, g * b2, a1, a2])
 }
 
-/// MAXER section, `low` (LOW CONT) and `proc` (HIGH PROC) in percent.
+/// MAXER section, `low` (LOW CONT) and `proc` (HIGH PROC) in percent: an all-pass at 0/0 (poles from
+/// `2 sin(pi 252.4/fs)` and `2 sin(pi 1688.7/fs)`), `proc` raises `b2` (HF), `low` the LF contour term.
 pub fn max_coeffs(fs: f64, low_pct: f64, proc_pct: f64) -> Coeffs {
     let (low, pr) = (low_pct.clamp(0.0, 100.0), proc_pct.clamp(0.0, 100.0));
-    let (k1, k2) = (rescale_k(MAX_K1, fs), rescale_k(MAX_K2, fs));
-    let (p1, p2) = ((1.0 - k1) / (1.0 + k1), (1.0 - k2) / (1.0 + k2));
-    let (a1, a2) = (-(p1 + p2), p1 * p2);
-    // Terms are invariant in the K-plane, so rescale by the (1+K1)(1+K2) normaliser ratio.
-    let s = (1.0 + MAX_K1) * (1.0 + MAX_K2) / ((1.0 + k1) * (1.0 + k2));
-    let hf = pr * MAX_KAPPA * s;
-    Coeffs {
-        b0: a2 + hf + low * MAX_LOW * s,
-        b1: a1 - 2.0 * hf,
-        b2: 1.0 + hf,
-        a1,
-        a2,
-    }
+    let pifs = Ctx::new(fs).pi_over_fs() as f64;
+    let s11 = (2.0 * (pifs * MAX_F1).sin()) as f32;
+    let s0 = (2.0 * (pifs * MAX_F2).sin()) as f32;
+    let s1 = (MAX_K - s11 as f64) as f32;
+    let lo = ((low as f32) as f64 * 2.5 / 100.0 + 1.0) as f32;
+    let b2 = ((pr as f32) as f64 * MAX_PROC / 100.0 + 1.0) as f32;
+    let b0 = s0.mul_add(s1, (lo * s11).mul_add(s0, b2));
+    let b1 = b2.mul_add(-2.0, -s0 * s1);
+    let d = s0 as f64 / MAX_C;
+    let a1 = (d + s11.mul_add(s0, -2.0) as f64) as f32;
+    let a2 = (1.0 - d) as f32;
+    coeffs([b0, b1, b2, a1, a2])
 }
 
-/// AP 90: first-order all-pass `(a + z^-1)/(1 + a z^-1)`, `a = (K-1)/(K+1)`.
+/// AP 90: first-order all-pass `(a + z^-1)/(1 + a z^-1)`, `a = -(1-K)/(1+K)`, `K = tanf(pi f/fs)`.
 pub fn ap1_coeffs(fs: f64, f: f64) -> Coeffs {
-    let f = f.clamp(AP_F_MIN as f64, AP_F_MAX as f64).min(fs * 0.499);
-    let k = (PI * f / fs).tan();
-    let a = (k - 1.0) / (k + 1.0);
-    Coeffs {
-        b0: a,
-        b1: 1.0,
-        b2: 0.0,
-        a1: a,
-        a2: 0.0,
-    }
+    let c = Ctx::new(fs);
+    let f = (f as f32).clamp(AP_F_MIN, AP_F_MAX);
+    let k = (c.pi_over_fs() * f).tan();
+    let r = (1.0 - k) / (1.0 + k);
+    coeffs([-r, 1.0, 0.0, -r, 0.0])
 }
 
-/// AP 180: second-order all-pass, `alpha = tan(w0/(2Q))`.
+/// AP 180: second-order all-pass with `alpha = tanf(w0/(2Q))` (`r = (1-alpha)/(1+alpha)`, `cosf(w0)`).
 pub fn ap2_coeffs(fs: f64, f: f64, q: f64) -> Coeffs {
-    let f = f.clamp(AP_F_MIN as f64, AP_F_MAX as f64).min(fs * 0.499);
-    let q = q.clamp(AP_Q_MIN as f64, AP_Q_MAX as f64);
-    let w0 = 2.0 * PI * f / fs;
-    let al = (w0 / (2.0 * q)).tan();
-    let c = -2.0 * w0.cos() / (1.0 + al);
-    let r = (1.0 - al) / (1.0 + al);
-    Coeffs {
-        b0: r,
-        b1: c,
-        b2: 1.0,
-        a1: c,
-        a2: r,
+    let c = Ctx::new(fs);
+    let pifs = c.pi_over_fs();
+    let q = (q as f32).clamp(AP_Q_MIN, AP_Q_MAX);
+    let mut f = (f as f32).clamp(AP_F_MIN, AP_F_MAX);
+    // WING clamps f to 0.49 q fs (T = 1/fs on the console; never reached inside the parameter ranges).
+    if ((1.0 / fs) as f32 * f / q) as f64 >= AP2_NYQ {
+        f = (q as f64 * AP2_NYQ * fs as f32 as f64) as f32;
     }
+    let cs = (f * (pifs + pifs)).cos();
+    let t = (f * pifs / q).tan();
+    let r = (1.0 - t) / (1.0 + t);
+    let r1 = r + 1.0;
+    coeffs([r, r1 * -cs, 1.0, -(cs * r1), r])
 }
 
 /// One of the four tool filters as a selectable [`Model`].
@@ -171,7 +156,7 @@ impl FilterToolModel {
         let mut m = Self {
             kind,
             id,
-            fs: REF_FS,
+            fs: 48_000.0,
             p1: 0.0,
             p2: 0.0,
             dirty: false,
@@ -179,7 +164,7 @@ impl FilterToolModel {
             step: [0.0; 5],
             target: arr(Coeffs::IDENTITY),
             remaining: 0,
-            ramp_len: (RAMP_S * REF_FS) as u32,
+            ramp_len: (RAMP_S * 48_000.0) as u32,
             s: [[0.0; 2]; 2],
         };
         m.load_defaults();
@@ -352,14 +337,15 @@ mod tests {
         assert!((c.magnitude_db(48_000.0, 23_999.0) + 6.0).abs() < 0.05);
         assert!(c.magnitude_db(48_000.0, 655.7).abs() < 0.01);
         let z = tilt_coeffs(48_000.0, 0.0);
-        assert!(z.magnitude_db(48_000.0, 3000.0).abs() < 1e-9);
+        assert!(z.magnitude_db(48_000.0, 3000.0).abs() < 1e-4);
     }
 
     #[test]
     fn max_is_allpass_when_zeroed_and_linear_in_params() {
         let c = max_coeffs(48_000.0, 0.0, 0.0);
+        // all-pass to float32 coefficient rounding
         for f in [50.0, 500.0, 5000.0, 20_000.0] {
-            assert!(c.magnitude_db(48_000.0, f).abs() < 1e-9);
+            assert!(c.magnitude_db(48_000.0, f).abs() < 1e-4);
         }
         let hi = max_coeffs(48_000.0, 0.0, 100.0);
         assert!(hi.magnitude_db(48_000.0, 20.0).abs() < 0.2);
@@ -367,7 +353,7 @@ mod tests {
         let lo = max_coeffs(48_000.0, 100.0, 0.0);
         assert!(lo.magnitude_db(48_000.0, 20.0) > 9.0);
         let mid = max_coeffs(48_000.0, 0.0, 50.0);
-        assert!((mid.b1 - (hi.b1 + c.b1) / 2.0).abs() < 1e-12);
+        assert!((mid.b1 - (hi.b1 + c.b1) / 2.0).abs() < 1e-6);
     }
 
     #[test]
@@ -375,8 +361,8 @@ mod tests {
         let a1 = ap1_coeffs(48_000.0, 1000.0);
         let a2 = ap2_coeffs(48_000.0, 1000.0, 2.5);
         for f in [30.0, 1000.0, 15_000.0] {
-            assert!(a1.magnitude_db(48_000.0, f).abs() < 1e-9);
-            assert!(a2.magnitude_db(48_000.0, f).abs() < 1e-9);
+            assert!(a1.magnitude_db(48_000.0, f).abs() < 1e-4);
+            assert!(a2.magnitude_db(48_000.0, f).abs() < 1e-4);
         }
         let p1 = a1.response(48_000.0, 1000.0).arg().to_degrees();
         let p2 = a2.response(48_000.0, 1000.0).arg().to_degrees();
