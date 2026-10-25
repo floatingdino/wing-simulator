@@ -2,7 +2,7 @@
 id: T030
 title: wing-dsp primitives
 stage: S3
-status: review
+status: done
 owner: agent-T030
 depends: [T001, T007]
 branch: task/T030
