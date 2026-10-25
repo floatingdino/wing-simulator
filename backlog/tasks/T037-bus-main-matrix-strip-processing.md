@@ -2,7 +2,7 @@
 id: T037
 title: Bus/main/matrix strip processing
 stage: S3
-status: review
+status: done
 owner: engineer-T037
 depends: [T036]
 branch: task/T037
