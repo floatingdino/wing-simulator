@@ -2,7 +2,7 @@
 id: T086
 title: BUG: DEQ and TAPE-DL meters static; "RTA in use on another window!"; meter report churn
 stage: S4
-status: review
+status: done
 owner: agent-T086
 depends: [T082, T084]
 branch: task/T086
