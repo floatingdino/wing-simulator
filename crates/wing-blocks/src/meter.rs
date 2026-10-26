@@ -26,8 +26,9 @@
 //! | `band dB / 15` (signed, ±1) | DEQ: `gui_modules::DynEqGraph::updateCurve` draws the dynamic band at `m * 15` dB |
 //! | two band words `256 (g_k - 1)` | DEQ2 (see above) |
 //!
-//! The DEQ entries of `dyn-models.json` (`(4/3) log10(1 + g)`) are WING-Edit's local GR-meter function, which
-//! the dynamic-EQ display does not use; we follow the display.
+//! The DEQ entries of `dyn-models.json` (`(4/3) log10(1 + g)`) are the same law: WING-Edit's
+//! `ae::dyn_gain_dyneq(_, g)` is `clamp(20 log10(1 + g) / 15, -1, 1)` with `1 + g` the band's linear gain
+//! (T086). Its `dyn_led_dyneq` / `dyn_state_dyneq` are constant 0, so the DEQ LED/state word is 0.
 //!
 //! # FX (`A6` blocks: in L/R, out L/R, 6 state words)
 //!
@@ -134,13 +135,15 @@ impl DynMeterLaw {
     }
 
     /// The (gain, LED/state) words of a V2 block, or the gain word alone for V1 (`.0`). `active` is the
-    /// LED/state flag for every law but DEQ2, whose second word carries band 2.
+    /// LED/state flag for every law but DEQ (always 0) and DEQ2, whose second word carries band 2.
     pub fn words(self, gr_db: f32, bands: &[f32], active: bool) -> (i16, i16) {
         match self {
             DynMeterLaw::DynEq2 => {
                 let w = |k: usize| sat(256.0 * (lin(bands.get(k).copied().unwrap_or(0.0)) - 1.0));
                 (w(0), w(1))
             }
+            // DEQ: `ae::dyn_led_dyneq` / `dyn_state_dyneq` are constant 0 (T086)
+            DynMeterLaw::DynEq => (sat(256.0 * self.position(gr_db, bands)), 0),
             _ => (sat(256.0 * self.position(gr_db, bands)), active as i16),
         }
     }
@@ -224,7 +227,8 @@ mod tests {
         assert_eq!(p("WAVE", 0.0), 1.0);
         assert_eq!(p("WARM", 20.0), 0.0);
         let deq = DynMeterLaw::for_model("DEQ");
-        assert_eq!(deq.words(0.0, &[-7.5], true), (-128, 1));
+        assert_eq!(deq.words(0.0, &[-7.5], true), (-128, 0));
+        assert_eq!(deq.words(0.0, &[30.0], true), (256, 0));
         let deq2 = DynMeterLaw::for_model("DEQ2");
         let (a, b) = deq2.words(6.0, &[-6.0206, 0.0], true);
         assert_eq!((a, b), (-128, 0));

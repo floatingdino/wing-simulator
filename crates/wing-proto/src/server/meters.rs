@@ -6,6 +6,22 @@
 //! 4.04 s). Each live report is sent as `id.l + int16[]` (big-endian, 1/256 dB levels) to
 //! `client_ip:port` every 50 ms until 5 s after its last renew.
 //!
+//! **One report per client (T086).** A definition replaces every earlier report of the same
+//! client, whatever its id; a renew of a superseded id does nothing. WING-Edit 3.3.4
+//! (`nrp::MeterHandler`, docs/research/protocol.md §4.3) never renews an old id: whenever the set of
+//! meters its pages want changes it defines id + 1 and then only renews that one. It also treats
+//! *every* received meter packet as a sync point: `rxMeters` compares the wanted set with the last
+//! request and re-defines on any difference, and right after a definition the wanted set is reset to
+//! `ChannelV2 1` until its pages re-register on the (asynchronous) meter notification. Streaming the
+//! superseded reports for their remaining 5 s therefore put two or more packets into each 50 ms tick;
+//! the second one was compared before the pages had re-registered, so WING-Edit re-defined
+//! `ChannelV2 1`, then the full set, and so on (the `report 809..820 defined` storms in
+//! `scratch/wing-sim-v0.5.log`, up to 68 live reports).
+//!
+//! `A9` monitor and `AA` RTA have a single instance: WING-Edit sends the type token without an
+//! index ([`crate::nrp::MeterRequestParser`] normalises it to index 0) and reads one 6 / 120-word
+//! block.
+//!
 //! Producers: [`SyntheticMeters`] (no audio), or real levels (T039: the daemon converts the
 //! engine's lock-free level bank into this [`MeterBank`] from the streamer's per-tick source hook,
 //! [`MeterStreamer::spawn_with_source`], right before each send). `MeterBank::set` is a relaxed
@@ -253,20 +269,15 @@ impl MeterSubscriptions {
             }
             MeterCommand::Define { id, selections } => {
                 g.clients.entry(client).or_insert((ip, None));
-                let rep = Report {
+                // One report per client (T086): a definition supersedes the client's earlier
+                // reports, whatever their id. See the module doc.
+                g.reports.retain(|r| r.client != client);
+                g.reports.push(Report {
                     client,
                     id: *id,
                     selections: selections.clone(),
                     expires: now + REPORT_LIFETIME,
-                };
-                match g
-                    .reports
-                    .iter_mut()
-                    .find(|r| r.client == client && r.id == *id)
-                {
-                    Some(r) => *r = rep,
-                    None => g.reports.push(rep),
-                }
+                });
             }
         }
     }
@@ -562,6 +573,71 @@ mod tests {
             Some(db_to_meter(-128.0))
         );
         assert!(bank.get(MeterKind::ChannelV2, 0, 0).unwrap() > db_to_meter(-60.0));
+    }
+
+    /// T086: a definition supersedes the client's earlier reports (WING-Edit defines id + 1 on every
+    /// change of its wanted set and never renews the old id); other clients are untouched.
+    #[test]
+    fn definition_supersedes_the_clients_earlier_reports() {
+        let subs = MeterSubscriptions::new();
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
+        let now = Instant::now();
+        let def = |client, id, kind| {
+            subs.apply(
+                client,
+                ip,
+                &MeterCommand::Define {
+                    id,
+                    selections: vec![sel(kind, &[0])],
+                },
+                now,
+            )
+        };
+        for c in [1, 2] {
+            subs.apply(c, ip, &MeterCommand::SetPort(4000 + c as u16), now);
+        }
+        def(2, 0, MeterKind::Channel);
+        def(1, 809, MeterKind::ChannelV2);
+        def(1, 810, MeterKind::Fx);
+        def(1, 811, MeterKind::ChannelV2);
+        let mut live = Vec::new();
+        subs.for_each_live(now, |dest, id, sels| {
+            live.push((dest.port(), id, sels[0].kind))
+        });
+        live.sort_by_key(|l| l.0);
+        assert_eq!(
+            live,
+            [
+                (4001, 811, MeterKind::ChannelV2),
+                (4002, 0, MeterKind::Channel)
+            ]
+        );
+        // renewing a superseded id does not bring it back
+        subs.apply(1, ip, &MeterCommand::Renew(810), now);
+        assert_eq!(subs.live_reports(now), 2);
+        // redefining the current id replaces it in place
+        def(1, 811, MeterKind::Rta);
+        let mut kinds = Vec::new();
+        subs.for_each_live(now, |dest, _, sels| {
+            if dest.port() == 4001 {
+                kinds.push(sels[0].kind)
+            }
+        });
+        assert_eq!(kinds, [MeterKind::Rta]);
+    }
+
+    /// T086: `A9`/`AA` selections (index 0) produce one 6 / 120-word block.
+    #[test]
+    fn monitor_and_rta_blocks() {
+        let bank = MeterBank::for_schema();
+        SyntheticMeters::fill(&bank, None, 0.5);
+        let mut out = Vec::new();
+        bank.read_into(
+            &[sel(MeterKind::Monitor, &[0]), sel(MeterKind::Rta, &[0])],
+            &mut out,
+        );
+        assert_eq!(out.len(), 6 + 120);
+        assert_eq!(out[6], bank.get(MeterKind::Rta, 0, 0).unwrap());
     }
 
     #[test]

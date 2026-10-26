@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use wing_engine::meters::LevelBank;
 use wing_engine::params::telemetry_kind;
 use wing_model::ParamStore;
-use wing_proto::nrp::meter::{meter_to_db, meter_to_gr, GR_FULL_SCALE_DB};
+use wing_proto::nrp::meter::{db_to_meter, meter_to_db, meter_to_gr, GR_FULL_SCALE_DB};
 use wing_proto::nrp::{MeterCommand, MeterKind, MeterPacket, MeterSelection};
 use wing_proto::server::{MeterBank, MeterStreamer, MeterSubscriptions};
 use wing_sim::audio::console::{Console, ConsoleConfig};
@@ -334,4 +334,128 @@ fn metering_overhead_per_cycle() {
         d * 100.0 / period,
         period * 1e6
     );
+}
+
+/// Run `cycles` blocks, then one meter interval (`rm` sees only that interval), and fill `bank`.
+fn settle(
+    console: &mut Console,
+    rm: &mut RealMeters,
+    bank: &MeterBank,
+    n: &mut u64,
+    cycles: usize,
+) {
+    for _ in 0..cycles {
+        cycle(console, n);
+    }
+    rm.update(0.05);
+    for _ in 0..16 {
+        cycle(console, n);
+    }
+    rm.update(0.05);
+    rm.fill(bank);
+}
+
+/// T086: a DEQ (dynamic EQ) in the gate or dynamics slot fills the words WING-Edit 3.3.4 reads for
+/// its DEQ page: `rxMeters` stores `gain word / 256` and `gui_modules::DynEqGraph::updateCurve`
+/// draws the dynamic band at `15 x` that dB (so word = 256 * band dB / 15, clamped to +-256); the
+/// LED / state word is 0 (`ae::dyn_led_dyneq` / `dyn_state_dyneq` return 0).
+#[test]
+fn deq_band_gain_words() {
+    use wing_engine::meters::{band, band_cell};
+    for slot in ["gate", "dyn"] {
+        let mut store = ParamStore::new();
+        let levels = LevelBank::shared();
+        let mut console = build(&mut store, Some(levels.clone()), 0);
+        // ch 1: 1 kHz at -14 dBFS peak; band compressor at 1 kHz, -6 dB maximum
+        for (p, v) in [
+            ("mdl", "DEQ"),
+            ("on", "1"),
+            ("thr", "-40"),
+            ("ratio", "3.0"),
+            ("filt", "BP"),
+            ("f", "1000"),
+            ("g", "-6"),
+            ("mode", "high"),
+        ] {
+            set(&store, &format!("ch/1/{slot}/{p}"), v);
+        }
+        let store = Arc::new(store);
+        let mut rm = RealMeters::new(levels.clone()).with_store(store.clone());
+        rm.set_release(f32::INFINITY);
+        let bank = MeterBank::for_schema();
+        let mut n = 0u64;
+        settle(&mut console, &mut rm, &bank, &mut n, 600);
+        let (b, gain_w, led_w) = if slot == "gate" {
+            (band::GATE, 5, 6)
+        } else {
+            (band::DYN, 8, 9)
+        };
+        let db = rm.value(band_cell(0, b));
+        assert!((db + 6.0).abs() < 0.5, "{slot}: DEQ band at {db:.2} dB");
+        let w = bank.get(MeterKind::ChannelV2, 0, gain_w).unwrap();
+        assert_eq!(w, (256.0 * db / 15.0).round() as i16, "{slot} gain word");
+        // as WING-Edit draws it
+        assert!((w as f32 / 256.0 * 15.0 + 6.0).abs() < 0.5);
+        assert_eq!(
+            bank.get(MeterKind::ChannelV2, 0, led_w),
+            Some(0),
+            "{slot} LED/state"
+        );
+        let v1 = if slot == "gate" { 5 } else { 7 };
+        assert_eq!(bank.get(MeterKind::Channel, 0, v1), Some(w), "V1 = V2");
+    }
+}
+
+/// T086: DEQ3 (FX) and TAPE-DL as WING-Edit's FX pages read them: DEQ3 band k in FX word 4 + 2k as
+/// `2048 (g_k - 1)` (`DynEqGraph::updateCurve`); TAPE-DL's two VU needles from FX words 2 / 3, the
+/// slot's output level in 1/256 dB (`FxTapeDelay::listener_callback`: `x = word / 256 + 3`, needle
+/// `668 + 551 (x + 3) / 6` from -3 up, `668 + 551 (x + 3) / 17` below, clamped to 117..1219).
+#[test]
+fn deq3_and_tape_delay_fx_words() {
+    use wing_engine::meters::{fx_cell, fx_word};
+    let mut store = ParamStore::new();
+    let levels = LevelBank::shared();
+    let mut console = build(&mut store, Some(levels.clone()), 0);
+    // bus 1 (fed by ch 1 at -23 dB peak): Ins1 = FX7 TAPE-DL, Ins2 = FX10 DEQ3, as in the user's scene
+    for (p, v) in [
+        ("fx/7/mdl", "TAPE-DL"),
+        ("fx/7/fxmix", "100"),
+        ("fx/7/time", "100"),
+        ("bus/1/preins/ins", "FX7"),
+        ("bus/1/preins/on", "1"),
+        ("fx/10/mdl", "DEQ3"),
+        ("fx/10/fxmix", "100"),
+        ("fx/10/1-thr", "-40"),
+        ("fx/10/1-ratio", "3.0"),
+        ("fx/10/1-filt", "BP"),
+        ("fx/10/1-f", "1000"),
+        ("fx/10/1-g", "-6"),
+        ("fx/10/1-mode", "high"),
+        ("bus/1/postins/ins", "FX10"),
+        ("bus/1/postins/on", "1"),
+    ] {
+        set(&store, p, v);
+    }
+    let store = Arc::new(store);
+    let mut rm = RealMeters::new(levels.clone()).with_store(store.clone());
+    rm.set_release(f32::INFINITY);
+    let bank = MeterBank::for_schema();
+    let mut n = 0u64;
+    settle(&mut console, &mut rm, &bank, &mut n, 1500);
+    let w = |slot: usize, k: usize| bank.get(MeterKind::Fx, slot, k).unwrap();
+    // TAPE-DL (FX 7): in = the bus, out = the delayed signal, both live
+    for k in 0..4 {
+        let db = meter_to_db(w(6, k));
+        assert!(db > -40.0 && db < 0.0, "TAPE-DL word {k}: {db:.2} dB");
+        assert_eq!(w(6, k), db_to_meter(rm.value(fx_cell(6, k))));
+    }
+    assert!((meter_to_db(w(6, fx_word::IN_L)) + 23.01).abs() < 0.5);
+    assert_eq!([w(6, 4), w(6, 5), w(6, 9)], [0, 0, 0], "no state words");
+    // DEQ3 (FX 10): band 1 near -6 dB in word 4, bands 2/3 (g = 0) at 0
+    let band1 = rm.value(fx_cell(9, fx_word::BAND0));
+    assert!((band1 + 6.0).abs() < 0.5, "DEQ3 band 1 at {band1:.2} dB");
+    let want = (2048.0 * (10f32.powf(band1 / 20.0) - 1.0)).round() as i16;
+    assert_eq!(w(9, 4), want);
+    assert!(((w(9, 4) as f32 / 2048.0 + 1.0).log10() * 20.0 + 6.0).abs() < 0.5);
+    assert_eq!((w(9, 6), w(9, 8)), (0, 0));
 }

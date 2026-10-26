@@ -41,6 +41,45 @@ strip). No meter report or `$`-node availability flag is involved in this messag
 `rtatap -> $tap`, `rtadecay -> $dec`, `rtadet -> $det` (PEAK/RMS only; AVG -> RMS) with the
 simulator's origin, so every client gets the change events. It runs every 50 ms on the RTA thread.
 
+## 1a. The full overlay condition, "RTA in use on another window!" (T086) [H]
+
+`RtaGraph::paint` (`0x1000e3a04..0x1000e3b18`), after the check of §1, compares the graph's own source and
+tap (`+0x1d8`, `+0x1dc`) with the console's: there is no report id, client or window id involved, and the
+number of reports selecting `AA` does not matter.
+
+```
+if !(§1)                                             -> "RTA in use! Check mixer settings."
+else if own_src == pos(rtasrc) && own_tap == pos($tap) -> spectrum
+else if graph is an FX graph (+0x1d4 = slot >= 0)
+     && selected strip (CE+0xd0) != pos(fx/<slot>/$a_chn) - 1
+                                                     -> "RTA in use! Select INSERTED channel."
+else                                                 -> "RTA in use on another window!"
+```
+
+Who writes `rtasrc`/`rtatap` (WING-Edit only; the console never changes them):
+- a strip graph (`RtaGraph(int, int, Cpar* eqdisp, Cpar* eqcol)`: EQ page, channel section, home view, key
+  filter) on a selection change or RTA display change, while the display is on (`eqdisp` pos > 0): own src =
+  selected strip + 1 -> `rtasrc`; on a page / tap change: own tap -> `rtatap`;
+- the EQ page in insert view (page mode 5/6, `setFxRta` with no slot): if the selected strip's insert holds
+  an FX whose `f_table` type is 0x25 or 0x2f (GEQ-type), own = (FX number, `FXIN`) -> `rtasrc`, `rtatap`;
+- an FX page graph (`RtaGraph(int, int, int, int, bool)`, `setFxRta` with a slot): own = (slot + 1, `FXIN`),
+  written only while the selected strip is the slot's host, `fx/<slot>/$a_chn - 1`.
+
+So "in use on another window" means another graph owns the RTA: it shows on every graph but the last one
+that claimed it, until that graph claims again. In `scratch/wing-sim-v0.5.log` `rtasrc` was only ever written
+by FX-insert RTAs (12 at 379.5 s, 14 at 583.9 s: main 1 Ins1 / bus 5 Ins2), never for a channel, so every
+strip RTA afterwards compared its own strip with `rtasrc` 14. That part is WING-Edit's own behaviour (the same
+on a console). What the console must provide, and the simulator now does:
+- `$src $tap $dec $det` mirrored from the settings (T084, `apps/wing-sim/src/rta.rs` `sync_status`);
+- `fx/N/$a_chn` (owning strip, 1..76 in the `rtasrc` numbering, 0 = none), `fx/N/$a_pos` (0 Ins1, 1 Ins2)
+  and the inserts' `$stat`: WING-Edit computes them only offline (`ae::Cinsert::update` returns at once
+  while connected, `0x10001307c`), and without them an FX page's RTA never claims the source and always
+  reads "Select INSERTED channel" (`sync_fx_hosts`, every 50 ms on the RTA thread);
+- the RTA block itself: WING-Edit requests `AA` (and `A9`) **without an index**; the simulator used to
+  send 0 words for it, so the spectrum never arrived (fixed in `MeterRequestParser`, T086).
+
+Test: `apps/wing-sim/src/rta.rs` `wing_edit_rta_overlay_condition` (a model of `paint` and of the claims).
+
 ## 2. RTA meter data [M]
 
 `nrp::MeterHandler::sendMeterRequest` builds `D4 id DC <type idx...> DE` from its slot table: type
