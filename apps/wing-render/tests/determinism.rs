@@ -156,6 +156,7 @@ fn realtime(plan: &InputPlan, rec_dir: &Path) -> Vec<Vec<f32>> {
                 workgroup: None,
                 meters: None,
                 rta: None,
+                probe: None,
             },
             rt: false,
             hostio: None,

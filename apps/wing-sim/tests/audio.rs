@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use wing_engine::meters::LevelBank;
+use wing_engine::probe::{ProbeBlock, SlotProbeFeed};
 use wing_engine::rta::{RtaFeed, RtaSel, RtaTap};
 use wing_hostio::{BridgeState, HostIoConfig, Route};
 use wing_model::ParamStore;
@@ -113,6 +114,7 @@ fn console_cfg() -> ConsoleConfig {
         // metering and the RTA tap on: the alloc and load tests cover them (T039, T084)
         meters: Some(LevelBank::shared()),
         rta: Some(RtaFeed::shared()),
+        probe: Some(SlotProbeFeed::shared()),
     }
 }
 
@@ -170,6 +172,78 @@ fn run_sine(console: &mut Console, t0: u64, cycles: usize) -> [Vec<f32>; 3] {
 }
 
 // ---- offline ------------------------------------------------------------------------------------
+
+/// T088: the daemon's `probe` command (`wing_sim::probe::run`, also behind `/wingsim/probe`) against a
+/// console processing on another thread: WARM in ch 1's gate slot at the user's live settings.
+#[test]
+fn probe_command_reports_the_live_slot() {
+    let Rig { store, mut routing } = rig();
+    for (p, v) in [
+        ("ch/1/gate/mdl", "WARM"),
+        ("ch/1/gate/on", "1"),
+        ("ch/1/gate/mix", "5"),
+        ("ch/1/gate/1", "125"),
+        ("ch/1/gate/2", "-100"),
+        ("ch/1/gate/5", "100"),
+    ] {
+        set(&store, p, v);
+    }
+    routing.refresh(&store);
+    let mut console = Console::build(
+        console_cfg(),
+        &store,
+        &mut routing,
+        None,
+        Vec::new(),
+        Arc::new(AudioStats::default()),
+    )
+    .unwrap();
+    let feed = console.config().probe.clone().unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let s2 = stop.clone();
+    let rt = std::thread::spawn(move || {
+        let mut t = 0u64;
+        while !s2.load(Relaxed) {
+            // 220 Hz at -18 dBFS peak on USB 1 (+6 dB trim: -15 dBFS RMS at the slot)
+            console.cycle(
+                |ch, b| {
+                    for (i, s) in b.iter_mut().enumerate() {
+                        *s = if ch == 0 {
+                            sine(t + i as u64, 220.0, 0.1259)
+                        } else {
+                            0.0
+                        };
+                    }
+                },
+                |_, _| {},
+            );
+            t += BLOCK as u64;
+            std::thread::sleep(Duration::from_micros(200));
+        }
+    });
+    let reply = wing_sim::probe::run(Some(&feed), &store, "ch/1").unwrap();
+    stop.store(true, Relaxed);
+    rt.join().unwrap();
+    assert!(!reply.contains('\n'), "one reply line");
+    let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+    let slots = v.as_array().unwrap();
+    assert_eq!(slots.len(), 3);
+    let g = &slots[0];
+    assert_eq!(g["target"], "ch/1/gate");
+    assert_eq!(g["model"], "WARM");
+    assert_eq!(g["wrapper"]["wet"], 1.0);
+    assert_eq!(g["wrapper"]["mix"], 5.0);
+    assert_eq!(g["params"][0]["key"], "drv");
+    assert_eq!(g["params"][0]["dsp"], 125.0);
+    assert_eq!(g["params"][1]["dsp"], -100.0);
+    assert!(
+        (g["in_rms_dbfs"].as_f64().unwrap() + 15.0).abs() < 0.5,
+        "{g}"
+    );
+    assert!(g["residual_pct"].as_f64().unwrap() > 20.0, "{g}");
+    assert_eq!(slots[2]["target"], "ch/1/dyn");
+    assert!(wing_sim::probe::run(None, &store, "ch/1").is_err());
+}
 
 #[test]
 fn offline_sine_through_channel_main_usb_out_and_bridge() {
@@ -601,6 +675,15 @@ fn rt_path_does_not_allocate() {
             .as_ref()
             .unwrap()
             .request(Some(RtaSel { src: 1, tap }));
+        // model-slot probe (T088): ch 1's dyn slot, captured across the passes (incl. the final snapshot)
+        if pass == 0 {
+            console
+                .config()
+                .probe
+                .as_ref()
+                .unwrap()
+                .arm(0, ProbeBlock::Dyn);
+        }
         // Pass 0 warms up lazily initialised statics.
         COUNTING.store(pass > 0, Relaxed);
         for k in 0..60i64 {
@@ -621,6 +704,10 @@ fn rt_path_does_not_allocate() {
     assert!(
         console.config().rta.as_ref().unwrap().written() > 0,
         "RTA ring fed"
+    );
+    assert!(
+        console.config().probe.as_ref().unwrap().take().is_some(),
+        "slot probe capture completed on the RT path"
     );
     drop(link);
     let _ = Segment::unlink(&name);

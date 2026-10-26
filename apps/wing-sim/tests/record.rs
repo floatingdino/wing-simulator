@@ -103,6 +103,7 @@ fn console(store: &ParamStore, ctl: &mut ConsoleControl) -> Console {
             workgroup: None,
             meters: None,
             rta: None,
+            probe: None,
         },
         store,
         ctl,

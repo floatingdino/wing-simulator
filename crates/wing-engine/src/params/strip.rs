@@ -594,6 +594,11 @@ impl ModelSlot {
         (self.on, self.mix_pct, self.gain_db)
     }
 
+    /// Effective dry/wet weight `w` the slot currently applies (ramp value; see the type doc).
+    pub fn wet_value(&self) -> f32 {
+        self.wet.value()
+    }
+
     /// Select a model by WING enum index (RT-safe).
     pub fn select(&mut self, index: u16) {
         let k = self.index.get(index as usize).copied().unwrap_or(BYPASS);

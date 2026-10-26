@@ -395,8 +395,9 @@ fn warm_small_signal_is_unity_and_dry_matches() {
 #[test]
 fn warm_hrm_sweeps_second_to_third() {
     let h = |hrm: f32| {
+        // below clipping: the bias sweep is a small-signal property (T088: 80 % drive clips 0.25 hard)
         let mut m = warm(&[(1, f(80.0)), (2, f(hrm))]);
-        let y = tail(&mut m, 1000.0, 0.25);
+        let y = tail(&mut m, 1000.0, 0.08);
         harmonics(&y, 1000.0)
     };
     let (f1, h2e, h3e) = h(-100.0);
@@ -505,16 +506,21 @@ fn warm_colour_tilts_the_spectrum_and_distortion() {
 #[test]
 fn warm_is_alias_free() {
     // 10 kHz tones: the output is periodic in 24 samples (2 kHz grid). 10k and 20k are the in-band harmonics;
-    // every other grid line is aliasing. Bound per case `(drv, hrm, amp, worst alias dBc)`: hot programme at
-    // moderate drive stays < -70 dBc; the extreme corner (125 % drive = +21.6 dB into the shaper with a 0 dBFS
-    // 10 kHz tone, i.e. a near-square wave) is bounded by 2x oversampling + first-order ADAA (T081).
+    // every other grid line is aliasing. Bound per case `(drv, hrm, amp, worst alias dBc)`: moderate drive stays
+    // < -110 dBc even hot; 125 % drive at -30 dBFS < -120 dBc. T088 raised the top drive to +30 dB over the
+    // default, so a -20 dBFS 10 kHz tone at 125 % is already clipped hard (~-67 dBc) and the extreme corner
+    // (a near-square 10 kHz wave) is bounded by 2x oversampling + first-order ADAA at ~-50 dBc. Programme has
+    // little energy that high; measured values + ~3 dB margin.
     for (drv, hrm, amp, bound) in [
-        (60.0, 0.0, 0.5, -100.0),
-        (125.0, 0.0, 0.1, -100.0),
-        (100.0, 100.0, 0.25, -100.0),
-        (125.0, 0.0, 0.5, -55.0),
-        (125.0, 0.0, 0.9, -45.0),
-        (125.0, -100.0, 0.9, -45.0),
+        (60.0, 0.0, 0.5, -110.0),
+        (80.0, 0.0, 0.25, -110.0),
+        (125.0, 0.0, 0.03, -120.0),
+        (125.0, 0.0, 0.1, -63.0),
+        (125.0, -100.0, 0.1, -66.0),
+        (100.0, 100.0, 0.25, -82.0),
+        (125.0, 0.0, 0.5, -47.0),
+        (125.0, 0.0, 0.9, -49.0),
+        (125.0, -100.0, 0.9, -46.0),
     ] {
         let mut m = warm(&[(1, f(drv)), (2, f(hrm))]);
         let y = tail(&mut m, 10_000.0, amp);
@@ -588,5 +594,63 @@ fn models_are_not_stubs_and_survive_extremes() {
         m.reset();
         m.process(&mut l, &mut r, None);
         assert!(l.iter().all(|v| v.is_finite()), "{id}");
+    }
+}
+
+/// (THD % over H2..H10, output/input RMS gain dB) of a 1 kHz sine at `rms_dbfs` (T088 targets).
+fn warm_thd(drv: f32, hrm: f32, rms_dbfs: f64) -> (f64, f64) {
+    let amp = 10f64.powf(rms_dbfs / 20.0) * 2f64.sqrt();
+    let mut m = warm(&[(1, f(drv)), (2, f(hrm))]);
+    let y = tail(&mut m, 1000.0, amp);
+    let h1 = amp_at(&y, 1000.0);
+    let hs: f64 = (2..=10)
+        .map(|k| amp_at(&y, 1000.0 * k as f64).powi(2))
+        .sum();
+    (100.0 * hs.sqrt() / h1, db(rms(&y) / (amp / 2f64.sqrt())))
+}
+
+/// T088: drive is clearly audible at nominal levels and the level stays roughly compensated. Targets (1 kHz
+/// sine, `hrm` 0, see the module docs for their sources): default drive subtle (< 2 % at -18 dBFS RMS),
+/// 125 % overt (> 20 % at -18, > 8 % at -24, > 2 % at -30 dBFS RMS), THD monotonic in drive; at the
+/// -18 dBFS reference the output RMS stays within 1 dB of the input for every drive and harmonics setting.
+#[test]
+fn warm_drive_targets_at_nominal_level() {
+    for hrm in [-100.0f32, 0.0, 100.0] {
+        let mut last = 0.0;
+        for drv in [10.0f32, 33.0, 60.0, 80.0, 100.0, 125.0] {
+            let (thd, gain) = warm_thd(drv, hrm, -18.0);
+            assert!(
+                thd > last,
+                "hrm {hrm} drv {drv}: THD {thd} not above {last}"
+            );
+            last = thd;
+            assert!(
+                gain.abs() < 1.0,
+                "hrm {hrm} drv {drv}: level {gain} dB at -18 dBFS"
+            );
+        }
+    }
+    assert!(warm_thd(33.0, 0.0, -18.0).0 < 2.0);
+    assert!(warm_thd(125.0, 0.0, -18.0).0 > 20.0);
+    assert!(warm_thd(125.0, 0.0, -24.0).0 > 8.0);
+    assert!(warm_thd(125.0, 0.0, -30.0).0 > 2.0);
+    // the 2nd-harmonic end is as audible at full drive
+    assert!(warm_thd(125.0, -100.0, -24.0).0 > 8.0);
+}
+
+/// Prints the WARM THD / level table of the module docs (`--nocapture`).
+#[test]
+fn warm_thd_table() {
+    for hrm in [-100.0f32, 0.0, 100.0] {
+        for drv in [10.0f32, 33.0, 60.0, 80.0, 100.0, 125.0] {
+            let row: Vec<String> = [-30.0, -24.0, -18.0, -12.0]
+                .iter()
+                .map(|&l| {
+                    let (t, g) = warm_thd(drv, hrm, l);
+                    format!("{t:6.2} % ({g:+5.1} dB)")
+                })
+                .collect();
+            println!("hrm {hrm:5} drv {drv:5}: {}", row.join("  "));
+        }
     }
 }

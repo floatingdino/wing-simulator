@@ -56,6 +56,7 @@ fn build(store: &mut ParamStore, feed: Arc<RtaFeed>) -> Console {
             workgroup: None,
             meters: None,
             rta: Some(feed),
+            probe: None,
         },
         store,
         &mut routing,

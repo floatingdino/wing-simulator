@@ -32,32 +32,50 @@
 //! # WARM: VHD preamp
 //! ```text
 //! x -> tilt (pre, col) -> 2x up -> g = drive(drv) -> x + ADAA(remainder of tanh(u + b) - tanh(b)) / ((1 - T^2) g) -> 2x down
-//!   -> tilt (post, 50 % of the pre tilt reversed) -> DC block -> mix with delay-compensated dry -> trim
+//!   -> tilt (post, 50 % of the pre tilt reversed) -> DC block -> * makeup(g, b) -> mix with delay-compensated dry -> trim
 //! ```
 //! `T = tanh(b)` is the bias: expanding `tanh(u + b)` gives `H2 ~ T u / 2` and `H3 ~ (1 - 3 T^2) u^2 / 12`
 //! (u = drive-scaled signal), so `hrm` sweeps `T` from 0 (`hrm = +100`: symmetric, 3rd harmonic only) to
 //! `T_MAX` (`hrm = -100`: biased, 2nd dominant and the 3rd largely cancelled), as the VHD's 2nd -> 3rd sweep.
-//! The small-signal gain is normalised to unity (the `drv` knob adds harmonics, not level); the saturated
-//! peak falls as `1/g`. 2x oversampling (`Oversampler2x`, latency 39) plus first-order antiderivative
+//! Level (T088): the shaper is normalised to unity small-signal gain, then [`warm_makeup`] restores the RMS
+//! of a -18 dBFS RMS sine (the nominal channel level) for every drive/harmonics setting, so DRIVE adds
+//! harmonics at constant nominal level instead of losing level as it saturates (before T088 125 % drive
+//! dropped a -24 dBFS vocal by ~2.8 dB, which read as "quieter", not "dirtier"). Like a driven preamp
+//! followed by its output trim, quieter passages then come up (up to +6 dB at 125 % / -30 dBFS) and peaks
+//! are squashed (-5 dB at -12 dBFS). 2x oversampling (`Oversampler2x`, latency 39) plus first-order antiderivative
 //! anti-aliasing (ADAA, ln cosh antiderivative) keep the harmonics of a 10 kHz input aliasing-free (tested).
 //! Channels are processed independently (a preamp, not a stereo-linked dynamics unit).
 //!
 //! Every constant names its source; *assumption* values are listed in `docs/VERIFY-ON-HARDWARE.md`.
 //!
-//! WARM harmonic profile (1 kHz sine, peak -12 dBFS unless noted; `warm_thd_profile` prints it):
+//! WARM THD (H2..H10) and level change vs input level, 1 kHz sine (`warm_thd_table` prints it; T088 law,
+//! the T081 law in brackets):
 //! ```text
-//! drv   hrm    H2        H3        THD
-//!  33     0   -37.0 dB  -59.4 dB  1.4 %    (defaults)
-//!  33  -100   -31.0 dB  -66.6 dB  2.8 %    even end: 2nd dominant, 3rd cancelled
-//!  33  +100  < -180 dB  -57.9 dB  0.13 %   odd end: 3rd only
-//!  80     0   -26.5 dB  -37.5 dB  4.9 %
-//! 125     0   -21.1 dB  -19.0 dB  14.3 %
-//! 125     0   -27.6 dB  -10.7 dB  29.5 %   at 0 dBFS * 0.9 (hard drive)
+//! input dBFS RMS        -30            -24            -18            -12
+//! hrm    0 drv  33    0.26 %         0.51 %         1.0 %          2.0 %           (default: unchanged)
+//! hrm    0 drv  80    1.5 % (0.9)    3.0 % (1.8)    5.7 % (3.6)   10.5 % (6.8)
+//! hrm    0 drv 100    3.2 % (1.6)    6.1 % (3.1)   11.1 % (5.9)   20.4 % (10.9)
+//! hrm    0 drv 125    7.6 % (3.0)   13.9 % (5.8)   24.7 % (10.8)  34.6 % (19.7)
+//! hrm -100 drv 125   14.0 % (6.0)   20.2 % (11.2)  26.9 % (17.8)  35.2 % (23.7)
+//! hrm +100 drv 125    3.8 % (0.6)   11.4 % (2.2)   24.0 % (7.4)   34.4 % (18.5)
+//! level at 125 %     +6 dB          +4 dB           0 dB          -5 dB  (T081: 0 / -0.5 / -1.7 / -4.9 dB)
 //! ```
-//! (T081: exponential drive law, see [`WARM_DRIVE_G_MAX`]; the default row is unchanged.) Worst alias line for
-//! a 10 kHz input: < -100 dBc up to 125 % drive at -20 dBFS; -48 dBc in the extreme corner (125 % drive,
-//! 0.9 amplitude, hrm -100: a near-square 10 kHz wave), bounded in `warm_is_alias_free`. WAVE has
-//! no latency; RIDE none; WARM 39 samples (the oversampler).
+//! Targets (T088, `warm_drive_targets_at_nominal_level`): the default stays subtle (~1 % at -18 dBFS RMS),
+//! 125 % is overt at nominal vocal levels (> 20 % at -18, > 8 % at -24, > 2 % at -30 dBFS RMS) at either
+//! HARMONICS end, THD rises monotonically with DRIVE and the -18 dBFS level is kept within 1 dB. Sources /
+//! reasoning: SSL publishes no VHD distortion figures (Sound On Sound's XLogic VHD Pre review notes that no
+//! distortion specs ship with it); reviews describe the VHD as neutral at moderate gain, adding 2nd/3rd
+//! harmonics as the input gain rises, up to an overtly driven, "aggressive" sound at high gain
+//! (soundonsound.com/reviews/ssl-xlogic-vhd-pre; recordproduction.com/reviews/ssl-alpha-channel). A drive
+//! knob at maximum must therefore be unmistakable on a vocal at nominal level, i.e. well above the ~1 %
+//! region where harmonic distortion of programme starts to be noticed (Tan, Moore & Zacharov, JAES 51(11),
+//! 2003: sine THD is a poor predictor; we target a margin of > 10x at -24 dBFS). The WING's actual curve is
+//! unknown (docs/VERIFY-ON-HARDWARE.md).
+//!
+//! Aliasing (10 kHz input, `warm_is_alias_free`): < -110 dBc at moderate drive even hot, < -120 dBc at 125 %
+//! / -30 dBFS, ~-67 dBc at 125 % / -20 dBFS and ~-50 dBc in the extreme corner (125 % drive, 0.9 amplitude:
+//! a near-square 10 kHz wave), bounded by 2x oversampling + first-order ADAA. WAVE has no latency; RIDE
+//! none; WARM 39 samples (the oversampler).
 //!
 //! Real-time: `prepare` allocates the oversamplers and scratch; `process`, `set_param`, `commit`, `reset` do
 //! not allocate (`tests/dyn_special_no_alloc.rs`). Bench (`benches/dyn_special.rs`, M1, stereo 64-sample
@@ -535,13 +553,19 @@ impl Model for AutoRider {
 // =============================================================================================================
 
 /// Drive: pre-gain of the shaper, exponential in the knob (schema 10..125 %, default 33):
-/// `g = WARM_DRIVE_G_DEFAULT * (WARM_DRIVE_G_MAX / WARM_DRIVE_G_DEFAULT)^((drv - 33) / 92)`, i.e. 0.27 at 10 %,
-/// 0.5 at the default and 6 (+21.6 dB over the default) at 125 %. *Assumption*: the default keeps the T049
-/// calibration (~1.4 % THD at -12 dBFS, 1 kHz); the top of the range must saturate programme at typical
-/// channel levels (-12 dBFS: ~14 % THD; -30 dBFS: still > 1 %), as a preamp drive does. T081: the
-/// former linear law `1.5 * drv/100` topped out at 1.9, which left drive inaudible below ~-15 dBFS.
+/// `g = WARM_DRIVE_G_DEFAULT * (WARM_DRIVE_G_MAX / WARM_DRIVE_G_DEFAULT)^((drv - 33) / 92)`, i.e. 0.21 at 10 %,
+/// 0.5 at the default and 16 (+30 dB over the default) at 125 %. *Assumption*: the default keeps the T049
+/// calibration (~1.4 % THD at -12 dBFS peak, 1 kHz); the top of the range must saturate a vocal at nominal
+/// channel level (see the module docs' T088 targets), as a preamp drive does. T081: the former linear law
+/// `1.5 * drv/100` topped out at 1.9; T088: the T081 maximum of 6 still gave only ~6 % (3rd-harmonic end
+/// ~2 %) at -24 dBFS RMS and lost level as it saturated.
 pub const WARM_DRIVE_G_DEFAULT: f32 = 0.5;
-pub const WARM_DRIVE_G_MAX: f32 = 6.0;
+pub const WARM_DRIVE_G_MAX: f32 = 16.0;
+/// Level-compensation reference (T088): a sine of this peak (-15 dBFS = -18 dBFS RMS, the nominal channel
+/// level) leaves the shaper at its input RMS for every drive/harmonics setting (see [`warm_makeup`]).
+pub const WARM_REF_PEAK: f64 = 0.177_827_94;
+/// Quadrature points over one reference-sine period for [`warm_makeup`].
+const WARM_MAKEUP_POINTS: usize = 64;
 /// Drive knob default and span above it (%), the anchors of the exponential law.
 const WARM_DRIVE_REF: f32 = 33.0;
 const WARM_DRIVE_SPAN: f32 = 92.0;
@@ -576,6 +600,27 @@ const WARM_SLOTS: [(f32, f32, f32); 5] = [
 pub fn warm_drive_gain(drv: f32) -> f32 {
     WARM_DRIVE_G_DEFAULT
         * (WARM_DRIVE_G_MAX / WARM_DRIVE_G_DEFAULT).powf((drv - WARM_DRIVE_REF) / WARM_DRIVE_SPAN)
+}
+
+/// Make-up gain of the small-signal-normalised shaper `(tanh(g x + b) - T) / ((1 - T^2) g)` (T = tanh b)
+/// so that a sine of peak [`WARM_REF_PEAK`] keeps its RMS (DC removed, as the DC blocker does): 1.0 while the
+/// reference stays in the shaper's linear range (default drive: +0.01 dB), up to ~+7 dB at 125 % drive
+/// where the reference is clipped. Quiet programme is then lifted and peaks are squashed, as a driven
+/// preamp followed by its output trim. No allocation (64 `tanh`).
+pub fn warm_makeup(g: f64, b: f64) -> f64 {
+    let t = b.tanh();
+    let norm = 1.0 / ((1.0 - t * t) * g);
+    let (mut s1, mut s2) = (0.0f64, 0.0f64);
+    let n = WARM_MAKEUP_POINTS;
+    for k in 0..n {
+        let x = WARM_REF_PEAK * (2.0 * core::f64::consts::PI * (k as f64 + 0.5) / n as f64).sin();
+        let y = ((g * x + b).tanh() - t) * norm;
+        s1 += y;
+        s2 += y * y;
+    }
+    let (m1, m2) = (s1 / n as f64, s2 / n as f64);
+    let rms = (m2 - m1 * m1).max(1e-30).sqrt();
+    WARM_REF_PEAK * core::f64::consts::FRAC_1_SQRT_2 / rms
 }
 
 /// First-order section `g0 (1 + s/wz) / (1 + s/wp)` (bilinear, each corner prewarped), f64 TDF-II.
@@ -677,6 +722,8 @@ struct Shaper {
     /// Small-signal slope `1 - T^2` of `tanh(u + b) - tanh(b)`.
     c1: f64,
     norm: f64,
+    /// Output make-up ([`warm_makeup`]), applied to the whole wet path.
+    makeup: f32,
 }
 
 /// `WARM`: SOUL WARMTH PRE, see the module docs.
@@ -696,6 +743,9 @@ pub struct WarmthPre {
     dry_s: [Vec<f32>; 2],
     mix_s: Vec<f32>,
     trim_s: Vec<f32>,
+    /// Last shaper (drive, harmonics) and its parameters (the make-up costs 64 `tanh`).
+    sh_key: (u32, u32),
+    sh: Shaper,
 }
 
 impl WarmthPre {
@@ -717,6 +767,8 @@ impl WarmthPre {
             dry_s: [Vec::new(), Vec::new()],
             mix_s: Vec::new(),
             trim_s: Vec::new(),
+            sh_key: (u32::MAX, u32::MAX),
+            sh: Self::shaper(WARM_SLOTS[0].2, WARM_SLOTS[1].2),
         };
         m.load_defaults();
         m
@@ -754,7 +806,18 @@ impl WarmthPre {
             tb: t,
             c1: 1.0 - t * t,
             norm: 1.0 / ((1.0 - t * t) * g),
+            makeup: warm_makeup(g, b) as f32,
         }
+    }
+
+    /// [`WarmthPre::shaper`], recomputed only when the smoothed drive/harmonics move.
+    fn shaper_cached(&mut self, drv: f32, hrm: f32) -> Shaper {
+        let key = (drv.to_bits(), hrm.to_bits());
+        if key != self.sh_key {
+            self.sh_key = key;
+            self.sh = Self::shaper(drv, hrm);
+        }
+        self.sh
     }
 
     fn set_tilts(&mut self, col: f32) {
@@ -776,7 +839,7 @@ impl WarmthPre {
         let hrm = self.hrm.advance(n);
         let col = self.col.advance(n);
         self.set_tilts(col);
-        let sh = Self::shaper(drv, hrm);
+        let sh = self.shaper_cached(drv, hrm);
         self.trim.fill(&mut self.trim_s[..n]);
         self.mix.fill(&mut self.mix_s[..n]);
         let dc_r = self.dc_r;
@@ -819,7 +882,7 @@ impl WarmthPre {
                 let o = y - ch.dc_x + dc_r * ch.dc_y;
                 ch.dc_x = y;
                 ch.dc_y = o;
-                let wet = o as f32;
+                let wet = o as f32 * sh.makeup;
                 let m = self.mix_s[i];
                 *x = (wet * m + self.dry_s[c][i] * (1.0 - m)) * self.trim_s[i];
             }

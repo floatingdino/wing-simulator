@@ -5,6 +5,7 @@
 pub mod audio;
 pub mod control;
 pub mod meters;
+pub mod probe;
 pub mod record;
 pub mod rta;
 pub mod wav;

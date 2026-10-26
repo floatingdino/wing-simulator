@@ -234,6 +234,7 @@ pub fn console(
             workgroup: None,
             meters: Some(wing_engine::meters::LevelBank::shared()),
             rta: None,
+            probe: None,
         },
         store,
         &mut ctl,

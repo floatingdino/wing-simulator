@@ -63,6 +63,7 @@ use crate::params::telemetry_kind as kind;
 use crate::params::{
     BindError, BlockLayout, ParamMapBuilder, ParamMsg, TelemetryWriter, TARGET_BASE,
 };
+use crate::probe::{ProbeBlock, SlotProbe};
 use crate::rta::{RtaProbe, RtaTap};
 
 /// Block indices used in [`ParamMsg`]s and telemetry.
@@ -549,7 +550,30 @@ pub struct ChannelStrip {
     telem: StripTelemetry,
     meter: Option<StripMeter>,
     rta: Option<RtaProbe>,
+    /// Model-slot debug capture (T088).
+    probe: Option<SlotProbe>,
     align: StripAlign,
+}
+
+/// Record a slot's input when the probe captures `block` of this strip (T088); returns the probe to finish
+/// with [`probe_out`]. RT-safe.
+#[inline]
+fn probe_in<'a>(
+    p: &'a Option<SlotProbe>,
+    block: ProbeBlock,
+    l: &[f32],
+    r: &[f32],
+) -> Option<&'a SlotProbe> {
+    let p = p.as_ref().filter(|p| p.wants(block))?;
+    p.input(l, r);
+    Some(p)
+}
+
+#[inline]
+fn probe_out(p: Option<&SlotProbe>, l: &[f32], r: &[f32], slot: &ModelSlot) {
+    if let Some(p) = p {
+        p.output(l, r, slot);
+    }
 }
 
 /// Push a block to the RTA when `at` is the tap wanted from this strip (T084). RT-safe.
@@ -695,6 +719,7 @@ impl ChannelStrip {
             telem: StripTelemetry::default(),
             meter: None,
             rta: None,
+            probe: None,
             align: StripAlign::new(0, 0),
         };
         // Factory model choices (the pipeline's sync_all overrides them from the store).
@@ -739,6 +764,11 @@ impl ChannelStrip {
     /// Attach (or detach) the strip's RTA probe (T084). Call off the RT thread.
     pub fn set_rta(&mut self, p: Option<RtaProbe>) {
         self.rta = p;
+    }
+
+    /// Attach (or detach) the strip's model-slot probe (T088). Call off the RT thread.
+    pub fn set_probe(&mut self, p: Option<SlotProbe>) {
+        self.probe = p;
     }
 
     pub fn order(&self) -> ProcOrder {
@@ -1082,7 +1112,9 @@ impl ChannelStrip {
                             if gate_listen {
                                 listen_pre(&self.keys, key_slot::LISTEN_GATE, gate_key, l, r);
                             }
+                            let pr = probe_in(&self.probe, ProbeBlock::Gate, l, r);
                             self.gate.process_keyed(l, r, gate_key);
+                            probe_out(pr, l, r, &self.gate);
                             if gate_listen {
                                 listen_post(&self.keys, key_slot::LISTEN_GATE, &self.gate);
                             }
@@ -1090,7 +1122,9 @@ impl ChannelStrip {
                         ProcBlock::Eq => {
                             rta_at(&self.rta, want, RtaTap::PreEq, l, r);
                             self.peq.process(l, r);
+                            let pr = probe_in(&self.probe, ProbeBlock::Eq, l, r);
                             self.eq.process(l, r);
+                            probe_out(pr, l, r, &self.eq);
                             rta_at(&self.rta, want, RtaTap::PostEq, l, r);
                         }
                         ProcBlock::Dyn => {
@@ -1102,7 +1136,9 @@ impl ChannelStrip {
                             if dyn_listen {
                                 listen_pre(&self.keys, key_slot::LISTEN_DYN, dyn_key, l, r);
                             }
+                            let pr = probe_in(&self.probe, ProbeBlock::Dyn, l, r);
                             self.dyn_.process_keyed(l, r, dyn_key);
+                            probe_out(pr, l, r, &self.dyn_);
                             if dyn_listen {
                                 listen_post(&self.keys, key_slot::LISTEN_DYN, &self.dyn_);
                             }
@@ -1126,7 +1162,9 @@ impl ChannelStrip {
                 }
                 self.tap(Tap::T3 as usize, l, r);
                 rta_at(&self.rta, want, RtaTap::PreEq, l, r);
+                let pr = probe_in(&self.probe, ProbeBlock::Eq, l, r);
                 self.eq.process(l, r);
+                probe_out(pr, l, r, &self.eq);
                 rta_at(&self.rta, want, RtaTap::PostEq, l, r);
                 self.tap(Tap::T4 as usize, l, r);
                 rta_key_at(&self.rta, want, RtaTap::DynKey, dyn_key, l, r);
@@ -1137,7 +1175,9 @@ impl ChannelStrip {
                 if dyn_listen {
                     listen_pre(&self.keys, key_slot::LISTEN_DYN, dyn_key, l, r);
                 }
+                let pr = probe_in(&self.probe, ProbeBlock::Dyn, l, r);
                 self.dyn_.process_keyed(l, r, dyn_key);
+                probe_out(pr, l, r, &self.dyn_);
                 if dyn_listen {
                     listen_post(&self.keys, key_slot::LISTEN_DYN, &self.dyn_);
                 }

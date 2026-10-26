@@ -80,6 +80,7 @@ fn build(store: &mut ParamStore, meters: Option<Arc<LevelBank>>, workers: usize)
             workgroup: None,
             meters,
             rta: None,
+            probe: None,
         },
         store,
         &mut routing,

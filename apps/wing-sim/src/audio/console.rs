@@ -27,6 +27,7 @@ use std::time::Instant;
 use wing_engine::meters::{LevelBank, PortMeters};
 use wing_engine::mix::{build_mix_graph, InputSignal, MixConfig, MixNodes};
 use wing_engine::params::{ParamMap, ParamPipeline, PipelineConfig};
+use wing_engine::probe::SlotProbeFeed;
 use wing_engine::routing::{Side, Strip, USB_CHANNELS};
 use wing_engine::rta::{RtaFeed, RtaSel, RtaTap};
 use wing_engine::{Engine, EngineConfig, Port, RawWorkgroup};
@@ -60,6 +61,8 @@ pub struct ConsoleConfig {
     pub meters: Option<Arc<LevelBank>>,
     /// RTA feed (T084): the strips' probes and [`Console::cycle`] push the selected tap into it.
     pub rta: Option<Arc<RtaFeed>>,
+    /// Model-slot probe (T088): the input strips capture one slot on request (`probe` command).
+    pub probe: Option<Arc<SlotProbeFeed>>,
 }
 
 impl Default for ConsoleConfig {
@@ -73,6 +76,7 @@ impl Default for ConsoleConfig {
             workgroup: None,
             meters: None,
             rta: None,
+            probe: None,
         }
     }
 }
@@ -165,6 +169,7 @@ pub fn build_engine(
         logic: Some(ctl.logic.shared()),
         meters: cfg.meters.clone(),
         rta: cfg.rta.clone(),
+        probe: cfg.probe.clone(),
         monitor_levels: Some(ctl.monitor.levels()),
         ..MixConfig::default()
     };
@@ -246,6 +251,9 @@ impl Console {
             .clone()
             .map(|b| PortMeters::for_mix(b, &nodes.mix));
         if let Some(f) = &cfg.rta {
+            f.set_sample_rate(cfg.sample_rate);
+        }
+        if let Some(f) = &cfg.probe {
             f.set_sample_rate(cfg.sample_rate);
         }
         Ok(Self {
