@@ -124,6 +124,20 @@ simulator recalls that scene as playback crosses it. Setup (control-surface conf
 fader automation) is in [docs/user/reaper-integration.md](docs/user/reaper-integration.md); the demo
 project is `integrations/reaper/demo/WingSim-Demo.RPP`.
 
+### Ports, and running a second copy (tests)
+
+By default the daemon binds UDP 2222 (discovery), TCP 2222 (native protocol) and UDP 2223 (OSC). To
+run another instance without disturbing a live one (tests, scripts), give it private ports:
+
+- `--port N`: native TCP port; discovery follows it unless `--discovery-port` is given, so a
+  non-default `--port` never binds UDP 2222. `--port 0` picks free ports.
+- `--discovery-port N`: UDP discovery port on its own.
+- `--no-discovery`: no discovery socket at all (WING-Edit will not list it; meters are sent from an
+  ephemeral port).
+- `--osc-port N` / `--no-osc`: OSC port (default 2223).
+
+Automated tests and examples never bind 2222/2223 (`apps/wing-sim/tests/port_isolation.rs`).
+
 ## Troubleshooting
 
 | Symptom | Fix |
