@@ -1137,7 +1137,13 @@ mod tests {
             m.args,
             vec![
                 Arg::Str("main/1,usb_out/1-2".into()),
-                Arg::Str("/tmp/rec".into())
+                // made absolute for the daemon ("/tmp/rec" gains a drive letter on Windows)
+                Arg::Str(
+                    std::path::absolute("/tmp/rec")
+                        .unwrap()
+                        .display()
+                        .to_string()
+                )
             ]
         );
         assert_eq!(
