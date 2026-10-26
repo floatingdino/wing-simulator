@@ -95,10 +95,14 @@ fn on_rt_thread() -> bool {
             1 => true,
             2 => false,
             _ => {
+                #[cfg_attr(not(unix), allow(unused_mut))]
                 let mut buf = [0 as c_char; 64];
                 // SAFETY: valid buffer of the stated length.
+                #[cfg(unix)]
                 let r =
                     unsafe { libc::pthread_getname_np(libc::pthread_self(), buf.as_mut_ptr(), 64) };
+                #[cfg(not(unix))]
+                let r = 1;
                 if r != 0 {
                     return false;
                 }

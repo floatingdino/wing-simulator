@@ -492,7 +492,7 @@ fn t03g_wing_edit_solo_sequence_reaches_host_monitor() {
     ] {
         client(p, v);
     }
-    // the user's route (the default): mon/1 -> Scarlett 1/2
+    // the user's route (the default): mon/1 -> default output 1/2
     let hcfg = HostIoConfig {
         routes: vec![Route::parse("mon/1 -> \"Mock\" 1/2").unwrap()],
         ..HostIoConfig::default()

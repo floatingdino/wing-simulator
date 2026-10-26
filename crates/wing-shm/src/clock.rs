@@ -1,6 +1,6 @@
 //! Host clock used for heartbeats: `mach_absolute_time()` ticks, the same
 //! clock the driver uses. Reading it is a commpage load, not a syscall, so it
-//! is real-time safe.
+//! is real-time safe. Other Unixes use `CLOCK_MONOTONIC` ns; elsewhere `Instant`.
 
 use std::sync::OnceLock;
 
@@ -25,7 +25,7 @@ pub fn now_ticks() -> u64 {
         // SAFETY: no preconditions.
         unsafe { sys::mach_absolute_time() }
     }
-    #[cfg(not(target_vendor = "apple"))]
+    #[cfg(all(unix, not(target_vendor = "apple")))]
     {
         let mut ts = libc::timespec {
             tv_sec: 0,
@@ -34,6 +34,15 @@ pub fn now_ticks() -> u64 {
         // SAFETY: valid out pointer.
         unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
         ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
+    }
+    #[cfg(not(unix))]
+    {
+        // No driver on these platforms; nanoseconds since first use is enough.
+        static START: OnceLock<std::time::Instant> = OnceLock::new();
+        START
+            .get_or_init(std::time::Instant::now)
+            .elapsed()
+            .as_nanos() as u64
     }
 }
 

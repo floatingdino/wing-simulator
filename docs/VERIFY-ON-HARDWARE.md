@@ -73,6 +73,8 @@ Each item: what was assumed, where, and how to check on a console (or via a meas
 | ENHANCE/EXCITER/TAPE | 46 samples latency (4x oversampling, 45.5 rounded up); every FX slot hosts them, so every slot reports 46 samples and strips with inserts pad accordingly | T05E |
 | DCA mute | **VERIFIED (user, real WING, 2026-10-25)**: a DCA mute always mutes its members' main (LR/main) sends; `cfg/dcamgrp` ("DCA MUTEGROUPS") ON makes it act as a mute group, additionally muting the members' bus sends incl. PRE-fader sends (full channel mute). Still open: main/matrix strips tagged into a DCA (simulator mutes them outright), and whether DCA mute affects matrix (MXn) sends with dcamgrp off (simulator: no) | T03F |
 | Monitor level | `cfg/mon/1/lvl` / `cfg/mon/2/lvl` ("PHONES"/"SPEAKERS") are the physical knobs and the knob wins over a remote set (WING-Edit PC->MIXER pushes -oo); simulator: knob owns the value, client sets are written back. Check: what WING-Edit shows / does for the monitor level on hardware, and the meaning of `$lvl` ("LEVEL") and `$lvlact` | T03F |
+| Recording kit | A `.snap` holding only some parameters (the `wing-record-setup` scoped recording scene: USB outs, channel ALT sources, ALT AUTOSW, `io/altsw`, `usbacfg`) loads on a WING and changes only those, like a Save + Scope snapshot; the 3.0.6 factory header is accepted | recording kit |
+| Recording kit | USB output patched to a source group (`io/out/USB/N = A.N`) records the source with preamp gain, before the channel; stereo USB pairs need odd alignment (`io/in/USB/N/mode ST` on both legs) | recording kit |
 
 ## Checking them on a real WING (T072)
 

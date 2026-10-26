@@ -11,6 +11,12 @@ See docs/ARCHITECTURE.md for the design and backlog/README.md for the task proto
 - `make app`: WingSimMenu menu-bar app (Swift, `apps/WingSimMenu/build.sh`), its Swift tests and a launch/quit smoke test (not part of `make check`)
 - Toolchain: stable (rust-toolchain.toml). `.cargo/config.toml` sets `target-cpu=apple-m1` on aarch64-apple-darwin.
 - Release profile: thin LTO, codegen-units=1, panic=abort.
+- Platforms: the audio path (driver, wing-hostio CoreAudio, menu-bar app) is macOS-only; everything else must build and
+  pass clippy on Linux and Windows too (CI: `.github/workflows/ci.yml`; locally `cargo clippy --target
+  x86_64-pc-windows-msvc|x86_64-unknown-linux-gnu`). Gate OS APIs with `cfg(unix)`/`cfg(target_os = "macos")`.
+- Releases: bump `[workspace.package] version`, push tag `vX.Y.Z`; `.github/workflows/release.yml` builds
+  `make dist` (macOS), `tools/dist/dist-tools.sh` (Linux/Windows) and publishes them with the pinned
+  `tools/dist/get.sh` / `get.ps1` one-line installers.
 
 ## Crates
 - `crates/wing-proto`: discovery, native binary protocol, OSC codec + server
@@ -21,6 +27,7 @@ See docs/ARCHITECTURE.md for the design and backlog/README.md for the task proto
 - `crates/wing-shm`: shared-memory ring layout shared with the C++ driver
 - `crates/wing-hostio`: host output bridge (CoreAudio HAL IO proc, SPSC ring, drift-compensating resampler, route config)
 - `apps/wing-sim`: daemon binary (`<state-dir>/status.json` + `control.sock` for front ends); `apps/wing-render`: offline renderer
+- `apps/wing-diff`: scene diff (`wing-diff`) and the recording kit generator (`wing-record-setup`, `integrations/recording/`)
 - `apps/WingSimMenu`: SwiftUI menu-bar app (start/stop, status, host-output routing, scenes, diff)
 - `driver/` (C++ HAL plugin), `data/schema`, `fixtures/`, `docs/research` as per ARCHITECTURE.md
 

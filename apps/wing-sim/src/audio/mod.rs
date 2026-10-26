@@ -5,7 +5,7 @@
 //!   runs one engine block per call.
 //! * [`driver`]: [`AudioService`]: attach/reattach to the driver, the RT driver thread, rate
 //!   changes, clean detach, status line.
-//! * [`hostio`]: `--hostio` config / default Scarlett route and the bridge lifecycle.
+//! * [`hostio`]: `--hostio` config / default route (system default output) and the bridge lifecycle.
 //! * [`stats`]: lock-free cycle-time histogram (load %, p50/p99).
 //! * [`workgroup`]: the daemon's audio work interval (driver thread + engine workers).
 //!

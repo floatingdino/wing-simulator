@@ -31,7 +31,7 @@ func tempDir(_ tag: String) throws -> URL {
         #expect(a.attached && a.rate == 48_000 && a.xruns == 2)
         #expect(a.loadPct == 23.5 && a.cycleP99Us == 520)
         #expect(a.bridges.first?.e2eMs == 23.25)
-        #expect(a.bridges.first?.device == "Scarlett 2i4 USB")
+        #expect(a.bridges.first?.device == "My Interface")
         #expect(s.monitorLevelsDb == [0.0, -12.5])
     }
 
@@ -92,9 +92,9 @@ func tempDir(_ tag: String) throws -> URL {
     }
 
     @Test func `routes parse quoted and unquoted devices`() throws {
-        let r = try HostRoute.parse(#"mon/1 -> "Scarlett 2i4 USB" 1/2"#)
-        #expect(r.device == "Scarlett 2i4 USB" && r.deviceChannels == [1, 2])
-        #expect(r.mapLine == #"mon/1 -> "Scarlett 2i4 USB" 1/2"#)
+        let r = try HostRoute.parse(#"mon/1 -> "My Interface" 1/2"#)
+        #expect(r.device == "My Interface" && r.deviceChannels == [1, 2])
+        #expect(r.mapLine == #"mon/1 -> "My Interface" 1/2"#)
         let u = try HostRoute.parse("usb_out 45/46 -> BuiltInSpeakerDevice 1/2")
         #expect(u.device == "BuiltInSpeakerDevice")
         #expect(throws: HostIOError.self) { try HostRoute.parse(#"mon/1 -> "Dev" 1"#) }
@@ -105,10 +105,10 @@ func tempDir(_ tag: String) throws -> URL {
     /// (`wing_hostio::config::tests::parses_wingsimmenu_output`) accepts.
     @Test func `writes the TOML wing-sim accepts`() throws {
         let cfg = HostIOConfig(latencyMs: 5, bufferFrames: 256, routes: [
-            HostRoute(source: TapRef(kind: .monitor), device: "Scarlett 2i4 USB", deviceChannels: [1, 2]),
+            HostRoute(source: TapRef(kind: .monitor), device: "My Interface", deviceChannels: [1, 2]),
             HostRoute(source: TapRef(kind: .bus, index: 3, side: .left), device: "MacBook Pro Speakers",
                       deviceChannels: [2], latencyMs: 8.5),
-            HostRoute(source: TapRef(kind: .usbOut, channels: [45, 46]), device: "Scarlett 2i4 USB",
+            HostRoute(source: TapRef(kind: .usbOut, channels: [45, 46]), device: "My Interface",
                       deviceChannels: [3, 4]),
             HostRoute(source: TapRef(kind: .localOut, channels: [1, 2, 3, 5]), device: "BlackHole 16ch",
                       deviceChannels: [1, 2, 3, 4]),
@@ -127,7 +127,7 @@ func tempDir(_ tag: String) throws -> URL {
         latency_ms = 3.0
         [[route]]   # top-level form
         source = "usb_out/45-46"
-        device = "Scarlett 2i4 USB"
+        device = "My Interface"
         channels = "3/4"
         latency_ms = 8
         """

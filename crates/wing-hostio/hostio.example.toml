@@ -2,10 +2,11 @@
 [hostio]
 latency_ms = 5.0            # extra latency on top of one device buffer + one engine burst
 
-# Monitor A (L/R) -> Scarlett outputs 1/2, like the console's monitor/phones out (solo-aware).
+# Monitor A (L/R) -> outputs 1/2 of the system default output device, like the console's
+# monitor/phones out (solo-aware). "default" is resolved when the daemon starts.
 [[hostio.route]]
-map = 'mon/1 -> "Scarlett 2i4 USB" 1/2'
+map = 'mon/1 -> "default" 1/2'
 
-# More examples:
+# More examples (device names as shown in Audio MIDI Setup, or a device UID):
 # map = 'main/1 -> "MacBook Pro Speakers" 1/2'
-# map = 'usb_out/45-46 -> "Scarlett 2i4 USB" 3/4'
+# map = 'usb_out/45-46 -> "My Interface" 3/4'

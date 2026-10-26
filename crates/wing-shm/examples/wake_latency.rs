@@ -85,6 +85,13 @@ fn measure(name: &str, mode: WakeMode, cycles: usize) -> (Vec<u64>, f64) {
 }
 
 /// Process CPU seconds (user + system), for a rough busy-ness comparison.
+#[cfg(not(unix))]
+fn cpu_time() -> f64 {
+    0.0
+}
+
+/// Process CPU seconds (user + system), for a rough busy-ness comparison.
+#[cfg(unix)]
 fn cpu_time() -> f64 {
     // SAFETY: zeroed rusage is a valid out buffer.
     let mut ru: libc::rusage = unsafe { std::mem::zeroed() };

@@ -14,7 +14,7 @@
   "scene_file": "/Users/x/Scenes/Show.snap",
   "active_scene": null,
   "hostio_path": "/Users/x/Library/Application Support/WingSimulator/hostio.toml",
-  "hostio": "host outputs: mon/1 -> \"Scarlett 2i4 USB\" [1, 2]",
+  "hostio": "host outputs: mon/1 -> \"My Interface\" [1, 2]",
   "audio": {
     "attached": true,
     "rate": 48000,
@@ -29,7 +29,7 @@
     "slow_cycles": 0,
     "bridges": [
       {
-        "device": "Scarlett 2i4 USB",
+        "device": "My Interface",
         "state": "Running",
         "fill_ms": 21.0,
         "target_ms": 21.0,

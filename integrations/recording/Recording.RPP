@@ -1,0 +1,340 @@
+<REAPER_PROJECT 0.1 "7.0" 0
+  RECORD_PATH "Media" ""
+  SAMPLERATE 48000 1 0
+  <TRACK
+    NAME "Ch 1"
+    NCHAN 2
+    REC 1 0 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1024 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 2"
+    NCHAN 2
+    REC 1 1 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1025 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 3"
+    NCHAN 2
+    REC 1 2 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1026 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 4"
+    NCHAN 2
+    REC 1 3 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1027 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 5"
+    NCHAN 2
+    REC 1 4 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1028 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 6"
+    NCHAN 2
+    REC 1 5 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1029 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 7"
+    NCHAN 2
+    REC 1 6 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1030 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 8"
+    NCHAN 2
+    REC 1 7 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1031 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 9"
+    NCHAN 2
+    REC 1 8 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1032 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 10"
+    NCHAN 2
+    REC 1 9 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1033 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 11"
+    NCHAN 2
+    REC 1 10 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1034 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 12"
+    NCHAN 2
+    REC 1 11 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1035 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 13"
+    NCHAN 2
+    REC 1 12 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1036 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 14"
+    NCHAN 2
+    REC 1 13 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1037 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 15"
+    NCHAN 2
+    REC 1 14 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1038 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 16"
+    NCHAN 2
+    REC 1 15 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1039 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 17"
+    NCHAN 2
+    REC 1 16 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1040 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 18"
+    NCHAN 2
+    REC 1 17 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1041 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 19"
+    NCHAN 2
+    REC 1 18 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1042 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 20"
+    NCHAN 2
+    REC 1 19 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1043 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 21"
+    NCHAN 2
+    REC 1 20 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1044 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 22"
+    NCHAN 2
+    REC 1 21 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1045 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 23"
+    NCHAN 2
+    REC 1 22 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1046 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 24"
+    NCHAN 2
+    REC 1 23 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1047 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 25"
+    NCHAN 2
+    REC 1 24 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1048 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 26"
+    NCHAN 2
+    REC 1 25 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1049 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 27"
+    NCHAN 2
+    REC 1 26 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1050 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 28"
+    NCHAN 2
+    REC 1 27 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1051 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 29"
+    NCHAN 2
+    REC 1 28 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1052 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 30"
+    NCHAN 2
+    REC 1 29 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1053 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 31"
+    NCHAN 2
+    REC 1 30 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1054 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 32"
+    NCHAN 2
+    REC 1 31 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1055 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 33"
+    NCHAN 2
+    REC 1 32 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1056 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 34"
+    NCHAN 2
+    REC 1 33 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1057 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 35"
+    NCHAN 2
+    REC 1 34 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1058 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 36"
+    NCHAN 2
+    REC 1 35 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1059 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 37"
+    NCHAN 2
+    REC 1 36 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1060 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 38"
+    NCHAN 2
+    REC 1 37 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1061 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 39"
+    NCHAN 2
+    REC 1 38 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1062 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Ch 40"
+    NCHAN 2
+    REC 1 39 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1063 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Aux 1"
+    NCHAN 2
+    REC 1 40 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1064 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Aux 2"
+    NCHAN 2
+    REC 1 41 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1065 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Aux 3"
+    NCHAN 2
+    REC 1 42 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1066 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Aux 4"
+    NCHAN 2
+    REC 1 43 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1067 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Aux 5"
+    NCHAN 2
+    REC 1 44 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1068 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Aux 6"
+    NCHAN 2
+    REC 1 45 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1069 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Aux 7"
+    NCHAN 2
+    REC 1 46 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1070 0 1 0 0 0 1024 -1:U -1
+  >
+  <TRACK
+    NAME "Aux 8"
+    NCHAN 2
+    REC 1 47 0 0 0 0 0 0
+    MAINSEND 0 0
+    HWOUT 1071 0 1 0 0 0 1024 -1:U -1
+  >
+>

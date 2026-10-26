@@ -1,0 +1,94 @@
+# Push a tag `vX.Y.Z` to build and publish a release. Assets (fixed names, so
+# releases/latest/download/<name> always works):
+#   WingSimulator-macos-arm64.zip           app, driver, tools, install/uninstall (ad-hoc signed)
+#   wing-sim-tools-linux-{x86_64,aarch64}.tar.gz, wing-sim-tools-windows-x86_64.zip
+#   get.sh, get.ps1                          one-line installers pinned to this release
+#   SHA256SUMS.txt
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and publish
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  macos:
+    # The menu-bar app needs Swift 6.2 (Xcode 26).
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: tag matches Cargo.toml version
+        run: |
+          v="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          [ "v$v" = "$TAG" ] || { echo "tag $TAG != Cargo.toml version $v: bump [workspace.package] version first"; exit 1; }
+      - name: make dist
+        run: |
+          brew list cmake >/dev/null 2>&1 || brew install cmake
+          WINGSIM_VERSION="${TAG#v}" make dist
+          cd dist && ditto -c -k --keepParent "WingSimulator-${TAG#v}" WingSimulator-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/WingSimulator-macos-arm64.zip
+
+  tools:
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-24.04, label: linux-x86_64 }
+          - { os: ubuntu-24.04-arm, label: linux-aarch64 }
+          - { os: windows-2025, label: windows-x86_64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: build and package
+        shell: bash
+        run: |
+          export WINGSIM_VERSION="${TAG#v}"
+          tools/dist/dist-tools.sh ${{ matrix.label }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tools-${{ matrix.label }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+
+  publish:
+    needs: [macos, tools]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: pin installers and checksum
+        run: |
+          sed "s/@VERSION@/$TAG/" tools/dist/get.sh > assets/get.sh
+          sed "s/@VERSION@/$TAG/" tools/dist/get.ps1 > assets/get.ps1
+          cd assets && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --clobber
+          else
+            gh release create "$TAG" assets/* --title "Wing Simulator $TAG" --generate-notes
+          fi

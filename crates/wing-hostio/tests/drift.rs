@@ -86,7 +86,7 @@ impl Scenario {
         }
     }
 
-    /// The live v0.2 pattern: REAPER at `driver_buf`, Scarlett at `buffer`.
+    /// The live v0.2 pattern: DAW at `driver_buf`, USB interface at `buffer`.
     fn live(drift_ppm: f64, buffer: usize, driver_buf: usize) -> Self {
         Self {
             drift_ppm,
@@ -390,7 +390,7 @@ fn ten_minutes_both_clocks_drift() {
     check(&simulate(sc), "-120 ppm hw, +80 ppm virt", 10.0);
 }
 
-// ---- T027: the live v0.2 pattern (REAPER at 512, Scarlett at 128/256) ----------------------
+// ---- T027: the live v0.2 pattern (DAW at 512, USB interface at 128/256) ----------------------
 
 #[test]
 fn live_reaper512_device128_plus200() {
@@ -426,7 +426,7 @@ fn live_reaper512_device256_minus200() {
 
 #[test]
 fn live_reaper512_device512_hw_locked() {
-    // The live run: both clocks practically locked (|drift| < 1 ppm), REAPER and Scarlett 512.
+    // The live run: both clocks practically locked (|drift| < 1 ppm), DAW and interface 512.
     check_live(
         &simulate(Scenario::live(0.3, 512, 512)),
         "live: REAPER 512 / dev 512, +0.3 ppm",

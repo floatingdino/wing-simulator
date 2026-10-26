@@ -17,6 +17,11 @@
 //!   settings `cfg/mtr/*` and `cfg/rta/*`. Names, colours and icons are NOT ignored: they are
 //!   part of how a scene reads, and renames matter to the engineer.
 //! - Keys the schema does not know are compared verbatim and shown with their raw JSON values.
+//!
+//! [`record`] (binary `wing-record-setup`) builds a scoped recording scene and a matching DAW
+//! project from a show scene.
+
+pub mod record;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 

@@ -30,7 +30,7 @@
 //! busses, mains, matrices (T036) -> output patch -> USB Out 1..48, plus host-device bridges). Without a
 //! (compatible) driver it runs control-only and keeps retrying. `--hostio PATH` takes a
 //! wing-hostio TOML (see `crates/wing-hostio/hostio.example.toml`); by default monitor A (`mon/1`: the monitor source, MAIN.1 by default, with solo priority) plays on
-//! "Scarlett 2i4 USB" 1/2 when that device exists. The monitor A/B levels are the simulated
+//! outputs 1/2 of the system default output device. The monitor A/B levels are the simulated
 //! PHONES / SPEAKERS knobs (T03F, `wing_sim::audio::MonitorKnobs`, default 0 dB; they own
 //! `cfg/mon/1|2/lvl`): control socket `monitor-level [<1|2> <dB>]`, OSC
 //! `/wingsim/mon/<1|2>/lvl [,f dB]`, status.json `monitor_levels_db`.
@@ -1071,6 +1071,8 @@ mod tests {
         assert_eq!(a.idle, None);
         assert!(!a.osc);
         assert!(a.autosave && a.recall.is_none() && !a.list_scenes);
+        assert_eq!(a.state_dir, persist::default_state_dir());
+        #[cfg(target_os = "macos")]
         assert!(a
             .state_dir
             .ends_with("Library/Application Support/WingSimulator"));

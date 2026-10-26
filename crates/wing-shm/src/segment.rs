@@ -1,15 +1,22 @@
 //! Mapping the POSIX shm segment: attach/create semantics matching the
-//! driver's `ShmLink::Open` (non-real-time).
+//! driver's `ShmLink::Open` (non-real-time). The driver is macOS-only; on
+//! non-Unix targets named segments are process-local heap allocations, so the
+//! daemon finds no driver (runs control-only) while in-process tests still work.
 
+#[cfg(unix)]
 use std::ffi::CString;
 use std::fmt;
 use std::io;
 use std::ptr::NonNull;
-use std::sync::atomic::Ordering::{Acquire, Relaxed};
+#[cfg(unix)]
+use std::sync::atomic::Ordering::Acquire;
+use std::sync::atomic::Ordering::Relaxed;
 use std::time::Duration;
 
 use crate::clock;
-use crate::layout::{Header, LayoutError, HEADER_BYTES, TOTAL_BYTES};
+#[cfg(unix)]
+use crate::layout::HEADER_BYTES;
+use crate::layout::{Header, LayoutError, TOTAL_BYTES};
 
 /// How [`Segment::open`] treats a missing or incompatible segment.
 #[derive(Debug, Clone)]
@@ -68,6 +75,7 @@ impl std::error::Error for Error {}
 /// A mapped wing_shm segment. Unmapped on drop (never unlinked).
 pub struct Segment {
     base: NonNull<u8>,
+    #[cfg_attr(not(unix), allow(dead_code))]
     len: usize,
     name: String,
     created: bool,
@@ -78,10 +86,12 @@ pub struct Segment {
 unsafe impl Send for Segment {}
 unsafe impl Sync for Segment {}
 
+#[cfg(unix)]
 fn errno() -> io::Error {
     io::Error::last_os_error()
 }
 
+#[cfg(unix)]
 fn cname(name: &str) -> Result<CString, Error> {
     if name.len() > 31 {
         return Err(Error::BadName);
@@ -89,6 +99,7 @@ fn cname(name: &str) -> Result<CString, Error> {
     CString::new(name).map_err(|_| Error::BadName)
 }
 
+#[cfg(unix)]
 /// Map `len` bytes of `fd` shared. Closes nothing.
 fn map(fd: libc::c_int, len: usize, prot: libc::c_int) -> Result<NonNull<u8>, Error> {
     // SAFETY: plain mmap of a file descriptor we own.
@@ -99,6 +110,7 @@ fn map(fd: libc::c_int, len: usize, prot: libc::c_int) -> Result<NonNull<u8>, Er
     Ok(NonNull::new(p.cast()).expect("mmap returned null"))
 }
 
+#[cfg(unix)]
 fn fd_size(fd: libc::c_int) -> Result<u64, Error> {
     // SAFETY: zeroed stat is a valid out buffer.
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
@@ -109,6 +121,7 @@ fn fd_size(fd: libc::c_int) -> Result<u64, Error> {
 }
 
 impl Segment {
+    #[cfg(unix)]
     /// Attach to `name` if it holds a compatible segment; otherwise create or
     /// replace it as `opts` allows. Mirrors the driver's `ShmLink::Open`:
     /// mode 0666 (pshm ignores umask and cannot be fchmod'ed), `ftruncate`
@@ -154,6 +167,7 @@ impl Segment {
         ))
     }
 
+    #[cfg(unix)]
     fn attach_fd(fd: libc::c_int, name: &str, opts: &OpenOptions) -> Result<Segment, Error> {
         let deadline =
             clock::now_ticks() + clock::ns_to_ticks(opts.creator_grace.as_nanos() as u64);
@@ -185,6 +199,7 @@ impl Segment {
         }
     }
 
+    #[cfg(unix)]
     fn create(cn: &CString, name: &str, opts: &OpenOptions) -> Result<Segment, Error> {
         // SAFETY: valid C string.
         let fd = unsafe {
@@ -235,6 +250,7 @@ impl Segment {
         })
     }
 
+    #[cfg(unix)]
     /// A private (anonymous, not shared between processes) segment with the
     /// same layout, for in-process tests.
     pub fn anonymous(sample_rate: u32) -> io::Result<Segment> {
@@ -271,6 +287,7 @@ impl Segment {
         })
     }
 
+    #[cfg(unix)]
     /// Remove `name` from the shm namespace (existing mappings stay valid).
     pub fn unlink(name: &str) -> io::Result<()> {
         let cn = cname(name).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
@@ -279,6 +296,85 @@ impl Segment {
             return Err(errno());
         }
         Ok(())
+    }
+
+    /// Without POSIX shm, named segments live in a process-local registry: the driver is
+    /// macOS-only, so nothing outside this process could attach anyway, and in-process users
+    /// (tests: `DriverSim` + `DaemonLink`) behave as on Unix. Registered memory is never freed
+    /// (mappings stay valid after [`Segment::unlink`], as with shm).
+    #[cfg(not(unix))]
+    pub fn open(name: &str, opts: &OpenOptions) -> Result<Segment, Error> {
+        clock::init();
+        if name.len() > 31 || name.contains('\0') {
+            return Err(Error::BadName);
+        }
+        let mut reg = registry();
+        if let Some(i) = reg.iter().position(|(n, _)| n == name) {
+            let seg = Segment {
+                base: NonNull::new(reg[i].1 as *mut u8).expect("registered segment"),
+                len: TOTAL_BYTES,
+                name: name.to_owned(),
+                created: false,
+            };
+            match seg.header().validate(TOTAL_BYTES as u64) {
+                Ok(()) => return Ok(seg),
+                Err(e) if !opts.replace_incompatible => return Err(Error::Incompatible(e)),
+                Err(_) => {
+                    reg.remove(i);
+                }
+            }
+        }
+        if !opts.create {
+            return Err(Error::NotFound);
+        }
+        let mut seg = Self::anonymous(opts.sample_rate).map_err(|e| Error::Io("alloc", e))?;
+        seg.name = name.to_owned();
+        reg.push((name.to_owned(), seg.base.as_ptr() as usize));
+        Ok(seg)
+    }
+
+    /// A private segment with the same layout, for in-process tests.
+    #[cfg(not(unix))]
+    pub fn anonymous(sample_rate: u32) -> io::Result<Segment> {
+        clock::init();
+        // SAFETY: non-zero size.
+        let p = unsafe { std::alloc::alloc_zeroed(anon_layout()) };
+        let base = NonNull::new(p).ok_or_else(|| io::Error::from(io::ErrorKind::OutOfMemory))?;
+        // SAFETY: fresh zeroed allocation of TOTAL_BYTES.
+        unsafe {
+            Header::init(
+                base.as_ptr().cast(),
+                sample_rate,
+                clock::now_ticks(),
+                std::process::id() as u64,
+            )
+        };
+        Ok(Segment {
+            base,
+            len: TOTAL_BYTES,
+            name: String::new(),
+            created: true,
+        })
+    }
+
+    /// Remove `name` from the process-local registry (existing mappings stay valid).
+    #[cfg(not(unix))]
+    pub fn unlink(name: &str) -> io::Result<()> {
+        let mut reg = registry();
+        let i = reg
+            .iter()
+            .position(|(n, _)| n == name)
+            .ok_or(io::ErrorKind::NotFound)?;
+        reg.remove(i);
+        Ok(())
+    }
+
+    /// False if `name` no longer refers to this segment.
+    #[cfg(not(unix))]
+    pub fn is_current(&self) -> bool {
+        registry()
+            .iter()
+            .any(|(n, p)| *n == self.name && *p == self.base.as_ptr() as usize)
     }
 
     /// The validated header.
@@ -305,6 +401,7 @@ impl Segment {
         self.created
     }
 
+    #[cfg(unix)]
     /// False if `name` no longer refers to this segment (unlinked, or
     /// recreated by the driver after a version change). Non-RT: opens and
     /// maps the name read-only.
@@ -368,8 +465,28 @@ impl Segment {
 impl Drop for Segment {
     fn drop(&mut self) {
         // SAFETY: unmapping our own mapping.
-        unsafe { libc::munmap(self.base.as_ptr().cast(), self.len) };
+        #[cfg(unix)]
+        unsafe {
+            libc::munmap(self.base.as_ptr().cast(), self.len)
+        };
+        // SAFETY: allocated by `anonymous` with this layout; named segments are never freed.
+        #[cfg(not(unix))]
+        if self.name.is_empty() {
+            unsafe { std::alloc::dealloc(self.base.as_ptr(), anon_layout()) };
+        }
     }
+}
+
+/// Process-local named segments (name, base address); see [`Segment::open`].
+#[cfg(not(unix))]
+fn registry() -> std::sync::MutexGuard<'static, Vec<(String, usize)>> {
+    static R: std::sync::Mutex<Vec<(String, usize)>> = std::sync::Mutex::new(Vec::new());
+    R.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+#[cfg(not(unix))]
+fn anon_layout() -> std::alloc::Layout {
+    std::alloc::Layout::from_size_align(TOTAL_BYTES, 4096).expect("segment layout")
 }
 
 /// Snapshot of one ring control block.

@@ -398,6 +398,11 @@ impl Drop for AudioService {
 /// Human-readable reason an attach failed.
 pub fn describe_open_error(name: &str, e: &ShmError) -> String {
     match e {
+        ShmError::NotFound if !cfg!(target_os = "macos") => {
+            "audio: the Wing Simulator audio device is macOS-only; running control-only \
+             (WING-Edit, OSC, scenes; use wing-render for audio)"
+                .to_string()
+        }
         ShmError::NotFound => format!(
             "audio: no driver (shm {name} not found); running control-only, retrying every {}s",
             RETRY.as_secs()

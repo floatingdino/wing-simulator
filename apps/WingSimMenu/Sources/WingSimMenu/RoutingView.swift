@@ -63,7 +63,7 @@ struct RoutingView: View {
     }
 
     private func addRoute() {
-        let device = model.devices.first?.name ?? "Scarlett 2i4 USB"
+        let device = HostIOConfig.defaultOutputDevice
         let used = Set(model.routing.routes.filter { $0.device == device }.flatMap(\.deviceChannels))
         let start = stride(from: 1, to: 64, by: 2).first { !used.contains($0) && !used.contains($0 + 1) } ?? 1
         model.routing.routes.append(
@@ -103,7 +103,7 @@ struct RouteEditor: View {
                 Text("→")
                 Picker("Device", selection: $route.device) {
                     ForEach(deviceNames, id: \.self) { name in
-                        Text(devices.contains { $0.name == name } ? name : "\(name) (not connected)").tag(name)
+                        Text(label(for: name)).tag(name)
                     }
                 }
                 .frame(width: 300)
@@ -115,9 +115,14 @@ struct RouteEditor: View {
     }
 
     private var deviceNames: [String] {
-        var names = devices.map(\.name)
+        var names = [HostIOConfig.defaultOutputDevice] + devices.map(\.name)
         if !names.contains(route.device) { names.insert(route.device, at: 0) }
         return names
+    }
+
+    private func label(for name: String) -> String {
+        if name == HostIOConfig.defaultOutputDevice { return "System default output" }
+        return devices.contains { $0.name == name } ? name : "\(name) (not connected)"
     }
 
     private var maxFirstDeviceChannel: Int {

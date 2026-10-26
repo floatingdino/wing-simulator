@@ -1,6 +1,7 @@
 //! State directory, atomic file writes and the debounced autosaver (T017).
 //!
-//! Layout of the state directory (default `~/Library/Application Support/WingSimulator`):
+//! Layout of the state directory (default `~/Library/Application Support/WingSimulator` on macOS,
+//! see [`default_state_dir`]):
 //!
 //! ```text
 //! state.snap          current state, autosaved (restored on start unless --scene/--recall)
@@ -37,12 +38,25 @@ pub type LogFn = Arc<dyn Fn(&str) + Send + Sync>;
 /// autosaver, the scene library and `--save-on-exit`; a recall replaces it.
 pub type Doc = Arc<Mutex<Snapshot>>;
 
-/// `~/Library/Application Support/WingSimulator` (or `./WingSimulator` without `$HOME`).
+/// macOS `~/Library/Application Support/WingSimulator`, Windows `%APPDATA%\\WingSimulator`, other
+/// systems `$XDG_DATA_HOME/wing-simulator` (default `~/.local/share/wing-simulator`); or
+/// `./WingSimulator` when the base folder is unknown.
 pub fn default_state_dir() -> PathBuf {
-    match std::env::var_os("HOME") {
-        Some(h) => PathBuf::from(h).join("Library/Application Support/WingSimulator"),
-        None => PathBuf::from("WingSimulator"),
-    }
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    let dir = if cfg!(target_os = "macos") {
+        env("HOME").map(|h| h.join("Library/Application Support/WingSimulator"))
+    } else if cfg!(windows) {
+        env("APPDATA").map(|a| a.join("WingSimulator"))
+    } else {
+        env("XDG_DATA_HOME")
+            .or_else(|| env("HOME").map(|h| h.join(".local/share")))
+            .map(|d| d.join("wing-simulator"))
+    };
+    dir.unwrap_or_else(|| PathBuf::from("WingSimulator"))
 }
 
 /// Write `data` to `path` atomically: a temp file in the same directory is written, fsynced and

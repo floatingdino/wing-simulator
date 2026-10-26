@@ -3,7 +3,7 @@
 Goal: a macOS "virtual Behringer WING" that (1) appears to the OS as a 48x48 USB-style audio device,
 (2) is controlled by the unmodified **WING-Edit 3.3.4** app over the network exactly like a real console,
 (3) processes all audio with faithful emulations of every WING processing block and model, and
-(4) can route any of its outputs to a real host device (e.g. USB out 45/46 -> Scarlett 2i4 1/2).
+(4) can route any of its outputs to a real host device (e.g. USB out 45/46 -> an audio interface's outputs 1/2).
 
 Status: decisions marked (D) are fixed unless research invalidates them; (?) are open and owned by a backlog task.
 

@@ -58,7 +58,9 @@
 //! per instance at 48 kHz) before T070, ~10-12 µs on M4 after it (docs/perf.md); the sequential 16x ballistics dominate.
 
 use crate::model::{Model, ModelTelemetry, ParamValue};
-use wing_dsp::gain::{db_to_lin, db_to_lin_fast, lin_to_db_fast, lin_to_db_fast4};
+#[cfg(target_arch = "aarch64")]
+use wing_dsp::gain::lin_to_db_fast4;
+use wing_dsp::gain::{db_to_lin, db_to_lin_fast, lin_to_db_fast};
 use wing_dsp::oversample::{Oversampler2x, Oversampler4x};
 use wing_dsp::smooth::{one_pole_coeff, OnePoleSmoother};
 
@@ -674,6 +676,7 @@ impl FetComp {
         let (kl, kr) = (&self.khi[0][..n_ctl], &self.khi[1][..n_ctl]);
         let cv = self.curve;
         let ctl = &mut self.ctl[..n_ctl];
+        #[cfg_attr(not(target_arch = "aarch64"), allow(unused_mut))]
         let mut done = 0;
         #[cfg(target_arch = "aarch64")]
         if cv.dip_slope <= 0.0 {

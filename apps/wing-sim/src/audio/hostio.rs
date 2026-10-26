@@ -10,19 +10,19 @@ use wing_hostio::{
     StatsSnapshot, TapChannel,
 };
 
-/// Device used by the default route when present.
-pub const DEFAULT_DEVICE: &str = "Scarlett 2i4 USB";
+/// Device used by the default route: the system default output device ([`wing_hostio::DEFAULT_OUTPUT`]).
+pub const DEFAULT_DEVICE: &str = wing_hostio::DEFAULT_OUTPUT;
 /// Default route: monitor A (console monitor output: `cfg/mon/1` source, e.g. MAIN.1, replaced or
-/// mixed by any active solo). Use `--hostio` with e.g. `main/1 -> ...` to bypass the monitor
-/// section.
-pub const DEFAULT_ROUTE: &str = "mon/1 -> \"Scarlett 2i4 USB\" 1/2";
+/// mixed by any active solo) on the default output device. Use `--hostio` with e.g.
+/// `main/1 -> ...` to bypass the monitor section or pick another device.
+pub const DEFAULT_ROUTE: &str = "mon/1 -> \"default\" 1/2";
 
 /// Where the host-output config comes from.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostIoSetting {
     /// No host outputs.
     Off,
-    /// [`DEFAULT_ROUTE`] if [`DEFAULT_DEVICE`] exists, else nothing.
+    /// [`DEFAULT_ROUTE`] if there is a usable default output device, else nothing.
     Default,
     /// A parsed `--hostio` file.
     Config(HostIoConfig),
@@ -43,17 +43,17 @@ impl HostIoSetting {
             HostIoSetting::Off => (None, "host outputs off".into()),
             HostIoSetting::Config(c) => (Some(c.clone()), describe(c)),
             HostIoSetting::Default => {
-                if default_device_present() {
+                if let Some(name) = default_device_name() {
                     let cfg = HostIoConfig {
                         routes: vec![Route::parse(DEFAULT_ROUTE).expect("default route parses")],
                         ..HostIoConfig::default()
                     };
                     let d = describe(&cfg);
-                    (Some(cfg), format!("{d} (default)"))
+                    (Some(cfg), format!("{d} (system default output: {name})"))
                 } else {
                     (
                         None,
-                        format!("host outputs: none ('{DEFAULT_DEVICE}' not found; use --hostio)"),
+                        "host outputs: none (no default output device; use --hostio)".into(),
                     )
                 }
             }
@@ -119,16 +119,16 @@ pub fn describe(c: &HostIoConfig) -> String {
 }
 
 #[cfg(target_os = "macos")]
-fn default_device_present() -> bool {
-    matches!(
-        wing_hostio::coreaudio::find_output_device(DEFAULT_DEVICE),
-        Ok(Some(_))
-    )
+fn default_device_name() -> Option<String> {
+    wing_hostio::coreaudio::default_output_device()
+        .ok()
+        .flatten()
+        .map(|d| d.name)
 }
 
 #[cfg(not(target_os = "macos"))]
-fn default_device_present() -> bool {
-    false
+fn default_device_name() -> Option<String> {
+    None
 }
 
 /// One planned bridge: device name, taps, and the bridge halves.
