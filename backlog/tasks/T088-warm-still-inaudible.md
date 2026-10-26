@@ -2,7 +2,7 @@
 id: T088
 title: BUG: Soul Warmth Pre distortion still inaudible live (125% drive, 100% mix, gate slot ch21)
 stage: S4
-status: review
+status: done
 owner: claude-T088
 depends: [T085]
 branch: task/T088
