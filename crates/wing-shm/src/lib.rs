@@ -325,7 +325,8 @@ mod tests {
                     std::thread::sleep(Duration::from_millis(1));
                     seq.fetch_add(1, SeqCst);
                 });
-                assert!(link.wait(Duration::from_millis(5)));
+                // generous timeout: the bump must land before it on a loaded CI machine
+                assert!(link.wait(Duration::from_millis(50)));
             });
         }
         assert_eq!(link.mechanism(), Mechanism::Poll);

@@ -195,7 +195,14 @@ impl KeyBank {
     /// A consumer stops reading tap `slot` of `src` (between cycles).
     pub fn release(&self, src: usize, slot: usize) {
         if let Some(d) = self.0.demand.get(src * KEY_SLOTS + slot) {
-            let _ = d.fetch_update(Relaxed, Relaxed, |v| v.checked_sub(1));
+            // saturating decrement (a CAS loop: `fetch_update` is deprecated on newer toolchains)
+            let mut v = d.load(Relaxed);
+            while v > 0 {
+                match d.compare_exchange_weak(v, v - 1, Relaxed, Relaxed) {
+                    Ok(_) => break,
+                    Err(cur) => v = cur,
+                }
+            }
         }
     }
 
