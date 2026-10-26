@@ -24,6 +24,12 @@ fn main() {
         println!("cpp_selftest: skipped (macOS only)");
         return;
     }
+    // Real-time cross-process timing: shared CI runners underrun and fail the daemon phases. Runs in
+    // a local `make check`; set WING_RT_TESTS=1 to force it under CI.
+    if std::env::var_os("CI").is_some() && std::env::var_os("WING_RT_TESTS").is_none() {
+        println!("cpp_selftest: skipped on CI (real-time timing; WING_RT_TESTS=1 to run)");
+        return;
+    }
 
     let driver = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../driver");
     let exe = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("wing_shm_selftest");
