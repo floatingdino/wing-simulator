@@ -93,14 +93,13 @@ pub fn load_scene(path: Option<&Path>) -> Result<(ParamStore, String), String> {
 /// Build the console exactly as the daemon's audio service does for a session (store already
 /// holding the scene). Returns the console, warmed up.
 pub fn build_console(
-    mut store: ParamStore,
+    store: ParamStore,
     rate: u32,
     block: usize,
     threads: usize,
 ) -> Result<(Console, ParamStore), String> {
-    let mut ctl = prepare(&mut store);
-    ctl.refresh(&store);
-    let mut console = Console::build(
+    build_console_with(
+        store,
         ConsoleConfig {
             sample_rate: rate,
             block,
@@ -109,7 +108,20 @@ pub fn build_console(
             workgroup: None,
             meters: None,
             rta: None,
+            probe: None,
         },
+    )
+}
+
+/// [`build_console`] with a full [`ConsoleConfig`] (e.g. with the T088 slot probe attached).
+pub fn build_console_with(
+    mut store: ParamStore,
+    cfg: ConsoleConfig,
+) -> Result<(Console, ParamStore), String> {
+    let mut ctl = prepare(&mut store);
+    ctl.refresh(&store);
+    let mut console = Console::build(
+        cfg,
         &store,
         &mut ctl,
         None,

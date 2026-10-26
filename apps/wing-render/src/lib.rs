@@ -23,7 +23,9 @@ pub mod verify;
 use serde_json::{json, Value};
 
 pub use inputs::{plan_from_files, plan_from_map, InputPlan, InputReader};
-pub use render::{build_console, load_scene, render, RenderConfig, RenderReport};
+pub use render::{
+    build_console, build_console_with, load_scene, render, RenderConfig, RenderReport,
+};
 pub use rpp::plan_from_rpp;
 
 /// The JSON report written next to the renders (`render_report.json`).

@@ -51,6 +51,7 @@ mod library;
 mod persist;
 
 use wing_engine::meters::LevelBank;
+use wing_engine::probe::SlotProbeFeed;
 use wing_engine::rta::RtaFeed;
 use wing_sim::audio::{self, AudioOptions, AudioService, ConsoleConfig, HostIoSetting};
 use wing_sim::control;
@@ -277,10 +278,21 @@ struct LoggedRecorder {
     rec: Arc<Recorder>,
     log: persist::LogFn,
     knobs: Option<audio::MonitorKnobs>,
+    /// Model-slot probe (T088): `/wingsim/probe ,s <target>` -> `/wingsim/probe ,s <JSON | ERROR ...>`.
+    probe: Option<Arc<SlotProbeFeed>>,
+    store: Arc<ParamStore>,
 }
 
 impl SimExtension for LoggedRecorder {
     fn command(&self, addr: &str, args: &[Arg]) -> Option<Option<(String, Vec<Arg>)>> {
+        if addr == "/wingsim/probe" {
+            let msg = match args.first() {
+                Some(Arg::Str(t)) => wing_sim::probe::run(self.probe.as_deref(), &self.store, t)
+                    .unwrap_or_else(|e| format!("ERROR {e}")),
+                _ => "ERROR usage: /wingsim/probe ,s ch/N[/gate|eq|dyn]".into(),
+            };
+            return Some(Some((addr.into(), vec![Arg::Str(msg)])));
+        }
         if addr.starts_with("/wingsim/mon/") {
             let r = audio::monitor_osc(self.knobs.as_ref(), addr, args)?;
             if !args.is_empty() {
@@ -550,6 +562,8 @@ fn run(args: Args) -> Result<(), String> {
     // RTA (T084): the `cfg/rta/$` status WING-Edit checks, and the analyser of the engine's RTA
     // ring (real while audio is attached; the meter source keeps a synthetic RTA otherwise)
     let rta_feed = routing.is_some().then(RtaFeed::shared);
+    // model-slot probe (T088): `probe` control command, `/wingsim/probe` OSC
+    let probe_feed = routing.is_some().then(SlotProbeFeed::shared);
     let rta = RtaService::spawn_default(
         store.clone(),
         rta_feed.clone(),
@@ -637,6 +651,8 @@ fn run(args: Args) -> Result<(), String> {
                         rec: recorder.clone(),
                         log: logf.clone(),
                         knobs: knobs.clone(),
+                        probe: probe_feed.clone(),
+                        store: store.clone(),
                     })),
                     ..OscConfig::default()
                 },
@@ -674,6 +690,7 @@ fn run(args: Args) -> Result<(), String> {
                 rt_workers: args.rt,
                 meters: levels.clone(),
                 rta: rta_feed.clone(),
+                probe: probe_feed.clone(),
                 ..ConsoleConfig::default()
             };
             if let Some(w) = args.workers {
@@ -737,6 +754,7 @@ fn run(args: Args) -> Result<(), String> {
         hostio_path: args.hostio_path.clone(),
         hostio_note,
         knobs,
+        probe: probe_feed,
     };
     let status = |local: &LocalState, running: bool| control::DaemonStatus {
         running,
@@ -867,6 +885,8 @@ struct LocalState {
     hostio_note: String,
     /// Monitor level knobs (T03F; `None` with --no-audio).
     knobs: Option<audio::MonitorKnobs>,
+    /// Model-slot probe (T088; `None` with --no-audio).
+    probe: Option<Arc<SlotProbeFeed>>,
 }
 
 /// Execute a control command (main thread; `status` is answered by the caller).
@@ -948,6 +968,7 @@ fn execute(
             }
             Ok(k.describe())
         }
+        Command::Probe(t) => wing_sim::probe::run(local.probe.as_deref(), store, t),
         Command::Quit => {
             STOP.store(true, Ordering::SeqCst);
             Ok("stopping".into())

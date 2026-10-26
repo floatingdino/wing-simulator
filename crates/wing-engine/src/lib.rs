@@ -34,6 +34,7 @@ pub mod latency;
 pub mod meters;
 pub mod mix;
 pub mod params;
+pub mod probe;
 pub mod routing;
 pub mod rt;
 pub mod rta;

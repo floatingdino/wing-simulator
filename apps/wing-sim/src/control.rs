@@ -25,6 +25,8 @@
 //! monitor-level         -> ok mon/1 0.0 dB, mon/2 0.0 dB   (T03F: the PHONES / SPEAKERS knobs)
 //! monitor-level <m> <dB> -> ok mon/1 -12.0 dB, mon/2 0.0 dB (m: 1|a|A|phones, 2|b|B|speakers;
 //!                                                          dB: -144..10, -inf/-oo/off = -oo)
+//! probe <target>        -> ok [{...}]   (T088: live model-slot introspection, one JSON object per slot;
+//!                                        target ch/N[/gate|eq|dyn] or aux/N[/eq|dyn]; see wing_sim::probe)
 //! quit                  -> ok stopping
 //! ```
 //!
@@ -145,6 +147,8 @@ pub enum Command {
     RecordStatus,
     /// Report (`None`) or set a monitor level knob: (monitor 1|2, dB) (T03F).
     MonitorLevel(Option<(usize, f32)>),
+    /// Capture and describe a strip's model slot(s) on the live audio (T088, [`crate::probe`]).
+    Probe(String),
     Quit,
 }
 
@@ -231,6 +235,10 @@ impl Command {
                     (Some(m), Some(db)) => Ok(Command::MonitorLevel(Some((m, db)))),
                     _ => Err(usage()),
                 }
+            }
+            "probe" => {
+                crate::probe::parse_target(arg)?;
+                Ok(Command::Probe(arg.to_string()))
             }
             "quit" => no_arg(Command::Quit),
             "" => Err("empty command".into()),
@@ -456,6 +464,12 @@ mod tests {
             Command::parse("export /t/x.snap"),
             Ok(Command::Export("/t/x.snap".into()))
         );
+        assert_eq!(
+            Command::parse("probe ch/21/gate"),
+            Ok(Command::Probe("ch/21/gate".into()))
+        );
+        assert!(Command::parse("probe").is_err());
+        assert!(Command::parse("probe bus/1/dyn").is_err());
         assert!(Command::parse("ping now").is_err());
         assert!(Command::parse("").is_err());
         assert!(Command::parse("rm -rf").is_err());

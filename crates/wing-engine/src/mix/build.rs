@@ -445,6 +445,11 @@ pub fn build_mix_graph(
                 .map(|b| crate::meters::StripMeter::at(b, i)),
         );
         strip.set_rta(cfg.rta.clone().map(|f| crate::rta::RtaProbe::new(f, i)));
+        strip.set_probe(
+            cfg.probe
+                .clone()
+                .map(|f| crate::probe::SlotProbe::new(f, i)),
+        );
         let src = [
             InputRouter::port(io.inputs, i, 0),
             InputRouter::port(io.inputs, i, 1),
