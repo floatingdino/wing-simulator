@@ -234,6 +234,15 @@ fn run(a: Args) -> Result<(), String> {
 
 fn main() -> ExitCode {
     let mut argv = std::env::args().skip(1).peekable();
+    if argv.peek().is_some_and(|a| a == "--version" || a == "-V") {
+        println!(
+            "wing-render {} (commit {}, built {})",
+            env!("CARGO_PKG_VERSION"),
+            env!("WING_GIT_HASH"),
+            env!("WING_BUILD_TIME")
+        );
+        return ExitCode::SUCCESS;
+    }
     if argv.peek().is_some_and(|a| a == "--bench") {
         argv.next();
         let r = wing_render::perf::parse_bench_args(argv)

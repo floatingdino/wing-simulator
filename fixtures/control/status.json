@@ -2,6 +2,8 @@
   "running": true,
   "pid": 4242,
   "version": "0.1.0",
+  "commit": "abc1234",
+  "built_unix": 1793000000,
   "name": "WINGSIM",
   "updated_unix": 1793000000.5,
   "uptime_s": 12.25,

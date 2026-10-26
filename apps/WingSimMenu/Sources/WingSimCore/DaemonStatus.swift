@@ -5,6 +5,9 @@ public struct DaemonStatus: Codable, Equatable, Sendable {
     public var running: Bool
     public var pid: Int32
     public var version: String
+    /// Source commit and build time of the daemon binary (T087); optional for older daemons.
+    public var commit: String?
+    public var builtUnix: Double?
     public var name: String
     public var updatedUnix: Double
     public var uptimeS: Double

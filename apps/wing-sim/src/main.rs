@@ -302,7 +302,24 @@ impl SimExtension for LoggedRecorder {
     }
 }
 
+/// `0.1.0 (commit abc1234, built 2026-10-26T12:34Z)`: `--version` and the startup log line (T087).
+const VERSION_LINE: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (commit ",
+    env!("WING_GIT_HASH"),
+    ", built ",
+    env!("WING_BUILD_TIME"),
+    ")"
+);
+
 fn main() -> ExitCode {
+    if std::env::args()
+        .nth(1)
+        .is_some_and(|a| a == "--version" || a == "-V")
+    {
+        println!("wing-sim {VERSION_LINE}");
+        return ExitCode::SUCCESS;
+    }
     if std::env::args().nth(1).as_deref() == Some("record") {
         return match record_cli(std::env::args().skip(2)) {
             Ok(s) => {
@@ -336,10 +353,7 @@ fn run(args: Args) -> Result<(), String> {
     let log = move |msg: &str| eprintln!("[{:9.3}s] {msg}", t0.elapsed().as_secs_f64());
     log(&format!(
         "wing-sim {} name={} model={} fw={}",
-        env!("CARGO_PKG_VERSION"),
-        args.identity.name,
-        args.identity.model,
-        args.identity.firmware
+        VERSION_LINE, args.identity.name, args.identity.model, args.identity.firmware
     ));
 
     // ---- state ----
@@ -728,6 +742,8 @@ fn run(args: Args) -> Result<(), String> {
         running,
         pid: std::process::id(),
         version: env!("CARGO_PKG_VERSION").into(),
+        commit: env!("WING_GIT_HASH").into(),
+        built_unix: env!("WING_BUILD_UNIX").parse().unwrap_or(0),
         name: args.identity.name.clone(),
         updated_unix: control::unix_now(),
         uptime_s: t0.elapsed().as_secs_f64(),
