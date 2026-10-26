@@ -309,6 +309,7 @@ impl Segment {
             return Err(Error::BadName);
         }
         let mut reg = registry();
+        let mut replaced = false;
         if let Some(i) = reg.iter().position(|(n, _)| n == name) {
             let seg = Segment {
                 base: NonNull::new(reg[i].1 as *mut u8).expect("registered segment"),
@@ -321,10 +322,12 @@ impl Segment {
                 Err(e) if !opts.replace_incompatible => return Err(Error::Incompatible(e)),
                 Err(_) => {
                     reg.remove(i);
+                    replaced = true;
                 }
             }
         }
-        if !opts.create {
+        // as on Unix, replacing an incompatible segment recreates it even without `create`
+        if !opts.create && !replaced {
             return Err(Error::NotFound);
         }
         let mut seg = Self::anonymous(opts.sample_rate).map_err(|e| Error::Io("alloc", e))?;
