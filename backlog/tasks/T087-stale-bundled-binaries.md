@@ -2,7 +2,7 @@
 id: T087
 title: Prevent the menu-bar app from running a stale bundled wing-sim
 stage: S7
-status: review
+status: done
 owner: -
 depends: []
 branch: task/T087
