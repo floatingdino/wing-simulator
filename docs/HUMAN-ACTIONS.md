@@ -10,3 +10,5 @@ Agents never run sudo or touch the user's live sessions destructively. Items her
 | 4 | After the driver is installed: switch REAPER's audio device to "Wing Simulator" | T025 | done 2026-10-25 |
 | 5 | In REAPER disable the master track's hardware output to outs 1/2 (it would sum the whole mix into USB In 1/2 = Kick/Snare) | T025 | done 2026-10-25 |
 | 6 | Reinstall the v2 driver: quit REAPER, then `driver/build.sh && sudo driver/install.sh`, then `driver/verify.sh` (no sudo; terminal needs Microphone permission) and paste the result | T021 sign-off, T025 | done 2026-10-25 (verify ALL PASSED) |
+| 7 | When the real WING is available: run the Warmth (WARM) calibration capture in tools/verify-hardware/README.md (~5 min), then `wing-verify fit-warm` | T090 calibration | deferred (console unavailable, 2026-10-26) |
+| 8 | When the real WING is available: run the quick hardware verification tier (~20 min) to check the remaining inferred models | VERIFY-ON-HARDWARE | deferred |

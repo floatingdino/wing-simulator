@@ -18,3 +18,4 @@ User: WARM is now audible but "definitely a lot lower than the model on the real
 
 ## Log
 - 2026-10-26 coordinator: created from user feedback.
+- 2026-10-26 coordinator: user has no console access now — capture deferred (HUMAN-ACTIONS #7). Kit/tooling still being built; after merge, status: blocked awaiting capture.
