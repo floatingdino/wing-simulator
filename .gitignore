@@ -15,4 +15,7 @@ __pycache__/
 /rec/
 /recordings/
 /verify-report/
+/warm-kit/
+/warm-rec/
+/warm-report/
 /dist/

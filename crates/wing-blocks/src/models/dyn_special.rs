@@ -46,6 +46,10 @@
 //! anti-aliasing (ADAA, ln cosh antiderivative) keep the harmonics of a 10 kHz input aliasing-free (tested).
 //! Channels are processed independently (a preamp, not a stereo-linked dynamics unit).
 //!
+//! Calibration (T090): the drive curve `g(drv)`, the bias range `T_MAX` and the make-up reference level form
+//! [`WarmLaw`], embedded from `data/calibration/warm.json`. That file holds the T088 law below until
+//! `wing-verify fit-warm` fits it to recordings of a real WING (`tools/verify-hardware/README.md`, WARM).
+//!
 //! Every constant names its source; *assumption* values are listed in `docs/VERIFY-ON-HARDWARE.md`.
 //!
 //! WARM THD (H2..H10) and level change vs input level, 1 kHz sine (`warm_thd_table` prints it; T088 law,
@@ -595,32 +599,192 @@ const WARM_SLOTS: [(f32, f32, f32); 5] = [
     (0.0, 100.0, 100.0),
 ];
 
-/// Shaper pre-gain for the drive knob `drv` (%), see [`WARM_DRIVE_G_MAX`].
+/// The uncalibrated (T088) drive law, see [`WARM_DRIVE_G_MAX`].
 #[inline]
-pub fn warm_drive_gain(drv: f32) -> f32 {
+pub fn warm_drive_gain_default(drv: f32) -> f32 {
     WARM_DRIVE_G_DEFAULT
         * (WARM_DRIVE_G_MAX / WARM_DRIVE_G_DEFAULT).powf((drv - WARM_DRIVE_REF) / WARM_DRIVE_SPAN)
 }
 
+/// Shaper pre-gain for the drive knob `drv` (%) under the built-in law ([`WarmLaw::builtin`]).
+#[inline]
+pub fn warm_drive_gain(drv: f32) -> f32 {
+    WarmLaw::builtin().drive_gain(drv)
+}
+
+/// Most drive points a [`WarmLaw`] holds.
+pub const WARM_LAW_MAX_POINTS: usize = 12;
+
+/// The calibratable part of WARM's law (T090): the drive curve, the bias range (harmonic balance) and the
+/// make-up reference. The built-in law is `data/calibration/warm.json`, embedded at build time; `wing-verify
+/// fit-warm` fits it to recordings of a real WING and rewrites that file (rebuild to use it). Fixed-size and
+/// `Copy`, so a model holds its own law without allocating.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WarmLaw {
+    /// `(drive %, shaper pre-gain)` sorted by drive; the gain is interpolated linearly in log gain and
+    /// extrapolated along the end segments. Only the first `drive_len` entries are used.
+    pub drive: [(f32, f32); WARM_LAW_MAX_POINTS],
+    pub drive_len: usize,
+    /// Largest bias `T = tanh(b)` (at `hrm = -100`); `T = t_max (1 - hrm/100) / 2`.
+    pub t_max: f32,
+    /// Level (dBFS RMS) of the 1 kHz sine that keeps its RMS through the shaper ([`warm_makeup_at`]).
+    pub makeup_ref_dbfs_rms: f32,
+}
+
+/// The built-in calibration file (`data/calibration/warm.json`).
+pub const WARM_CALIBRATION_JSON: &str = include_str!("../../../../data/calibration/warm.json");
+
+impl WarmLaw {
+    /// The T088 law (no hardware calibration): exponential drive 0.5 -> 16 over 33..125 %, `T_MAX` 0.46,
+    /// make-up reference -18 dBFS RMS.
+    pub fn uncalibrated() -> Self {
+        Self::from_points(
+            &[
+                (10.0, warm_drive_gain_default(10.0)),
+                (WARM_DRIVE_REF, WARM_DRIVE_G_DEFAULT),
+                (WARM_DRIVE_REF + WARM_DRIVE_SPAN, WARM_DRIVE_G_MAX),
+            ],
+            WARM_T_MAX,
+            // WARM_REF_PEAK (-15 dBFS peak) as an RMS level
+            -18.0103,
+        )
+        .expect("valid default law")
+    }
+
+    /// A law from `(drive %, gain)` points (any order, 1..=[`WARM_LAW_MAX_POINTS`], gains > 0).
+    pub fn from_points(
+        points: &[(f32, f32)],
+        t_max: f32,
+        ref_dbfs_rms: f32,
+    ) -> Result<Self, String> {
+        if points.is_empty() || points.len() > WARM_LAW_MAX_POINTS {
+            return Err(format!(
+                "{} drive points (1..={WARM_LAW_MAX_POINTS})",
+                points.len()
+            ));
+        }
+        if points
+            .iter()
+            .any(|p| !p.0.is_finite() || !p.1.is_finite() || p.1 <= 0.0)
+        {
+            return Err("drive gains must be finite and > 0".into());
+        }
+        if !(0.0..0.95).contains(&t_max) {
+            return Err(format!("t_max {t_max} outside 0..0.95"));
+        }
+        if !(-60.0..=0.0).contains(&ref_dbfs_rms) {
+            return Err(format!("makeup_ref_dbfs_rms {ref_dbfs_rms} outside -60..0"));
+        }
+        let mut drive = [(0.0f32, 1.0f32); WARM_LAW_MAX_POINTS];
+        drive[..points.len()].copy_from_slice(points);
+        drive[..points.len()].sort_by(|a, b| a.0.total_cmp(&b.0));
+        if drive[..points.len()].windows(2).any(|w| w[0].0 == w[1].0) {
+            return Err("duplicate drive point".into());
+        }
+        Ok(Self {
+            drive,
+            drive_len: points.len(),
+            t_max,
+            makeup_ref_dbfs_rms: ref_dbfs_rms,
+        })
+    }
+
+    /// Parse the calibration file format (`drive_points`, `t_max`, `makeup_ref_dbfs_rms`; other keys are
+    /// metadata).
+    pub fn from_json(text: &str) -> Result<Self, String> {
+        let v: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        if v["model"] != "WARM" {
+            return Err("not a WARM calibration (model != \"WARM\")".into());
+        }
+        let num = |x: &serde_json::Value, what: &str| {
+            x.as_f64()
+                .map(|f| f as f32)
+                .ok_or(format!("{what}: number expected"))
+        };
+        let pts = v["drive_points"]
+            .as_array()
+            .ok_or("drive_points: array expected")?
+            .iter()
+            .map(|p| Ok((num(&p[0], "drive_points")?, num(&p[1], "drive_points")?)))
+            .collect::<Result<Vec<_>, String>>()?;
+        Self::from_points(
+            &pts,
+            num(&v["t_max"], "t_max")?,
+            num(&v["makeup_ref_dbfs_rms"], "makeup_ref_dbfs_rms")?,
+        )
+    }
+
+    /// The law of `data/calibration/warm.json` (parsed once; the uncalibrated law if the file is invalid,
+    /// which `builtin_calibration_parses` rules out).
+    pub fn builtin() -> &'static WarmLaw {
+        static LAW: std::sync::OnceLock<WarmLaw> = std::sync::OnceLock::new();
+        LAW.get_or_init(|| {
+            Self::from_json(WARM_CALIBRATION_JSON).unwrap_or_else(|_| Self::uncalibrated())
+        })
+    }
+
+    /// The drive points in use.
+    pub fn points(&self) -> &[(f32, f32)] {
+        &self.drive[..self.drive_len]
+    }
+
+    /// Shaper pre-gain for the drive knob `drv` (%).
+    pub fn drive_gain(&self, drv: f32) -> f32 {
+        let p = self.points();
+        if p.len() == 1 {
+            return p[0].1;
+        }
+        let i = p
+            .iter()
+            .position(|q| q.0 > drv)
+            .unwrap_or(p.len())
+            .clamp(1, p.len() - 1);
+        let ((x0, g0), (x1, g1)) = (p[i - 1], p[i]);
+        let t = (drv - x0) / (x1 - x0);
+        (g0.ln() + t * (g1.ln() - g0.ln())).exp()
+    }
+
+    /// Bias `T` for the harmonics knob `hrm` (-100..100).
+    pub fn bias(&self, hrm: f32) -> f64 {
+        self.t_max as f64 * (1.0 - (hrm * 0.01) as f64) * 0.5
+    }
+
+    /// Peak of the make-up reference sine.
+    pub fn ref_peak(&self) -> f64 {
+        10f64.powf(self.makeup_ref_dbfs_rms as f64 / 20.0) * core::f64::consts::SQRT_2
+    }
+}
+
+impl Default for WarmLaw {
+    fn default() -> Self {
+        *Self::builtin()
+    }
+}
+
+/// [`warm_makeup_at`] with the T088 reference ([`WARM_REF_PEAK`], -18 dBFS RMS).
+pub fn warm_makeup(g: f64, b: f64) -> f64 {
+    warm_makeup_at(g, b, WARM_REF_PEAK)
+}
+
 /// Make-up gain of the small-signal-normalised shaper `(tanh(g x + b) - T) / ((1 - T^2) g)` (T = tanh b)
-/// so that a sine of peak [`WARM_REF_PEAK`] keeps its RMS (DC removed, as the DC blocker does): 1.0 while the
+/// so that a sine of peak `ref_peak` keeps its RMS (DC removed, as the DC blocker does): 1.0 while the
 /// reference stays in the shaper's linear range (default drive: +0.01 dB), up to ~+7 dB at 125 % drive
 /// where the reference is clipped. Quiet programme is then lifted and peaks are squashed, as a driven
 /// preamp followed by its output trim. No allocation (64 `tanh`).
-pub fn warm_makeup(g: f64, b: f64) -> f64 {
+pub fn warm_makeup_at(g: f64, b: f64, ref_peak: f64) -> f64 {
     let t = b.tanh();
     let norm = 1.0 / ((1.0 - t * t) * g);
     let (mut s1, mut s2) = (0.0f64, 0.0f64);
     let n = WARM_MAKEUP_POINTS;
     for k in 0..n {
-        let x = WARM_REF_PEAK * (2.0 * core::f64::consts::PI * (k as f64 + 0.5) / n as f64).sin();
+        let x = ref_peak * (2.0 * core::f64::consts::PI * (k as f64 + 0.5) / n as f64).sin();
         let y = ((g * x + b).tanh() - t) * norm;
         s1 += y;
         s2 += y * y;
     }
     let (m1, m2) = (s1 / n as f64, s2 / n as f64);
     let rms = (m2 - m1 * m1).max(1e-30).sqrt();
-    WARM_REF_PEAK * core::f64::consts::FRAC_1_SQRT_2 / rms
+    ref_peak * core::f64::consts::FRAC_1_SQRT_2 / rms
 }
 
 /// First-order section `g0 (1 + s/wz) / (1 + s/wp)` (bilinear, each corner prewarped), f64 TDF-II.
@@ -728,6 +892,7 @@ struct Shaper {
 
 /// `WARM`: SOUL WARMTH PRE, see the module docs.
 pub struct WarmthPre {
+    law: WarmLaw,
     fs: f64,
     max_block: usize,
     v: [f32; 5],
@@ -749,9 +914,16 @@ pub struct WarmthPre {
 }
 
 impl WarmthPre {
+    /// WARM with the built-in law ([`WarmLaw::builtin`]).
     pub fn new() -> Self {
+        Self::with_law(*WarmLaw::builtin())
+    }
+
+    /// WARM with an explicit law (calibration fitting, T090).
+    pub fn with_law(law: WarmLaw) -> Self {
         let sm = |v: f32| OnePoleSmoother::new(v, WARM_SMOOTH_S, 48_000.0);
         let mut m = Self {
+            law,
             fs: 48_000.0,
             max_block: 0,
             v: [0.0; 5],
@@ -768,7 +940,7 @@ impl WarmthPre {
             mix_s: Vec::new(),
             trim_s: Vec::new(),
             sh_key: (u32::MAX, u32::MAX),
-            sh: Self::shaper(WARM_SLOTS[0].2, WARM_SLOTS[1].2),
+            sh: Self::shaper(&law, WARM_SLOTS[0].2, WARM_SLOTS[1].2),
         };
         m.load_defaults();
         m
@@ -796,9 +968,14 @@ impl WarmthPre {
         self.dc_r = 1.0 - 2.0 * core::f64::consts::PI * WARM_DC_HZ / self.fs;
     }
 
-    fn shaper(drv: f32, hrm: f32) -> Shaper {
-        let g = warm_drive_gain(drv) as f64;
-        let t = WARM_T_MAX as f64 * (1.0 - (hrm * 0.01) as f64) * 0.5;
+    /// The law in use.
+    pub fn law(&self) -> &WarmLaw {
+        &self.law
+    }
+
+    fn shaper(law: &WarmLaw, drv: f32, hrm: f32) -> Shaper {
+        let g = law.drive_gain(drv) as f64;
+        let t = law.bias(hrm);
         let b = t.atanh();
         Shaper {
             g,
@@ -806,7 +983,7 @@ impl WarmthPre {
             tb: t,
             c1: 1.0 - t * t,
             norm: 1.0 / ((1.0 - t * t) * g),
-            makeup: warm_makeup(g, b) as f32,
+            makeup: warm_makeup_at(g, b, law.ref_peak()) as f32,
         }
     }
 
@@ -815,7 +992,7 @@ impl WarmthPre {
         let key = (drv.to_bits(), hrm.to_bits());
         if key != self.sh_key {
             self.sh_key = key;
-            self.sh = Self::shaper(drv, hrm);
+            self.sh = Self::shaper(&self.law, drv, hrm);
         }
         self.sh
     }
