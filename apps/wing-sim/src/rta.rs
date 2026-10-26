@@ -29,6 +29,8 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use wing_engine::fx::FX_SLOTS;
+use wing_engine::routing::{Strip, STRIP_COUNT};
 use wing_engine::rta::{
     RtaAnalyser, RtaDecay, RtaDetector, RtaFeed, RtaReader, RtaSel, RtaTap, RTA_BANDS, RTA_RING,
 };
@@ -118,6 +120,109 @@ pub fn sync_status(store: &ParamStore, n: &RtaNodes) -> RtaConfig {
     }
 }
 
+/// Node ids of the FX insert status: every insert point (`<strip>/preins|postins`: `ins`, channel
+/// post-insert `mode`, `$stat`) in insert-id order, and each slot's `fx/N/$a_chn` / `$a_pos`.
+pub struct FxHostNodes {
+    inserts: Vec<InsertNodes>,
+    a_chn: Vec<Option<NodeId>>,
+    a_pos: Vec<Option<NodeId>>,
+}
+
+/// One insert point.
+struct InsertNodes {
+    /// Strip index 0..75 (`wing_engine::routing::Strip`).
+    strip: usize,
+    /// 0 = Ins1 (`preins`), 1 = Ins2 (`postins`).
+    pos: u8,
+    ins: NodeId,
+    /// Channel post-insert `mode` (FX / AUTO_X / AUTO_Y).
+    mode: Option<NodeId>,
+    stat: Option<NodeId>,
+}
+
+impl FxHostNodes {
+    pub fn lookup(store: &ParamStore) -> Self {
+        let mut inserts = Vec::new();
+        for s in 0..STRIP_COUNT {
+            let Some(strip) = Strip::from_index(s) else {
+                continue;
+            };
+            let base = match strip {
+                Strip::Ch(n) => format!("ch/{n}"),
+                Strip::Aux(n) => format!("aux/{n}"),
+                Strip::Bus(n) => format!("bus/{n}"),
+                Strip::Main(n) => format!("main/{n}"),
+                Strip::Mtx(n) => format!("mtx/{n}"),
+            };
+            for (pos, blk) in [(0u8, "preins"), (1, "postins")] {
+                if let Some(ins) = store.lookup(&format!("{base}/{blk}/ins")) {
+                    inserts.push(InsertNodes {
+                        strip: s,
+                        pos,
+                        ins,
+                        mode: store.lookup(&format!("{base}/{blk}/mode")),
+                        stat: store.lookup(&format!("{base}/{blk}/$stat")),
+                    });
+                }
+            }
+        }
+        let leaf = |p: &str| {
+            (1..=FX_SLOTS)
+                .map(|n| store.lookup(&format!("fx/{n}/{p}")))
+                .collect()
+        };
+        Self {
+            inserts,
+            a_chn: leaf("$a_chn"),
+            a_pos: leaf("$a_pos"),
+        }
+    }
+}
+
+/// Mirror the FX insert status the console owns (T086): `fx/N/$a_chn` = the owning strip (1..76,
+/// the `cfg/rta/rtasrc` numbering; 0 = not inserted), `fx/N/$a_pos` = 0 for Ins1 / 1 for Ins2, and
+/// every insert's `$stat` (`-` none, `OK`, `N/A` = the slot is owned by another insert). The owner
+/// is the engine's rule (`wing_engine::fx`): every insert selecting `FXn` (a channel post-insert only
+/// in FX mode) claims it, the lowest insert id wins. Sets only what differs.
+///
+/// WING-Edit online does not compute these (`ae::Cinsert::update` returns at once while connected,
+/// 0x10001307c); its FX-page RTA (`RtaGraph::setFxRta`) only claims the RTA, and its `paint` only
+/// chooses between "RTA in use on another window!" and "RTA in use! Select INSERTED channel." by
+/// comparing the selected strip with `$a_chn - 1` (docs/research/rta.md §1a).
+pub fn sync_fx_hosts(store: &ParamStore, n: &FxHostNodes) {
+    let mut owner: [Option<(usize, u8)>; FX_SLOTS] = [None; FX_SLOTS];
+    let mut claim = Vec::with_capacity(n.inserts.len());
+    for i in &n.inserts {
+        let fx = index(store, i.ins) as usize;
+        let fx_mode = i.mode.is_none_or(|m| index(store, m) == 0);
+        let fx = (fx_mode && (1..=FX_SLOTS).contains(&fx)).then_some(fx);
+        if let Some(k) = fx {
+            owner[k - 1].get_or_insert((i.strip, i.pos));
+        }
+        claim.push(fx);
+    }
+    let mirror = |id: Option<NodeId>, v: Value| {
+        if let Some(id) = id {
+            if store.get(id) != Some(v) {
+                let _ = store.set_from(id, v, ORIGIN_LOCAL);
+            }
+        }
+    };
+    for (i, fx) in n.inserts.iter().zip(&claim) {
+        let st = match fx {
+            None => 0,
+            Some(k) if owner[k - 1] == Some((i.strip, i.pos)) => 1,
+            Some(_) => 2,
+        };
+        mirror(i.stat, Value::Enum(st));
+    }
+    for (k, o) in owner.iter().enumerate() {
+        let (chn, pos) = o.map_or((0, 0), |(s, p)| (s as i32 + 1, p as i32));
+        mirror(n.a_chn[k], Value::Int(chn));
+        mirror(n.a_pos[k], Value::Int(pos));
+    }
+}
+
 /// Write analyser levels (dBFS) to the bank's RTA block.
 pub fn write_bins(bank: &MeterBank, levels: &[f32; RTA_BANDS]) {
     for (k, &db) in levels.iter().enumerate() {
@@ -128,6 +233,7 @@ pub fn write_bins(bank: &MeterBank, levels: &[f32; RTA_BANDS]) {
 /// One analyser step state (testable without a thread).
 pub struct RtaRunner {
     nodes: Option<RtaNodes>,
+    hosts: FxHostNodes,
     feed: Option<Arc<RtaFeed>>,
     reader: RtaReader,
     analyser: RtaAnalyser,
@@ -141,6 +247,7 @@ impl RtaRunner {
         let reader = feed.as_deref().map(RtaReader::at_end).unwrap_or_default();
         Self {
             nodes: RtaNodes::lookup(store),
+            hosts: FxHostNodes::lookup(store),
             feed,
             reader,
             analyser: RtaAnalyser::new(48_000.0),
@@ -154,7 +261,7 @@ impl RtaRunner {
         &self.analyser
     }
 
-    /// Sync the status, update the request and, while audio feeds the ring, analyse what
+    /// Sync the status (RTA and FX insert hosts), update the request and, while audio feeds the ring, analyse what
     /// arrived since the last step and write the bins to `bank`. Returns the settings.
     pub fn step(
         &mut self,
@@ -162,6 +269,7 @@ impl RtaRunner {
         bank: Option<&MeterBank>,
         now: Instant,
     ) -> Option<RtaConfig> {
+        sync_fx_hosts(store, &self.hosts);
         let cfg = self.nodes.as_ref().map(|n| sync_status(store, n))?;
         let dt = self
             .last
@@ -280,6 +388,157 @@ mod tests {
     fn wing_edit_shows_rta(st: &ParamStore) -> bool {
         let g = |p: &str| index(st, st.lookup(&format!("cfg/rta/{p}")).unwrap()) as i64;
         g("$src") - 1 == g("rtasrc") - 1 && g("$tap") == g("rtatap") && g("$dec") == g("rtadecay")
+    }
+
+    /// What WING-Edit 3.3.4's `gui_modules::RtaGraph::paint` draws (0x1000e3a04..0x1000e3b18,
+    /// docs/research/rta.md §4), from the values WING-Edit holds (the console's).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Overlay {
+        Spectrum,
+        /// "RTA in use! Check mixer settings."
+        CheckMixer,
+        /// "RTA in use on another window!"
+        AnotherWindow,
+        /// "RTA in use! Select INSERTED channel."
+        SelectInserted,
+    }
+
+    /// One `RtaGraph`: its own source/tap (`+0x1d8` / `+0x1dc`), its FX slot (`+0x1d4`, 0-based;
+    /// `None` = strip graph) and WING-Edit's selected strip (`CE+0xd0`, 0-based, rtasrc numbering - 1).
+    struct Graph {
+        src: i64,
+        tap: i64,
+        fx: Option<usize>,
+        selected: i64,
+    }
+
+    fn pos(st: &ParamStore, p: &str) -> i64 {
+        index(st, st.lookup(p).unwrap()) as i64
+    }
+
+    fn overlay(st: &ParamStore, g: &Graph) -> Overlay {
+        let r = |p: &str| pos(st, &format!("cfg/rta/{p}"));
+        // Cpar positions: `$src` has min 1 (pos = value - 1), `rtasrc` min 0
+        if !(r("$src") - 1 == r("rtasrc") - 1
+            && r("$tap") == r("rtatap")
+            && r("$dec") == r("rtadecay"))
+        {
+            return Overlay::CheckMixer;
+        }
+        if g.src == r("rtasrc") && g.tap == r("$tap") {
+            return Overlay::Spectrum;
+        }
+        match g.fx {
+            Some(k) if g.selected != pos(st, &format!("fx/{}/$a_chn", k + 1)) - 1 => {
+                Overlay::SelectInserted
+            }
+            _ => Overlay::AnotherWindow,
+        }
+    }
+
+    /// The RTA claim of a graph: a strip graph's `listener_callback` (selection / RTA display change,
+    /// display on) writes `rtasrc = strip + 1`, `rtatap = tap`; an FX graph's `setFxRta` writes
+    /// `rtasrc = slot + 1`, `rtatap = FXIN` only while the selected strip is the slot's `$a_chn - 1`.
+    fn claim(st: &ParamStore, g: &Graph) {
+        if let Some(k) = g.fx {
+            if g.selected != pos(st, &format!("fx/{}/$a_chn", k + 1)) - 1 {
+                return;
+            }
+        }
+        set(st, "cfg/rta/rtasrc", Value::Int(g.src as i32));
+        set(st, "cfg/rta/rtatap", Value::Enum(g.tap as u32));
+    }
+
+    /// T086: the full RTA condition. A strip graph draws once its claim is mirrored; any other graph
+    /// then reads "in use on another window"; an FX-page RTA needs the console's `$a_chn`.
+    #[test]
+    fn wing_edit_rta_overlay_condition() {
+        let st = ParamStore::new();
+        let n = RtaNodes::lookup(&st).unwrap();
+        let hosts = FxHostNodes::lookup(&st);
+        let fxin = RtaTap::FxIn as i64;
+        // ch 5 EQ page, PRE EQ
+        let eq = Graph {
+            src: 5,
+            tap: RtaTap::PreEq as i64,
+            fx: None,
+            selected: 4,
+        };
+        claim(&st, &eq);
+        assert_eq!(overlay(&st, &eq), Overlay::CheckMixer, "before the mirror");
+        sync_status(&st, &n);
+        assert_eq!(overlay(&st, &eq), Overlay::Spectrum);
+        // a second strip graph (another window) for ch 1
+        let other = Graph {
+            src: 1,
+            tap: RtaTap::PreEq as i64,
+            fx: None,
+            selected: 4,
+        };
+        assert_eq!(overlay(&st, &other), Overlay::AnotherWindow);
+
+        // FX 14 (GEQ) on bus 5 Ins2, its FX page open with bus 5 selected (strip index 52)
+        set(&st, "bus/5/postins/ins", Value::Enum(14));
+        let geq = Graph {
+            src: 14,
+            tap: fxin,
+            fx: Some(13),
+            selected: 52,
+        };
+        // without the console's $a_chn WING-Edit neither claims nor draws
+        claim(&st, &geq);
+        sync_status(&st, &n);
+        assert_eq!(overlay(&st, &geq), Overlay::SelectInserted);
+        sync_fx_hosts(&st, &hosts);
+        assert_eq!(
+            st.get(st.lookup("fx/14/$a_chn").unwrap()),
+            Some(Value::Int(53))
+        );
+        claim(&st, &geq);
+        sync_status(&st, &n);
+        assert_eq!(overlay(&st, &geq), Overlay::Spectrum);
+        // ... and now the ch 5 EQ graph is the other window, until its next claim
+        assert_eq!(overlay(&st, &eq), Overlay::AnotherWindow);
+        claim(&st, &eq);
+        sync_status(&st, &n);
+        assert_eq!(overlay(&st, &eq), Overlay::Spectrum);
+        // FX page with another strip selected
+        let geq_elsewhere = Graph { selected: 3, ..geq };
+        assert_eq!(overlay(&st, &geq_elsewhere), Overlay::SelectInserted);
+    }
+
+    /// T086: `$a_chn` / `$a_pos` / `$stat` follow the engine's ownership rule.
+    #[test]
+    fn fx_host_status() {
+        let st = ParamStore::new();
+        let hosts = FxHostNodes::lookup(&st);
+        let get = |p: &str| st.get(st.lookup(p).unwrap());
+        // the user's scene: FX7 on bus 2 Ins1, FX9 on ch 26 Ins2 (FX mode), FX8 on ch 9 Ins1 (off)
+        set(&st, "bus/2/preins/ins", Value::Enum(7));
+        set(&st, "ch/26/postins/ins", Value::Enum(9));
+        set(&st, "ch/9/preins/ins", Value::Enum(8));
+        set(&st, "ch/9/preins/on", Value::Int(0));
+        // FX8 also selected by bus 1 Ins2: ch 9 has the lower insert id and keeps it
+        set(&st, "bus/1/postins/ins", Value::Enum(8));
+        // a channel post-insert in AUTO_X mode does not claim its FX
+        set(&st, "ch/3/postins/ins", Value::Enum(5));
+        set(&st, "ch/3/postins/mode", Value::Enum(1));
+        sync_fx_hosts(&st, &hosts);
+        assert_eq!(get("fx/7/$a_chn"), Some(Value::Int(50)));
+        assert_eq!(get("fx/7/$a_pos"), Some(Value::Int(0)));
+        assert_eq!(get("fx/9/$a_chn"), Some(Value::Int(26)));
+        assert_eq!(get("fx/9/$a_pos"), Some(Value::Int(1)));
+        assert_eq!(get("fx/8/$a_chn"), Some(Value::Int(9)));
+        assert_eq!(get("fx/5/$a_chn"), Some(Value::Int(0)));
+        assert_eq!(get("bus/2/preins/$stat"), Some(Value::Enum(1)));
+        assert_eq!(get("bus/1/postins/$stat"), Some(Value::Enum(2)));
+        assert_eq!(get("ch/3/postins/$stat"), Some(Value::Enum(0)));
+        // releasing the owner hands the slot over
+        set(&st, "ch/9/preins/ins", Value::Enum(0));
+        sync_fx_hosts(&st, &hosts);
+        assert_eq!(get("fx/8/$a_chn"), Some(Value::Int(49)));
+        assert_eq!(get("fx/8/$a_pos"), Some(Value::Int(1)));
+        assert_eq!(get("bus/1/postins/$stat"), Some(Value::Enum(1)));
     }
 
     #[test]

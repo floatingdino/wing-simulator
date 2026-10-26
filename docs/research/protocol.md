@@ -355,8 +355,30 @@ Timing: sent about every **50 ms** for 5 s after the last `D4` renew. WING-Edit 
 (50%)" option. The UDP source port the console sends from is undocumented; use 2222. libwing parses the first 2
 bytes as the id because it encodes the port in the low half. Real consoles use 4 bytes.
 
-Simulator: one meter scheduler per TCP client and report id. Expire after 5 s. Use the latest port. Keep
-DSP-produced levels in lock-free snapshots (T039/T015).
+Simulator: one meter report per TCP client (a definition supersedes the client's earlier ids, T086, §4.3).
+Expire after 5 s. Use the latest port. Keep DSP-produced levels in lock-free snapshots (T039/T015).
+
+### 4.3 How WING-Edit 3.3.4 drives the meter channel (T086, static analysis, arm64)
+
+`nrp::MeterHandler` (one instance, `nrp::mtr`) keeps, per type slot k = 0..10 (token `A0 + k`, V2 strips
+`AB..AF` for k <= 4), a 64-bit `wanted` mask (`+0x38 + 8k`) and the last requested mask (`+0x90 + 8k`), the
+report id (`+0xe8`) and the time of the last request (`+0xec`, ms).
+
+- Every visible meter component ORs its bits into `wanted` from its `listener_callback` on the meter node's
+  notification (`gui_modules::Meter`, `DynEqGraph::updateCurve`, `RtaGraph` (RTA bit), `FxTapeDelay`, ...).
+- `rxMeters` (`0x1000d72d4`) runs on the message thread (`WingServer::handleMessage`) for every packet. It
+  applies the values only if the packet's id is the current id, posts the meter notification
+  (`Cnode::notify`, asynchronous and coalesced; every 2nd packet with REDUCED METER UPDATE RATE), then:
+  `wanted == requested` and more than 4000 ms since the last request: send the renew `D4 id`;
+  `wanted != requested`: `requested = wanted`, `id += 1`, `sendMeterRequest(id)`, `wanted = ChannelV2 1`.
+- `sendMeterRequest` writes `D4 id DC`, then per slot the type token and the set bits as indices, `DE`;
+  **monitor (`A9`) and RTA (`AA`) are written without an index** and read back as one block (6 / 120 words).
+- Consequences: WING-Edit never renews an old id, a page change costs up to two definitions (the union of the
+  old and new pages' registrations, then the new page), and every packet is a comparison point. A console that
+  keeps streaming superseded ids puts several packets into one 50 ms tick; the second is compared before the
+  pages have re-registered (`wanted` = `ChannelV2 1`), so WING-Edit re-defines `ChannelV2 1`, then the full
+  set, and so on: the storms of `scratch/wing-sim-v0.5.log` (1847 definitions in 25 min, 68 live reports).
+  The simulator therefore keeps one report per client. Replay: `crates/wing-proto/tests/meter_churn_replay.rs`.
 
 ---
 

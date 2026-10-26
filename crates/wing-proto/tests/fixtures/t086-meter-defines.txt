@@ -1,0 +1,1849 @@
+# T086: WING-Edit 3.3.4 meter report definitions from scratch/wing-sim-v0.5.log (user session, v0.5 build).
+# One line per definition: <seconds since daemon start> <report id> <selections as logged by describe_selections>.
+215.681 0 ChannelV2 1, MainV2 1-4, MatrixV2 1-8
+216.303 1 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Source 4,8
+216.306 2 ChannelV2 1
+216.336 3 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.340 4 ChannelV2 1
+216.382 5 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.385 6 ChannelV2 1
+216.390 7 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.393 8 ChannelV2 1
+216.434 9 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.437 10 ChannelV2 1
+216.441 11 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.444 12 ChannelV2 1
+216.486 13 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.490 14 ChannelV2 1
+216.494 15 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.498 16 ChannelV2 1
+216.531 17 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.535 18 ChannelV2 1
+216.539 19 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.543 20 ChannelV2 1
+216.583 21 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.586 22 ChannelV2 1
+216.591 23 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.594 24 ChannelV2 1
+216.635 25 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.639 26 ChannelV2 1
+216.642 27 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.646 28 ChannelV2 1
+216.687 29 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.690 30 ChannelV2 1
+216.695 31 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.698 32 ChannelV2 1
+216.732 33 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.736 34 ChannelV2 1
+216.760 35 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.763 36 ChannelV2 1
+216.784 37 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.788 38 ChannelV2 1
+216.791 39 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.795 40 ChannelV2 1
+216.842 41 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.846 42 ChannelV2 1
+216.898 43 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.902 44 ChannelV2 1
+216.907 45 ChannelV2 1, MatrixV2 2
+216.910 46 ChannelV2 1
+216.960 47 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+216.963 48 ChannelV2 1
+217.019 49 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+217.024 50 ChannelV2 1
+217.095 51 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+217.099 52 ChannelV2 1
+217.219 53 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+217.223 54 ChannelV2 1
+217.345 55 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+217.349 56 ChannelV2 1
+217.545 57 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+217.549 58 ChannelV2 1
+217.821 59 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+217.827 60 ChannelV2 1
+218.171 61 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+218.174 62 ChannelV2 1
+218.680 63 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+218.683 64 ChannelV2 1
+219.416 65 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+219.419 66 ChannelV2 1
+220.550 67 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+220.553 68 ChannelV2 1
+222.330 69 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+222.334 70 ChannelV2 1
+224.302 71 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.306 72 ChannelV2 1
+224.720 73 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.723 74 ChannelV2 1
+224.784 75 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.788 76 ChannelV2 1
+224.798 77 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.802 78 ChannelV2 1
+224.843 79 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.847 80 ChannelV2 1
+224.887 81 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.890 82 ChannelV2 1
+224.894 83 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.897 84 ChannelV2 1
+224.937 85 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.940 86 ChannelV2 1
+224.944 87 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.950 88 ChannelV2 1
+224.986 89 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.990 90 ChannelV2 1
+224.994 91 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+224.997 92 ChannelV2 1
+225.032 93 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+225.035 94 ChannelV2 1
+225.039 95 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+225.042 96 ChannelV2 1
+225.086 97 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+225.089 98 ChannelV2 1
+225.093 99 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+225.096 100 ChannelV2 1
+225.132 101 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8
+235.493 102 ChannelV2 1,5,8, BusV2 1-16, MainV2 1-4, MatrixV2 1-8
+235.538 103 ChannelV2 1-5, BusV2 1-16, MainV2 1
+235.541 104 ChannelV2 1
+235.587 105 ChannelV2 1-5, BusV2 1-16, MainV2 1
+235.590 106 ChannelV2 1
+235.595 107 ChannelV2 1-5, BusV2 1-16, MainV2 1
+301.883 108 ChannelV2 1-5,17-32, BusV2 1-16, MainV2 1, Source 1-2,4-5,8,15
+301.938 109 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+301.941 110 ChannelV2 1
+301.983 111 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+301.987 112 ChannelV2 1
+301.990 113 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+301.993 114 ChannelV2 1
+302.036 115 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.039 116 ChannelV2 1
+302.086 117 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.089 118 ChannelV2 1
+302.093 119 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.096 120 ChannelV2 1
+302.136 121 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.139 122 ChannelV2 1
+302.144 123 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.147 124 ChannelV2 1
+302.181 125 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.184 126 ChannelV2 1
+302.189 127 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.192 128 ChannelV2 1
+302.236 129 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.239 130 ChannelV2 1
+302.244 131 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.248 132 ChannelV2 1
+302.289 133 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.293 134 ChannelV2 1
+302.336 135 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.340 136 ChannelV2 1
+302.344 137 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+302.348 138 ChannelV2 1
+302.386 139 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15
+303.286 140 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.290 141 ChannelV2 1
+303.337 142 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.340 143 ChannelV2 1
+303.386 144 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.390 145 ChannelV2 1
+303.393 146 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.396 147 ChannelV2 1
+303.440 148 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.443 149 ChannelV2 1
+303.492 150 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.495 151 ChannelV2 1
+303.549 152 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.561 153 ChannelV2 1
+303.623 154 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.626 155 ChannelV2 1
+303.682 156 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.685 157 ChannelV2 1
+303.743 158 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.746 159 ChannelV2 1
+303.874 160 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+303.887 161 ChannelV2 1
+304.010 162 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+304.013 163 ChannelV2 1
+304.215 164 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+304.218 165 ChannelV2 1
+304.493 166 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+304.503 167 ChannelV2 1
+304.916 168 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+304.920 169 ChannelV2 1
+305.506 170 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+305.509 171 ChannelV2 1
+306.385 172 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+306.388 173 ChannelV2 1
+307.697 174 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+307.700 175 ChannelV2 1
+307.728 176 ChannelV2 1,17-32, MainV2 1, Source 1-2,4-5,8,15
+307.731 177 ChannelV2 1
+309.389 178 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+309.403 179 ChannelV2 1
+310.447 180 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.450 181 ChannelV2 1
+310.727 182 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.736 183 ChannelV2 1
+310.801 184 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.805 185 ChannelV2 1
+310.837 186 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.841 187 ChannelV2 1
+310.886 188 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.889 189 ChannelV2 1
+310.893 190 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.896 191 ChannelV2 1
+310.936 192 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.939 193 ChannelV2 1
+310.943 194 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.947 195 ChannelV2 1
+310.983 196 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.987 197 ChannelV2 1
+310.991 198 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+310.995 199 ChannelV2 1
+311.033 200 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+311.036 201 ChannelV2 1
+311.042 202 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+311.045 203 ChannelV2 1
+311.087 204 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+311.090 205 ChannelV2 1
+311.136 206 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Source 1-2,4-5,8,15, Monitor
+376.533 207 ChannelV2 1-3,5,8-12,17-32, MainV2 1-4, MatrixV2 1-8, Source 1-2,4-5,8,15, Monitor
+376.586 208 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.589 209 ChannelV2 1
+376.633 210 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.637 211 ChannelV2 1
+376.640 212 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.644 213 ChannelV2 1
+376.683 214 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.686 215 ChannelV2 1
+376.690 216 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.693 217 ChannelV2 1
+376.736 218 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.739 219 ChannelV2 1
+376.743 220 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.746 221 ChannelV2 1
+376.786 222 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.790 223 ChannelV2 1
+376.793 224 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.797 225 ChannelV2 1
+376.836 226 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+376.839 227 ChannelV2 1
+376.885 228 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Source 2,8, Monitor
+379.255 229 ChannelV2 1,5,8-9,21, MainV2 1-4, MatrixV2 1-8, Fx 12, Source 2,8, Monitor, Rta
+379.258 230 ChannelV2 1
+379.348 231 ChannelV2 1, MainV2 1-4, MatrixV2 1-8
+379.351 232 ChannelV2 1
+379.377 233 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.381 234 ChannelV2 1
+379.448 235 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.451 236 ChannelV2 1
+379.519 237 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.522 238 ChannelV2 1
+379.559 239 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.562 240 ChannelV2 1
+379.602 241 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.605 242 ChannelV2 1
+379.652 243 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.655 244 ChannelV2 1
+379.699 245 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.703 246 ChannelV2 1
+379.755 247 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.758 248 ChannelV2 1
+379.807 249 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.811 250 ChannelV2 1
+379.865 251 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.868 252 ChannelV2 1
+379.922 253 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.925 254 ChannelV2 1
+379.984 255 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+379.987 256 ChannelV2 1
+380.105 257 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+380.109 258 ChannelV2 1
+380.227 259 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+380.230 260 ChannelV2 1
+380.358 261 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+380.361 262 ChannelV2 1
+380.561 263 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+380.564 264 ChannelV2 1
+380.840 265 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+380.843 266 ChannelV2 1
+381.280 267 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+381.283 268 ChannelV2 1
+381.838 269 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+381.841 270 ChannelV2 1
+382.661 271 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+382.665 272 ChannelV2 1
+382.682 273 ChannelV2 1, MainV2 1-4, MatrixV2 1-8
+382.685 274 ChannelV2 1
+383.479 275 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+383.486 276 ChannelV2 1
+384.345 277 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+384.351 278 ChannelV2 1
+385.367 279 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+385.371 280 ChannelV2 1
+386.058 281 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+386.061 282 ChannelV2 1
+386.335 283 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+386.338 284 ChannelV2 1
+386.435 285 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+386.438 286 ChannelV2 1
+386.492 287 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+386.498 288 ChannelV2 1
+386.536 289 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12
+386.539 290 ChannelV2 1
+386.554 291 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+386.557 292 ChannelV2 1
+386.587 293 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+386.591 294 ChannelV2 1
+386.636 295 ChannelV2 1,5,8-9, MainV2 1-4, MatrixV2 1-8, Fx 12, Rta
+401.786 296 ChannelV2 1-16, MainV2 1-4, MatrixV2 1-8, Fx 12, Source 1,4-5,8, Rta
+401.833 297 ChannelV2 1-16, MainV2 1, Fx 12, Source 1,4-5,8, Rta
+401.837 298 ChannelV2 1
+401.886 299 ChannelV2 1-16, MainV2 1, Fx 12, Source 1,4-5,8, Rta
+401.890 300 ChannelV2 1
+401.894 301 ChannelV2 1-16, MainV2 1, Fx 12, Source 1,4-5,8, Rta
+478.242 302 ChannelV2 1-16, BusV2 1-16, MainV2 1, Fx 12, Source 1,4-5,8, Rta
+478.287 303 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 4,8, Rta
+478.290 304 ChannelV2 1
+478.332 305 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 4,8, Rta
+478.335 306 ChannelV2 1
+478.384 307 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 4,8, Rta
+478.387 308 ChannelV2 1
+478.393 309 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 4,8, Rta
+478.396 310 ChannelV2 1
+478.437 311 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 4,8, Rta
+499.639 312 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3-4,8, Rta
+499.685 313 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.689 314 ChannelV2 1
+499.736 315 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.739 316 ChannelV2 1
+499.743 317 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.746 318 ChannelV2 1
+499.783 319 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.787 320 ChannelV2 1
+499.790 321 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.794 322 ChannelV2 1
+499.836 323 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.839 324 ChannelV2 1
+499.844 325 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.847 326 ChannelV2 1
+499.886 327 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.889 328 ChannelV2 1
+499.893 329 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.897 330 ChannelV2 1
+499.936 331 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.940 332 ChannelV2 1
+499.944 333 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.947 334 ChannelV2 1
+499.987 335 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.990 336 ChannelV2 1
+499.994 337 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+499.997 338 ChannelV2 1
+500.036 339 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+500.039 340 ChannelV2 1
+500.087 341 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+500.091 342 ChannelV2 1
+500.094 343 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+500.098 344 ChannelV2 1
+500.136 345 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+500.139 346 ChannelV2 1
+500.184 347 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+500.188 348 ChannelV2 1
+500.234 349 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3
+502.584 350 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Source 3, Monitor
+502.587 351 ChannelV2 1
+502.649 352 ChannelV2 1, BusV2 1-16, MainV2 1
+502.652 353 ChannelV2 1
+502.745 354 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+502.748 355 ChannelV2 1
+502.946 356 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+502.949 357 ChannelV2 1
+503.161 358 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+503.164 359 ChannelV2 1
+503.389 360 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+503.393 361 ChannelV2 1
+503.682 362 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+503.685 363 ChannelV2 1
+503.993 364 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+503.996 365 ChannelV2 1
+504.427 366 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+504.431 367 ChannelV2 1
+504.952 368 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+504.955 369 ChannelV2 1
+505.618 370 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+505.621 371 ChannelV2 1
+506.009 372 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.015 373 ChannelV2 1
+506.227 374 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.230 375 ChannelV2 1
+506.344 376 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.348 377 ChannelV2 1
+506.440 378 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.444 379 ChannelV2 1
+506.509 380 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.513 381 ChannelV2 1
+506.550 382 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.553 383 ChannelV2 1
+506.596 384 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.599 385 ChannelV2 1
+506.640 386 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.643 387 ChannelV2 1
+506.687 388 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.690 389 ChannelV2 1
+506.694 390 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.697 391 ChannelV2 1
+506.740 392 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.744 393 ChannelV2 1
+506.794 394 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.798 395 ChannelV2 1
+506.853 396 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.856 397 ChannelV2 1
+506.911 398 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.915 399 ChannelV2 1
+506.971 400 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+506.974 401 ChannelV2 1
+507.034 402 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+507.037 403 ChannelV2 1
+507.100 404 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+507.104 405 ChannelV2 1
+507.227 406 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+507.230 407 ChannelV2 1
+507.370 408 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+507.374 409 ChannelV2 1
+507.543 410 ChannelV2 1, BusV2 1-16, MainV2 1
+507.546 411 ChannelV2 1
+507.612 412 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+507.615 413 ChannelV2 1
+507.966 414 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+507.969 415 ChannelV2 1
+508.455 416 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+508.459 417 ChannelV2 1
+509.163 418 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+509.166 419 ChannelV2 1
+510.046 420 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+510.049 421 ChannelV2 1
+510.838 422 ChannelV2 1, BusV2 1-16, MainV2 1
+510.841 423 ChannelV2 1
+511.193 424 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+511.197 425 ChannelV2 1
+512.559 426 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+512.563 427 ChannelV2 1
+513.556 428 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+513.559 429 ChannelV2 1
+513.813 430 ChannelV2 1, BusV2 1
+513.816 431 ChannelV2 1
+513.867 432 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+513.870 433 ChannelV2 1
+513.958 434 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+513.962 435 ChannelV2 1
+514.000 436 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+514.003 437 ChannelV2 1
+514.036 438 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+514.039 439 ChannelV2 1
+514.043 440 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+514.046 441 ChannelV2 1
+514.081 442 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 12, Monitor
+514.742 443 ChannelV2 1-5, BusV2 1-16, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.746 444 ChannelV2 1
+514.786 445 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.789 446 ChannelV2 1
+514.792 447 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.796 448 ChannelV2 1
+514.837 449 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.840 450 ChannelV2 1
+514.845 451 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.848 452 ChannelV2 1
+514.886 453 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.890 454 ChannelV2 1
+514.894 455 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.898 456 ChannelV2 1
+514.937 457 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.940 458 ChannelV2 1
+514.944 459 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.948 460 ChannelV2 1
+514.988 461 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+514.991 462 ChannelV2 1
+515.040 463 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+515.044 464 ChannelV2 1
+515.095 465 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+515.098 466 ChannelV2 1
+515.160 467 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+515.163 468 ChannelV2 1
+515.218 469 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+515.224 470 ChannelV2 1, MainV2 1-2
+515.227 471 ChannelV2 1
+515.288 472 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+515.291 473 ChannelV2 1
+515.413 474 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+515.418 475 ChannelV2 1, MainV2 4
+515.421 476 ChannelV2 1
+515.546 477 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+515.549 478 ChannelV2 1
+515.750 479 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+515.753 480 ChannelV2 1
+515.759 481 ChannelV2 1, MainV2 4
+515.762 482 ChannelV2 1
+516.031 483 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+516.043 484 ChannelV2 1, MainV2 1-4
+516.046 485 ChannelV2 1
+516.394 486 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+516.398 487 ChannelV2 1
+516.490 488 ChannelV2 1, MainV2 1-4, MatrixV2 1-8
+516.493 489 ChannelV2 1
+516.984 490 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+516.987 491 ChannelV2 1
+517.808 492 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+517.812 493 ChannelV2 1
+519.110 494 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+519.114 495 ChannelV2 1
+519.365 496 ChannelV2 1, MainV2 1-4, MatrixV2 1-4
+519.369 497 ChannelV2 1
+521.069 498 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+521.072 499 ChannelV2 1
+522.713 500 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+522.716 501 ChannelV2 1
+523.135 502 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+523.138 503 ChannelV2 1
+523.188 504 ChannelV2 1, MainV2 1-4, MatrixV2 1-8
+523.192 505 ChannelV2 1
+523.246 506 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+523.249 507 ChannelV2 1
+523.285 508 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+523.288 509 ChannelV2 1
+523.337 510 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+523.340 511 ChannelV2 1
+523.343 512 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+523.347 513 ChannelV2 1
+523.386 514 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 12, Monitor
+526.699 515 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11-12, Monitor
+526.702 516 ChannelV2 1
+526.719 517 ChannelV2 1, MainV2 1-4, MatrixV2 1-8
+526.722 518 ChannelV2 1
+526.735 519 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+526.738 520 ChannelV2 1
+526.743 521 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+526.746 522 ChannelV2 1
+526.785 523 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+526.789 524 ChannelV2 1
+526.793 525 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+526.797 526 ChannelV2 1
+526.837 527 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+526.840 528 ChannelV2 1
+526.843 529 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+526.847 530 ChannelV2 1
+526.887 531 ChannelV2 1,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+582.534 532 ChannelV2 1-5,8, BusV2 1-16, MainV2 1-4, MatrixV2 1-8, Fx 11
+582.586 533 ChannelV2 1-5,8, BusV2 1-16, MainV2 1,4, Fx 11
+582.590 534 ChannelV2 1
+582.636 535 ChannelV2 1-5,8, BusV2 1-16, MainV2 1,4, Fx 11
+582.639 536 ChannelV2 1
+582.644 537 ChannelV2 1-5,8, BusV2 1-16, MainV2 1,4, Fx 11
+583.683 538 ChannelV2 1-5,8, BusV2 1-16, MainV2 1,4, Fx 11,14, Rta
+583.687 539 ChannelV2 1
+583.691 540 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.695 541 ChannelV2 1
+583.733 542 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.736 543 ChannelV2 1
+583.740 544 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.743 545 ChannelV2 1
+583.787 546 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.791 547 ChannelV2 1
+583.795 548 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.799 549 ChannelV2 1
+583.832 550 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.836 551 ChannelV2 1
+583.840 552 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.843 553 ChannelV2 1
+583.886 554 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.890 555 ChannelV2 1
+583.894 556 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.897 557 ChannelV2 1
+583.931 558 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.935 559 ChannelV2 1
+583.939 560 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.942 561 ChannelV2 1
+583.987 562 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.990 563 ChannelV2 1
+583.994 564 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+583.998 565 ChannelV2 1
+584.037 566 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 14, Rta
+584.648 567 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10,14, Rta
+584.652 568 ChannelV2 1
+584.693 569 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+584.696 570 ChannelV2 1
+584.742 571 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+584.745 572 ChannelV2 1
+584.794 573 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+584.798 574 ChannelV2 1
+584.847 575 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+584.850 576 ChannelV2 1
+584.900 577 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+584.904 578 ChannelV2 1
+584.959 579 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+584.963 580 ChannelV2 1
+585.019 581 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+585.023 582 ChannelV2 1
+585.085 583 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+585.090 584 ChannelV2 1
+585.152 585 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+585.155 586 ChannelV2 1
+585.282 587 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+585.285 588 ChannelV2 1
+585.413 589 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+585.416 590 ChannelV2 1
+585.615 591 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+585.618 592 ChannelV2 1
+585.893 593 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+585.896 594 ChannelV2 1
+586.326 595 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+586.331 596 ChannelV2 1
+586.914 597 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+586.917 598 ChannelV2 1
+587.851 599 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+587.854 600 ChannelV2 1
+587.884 601 ChannelV2 1, BusV2 1-16
+587.887 602 ChannelV2 1
+589.329 603 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+589.349 604 ChannelV2 1
+591.256 605 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+591.260 606 ChannelV2 1
+591.287 607 ChannelV2 1, BusV2 1-16
+591.291 608 ChannelV2 1
+592.237 609 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+592.248 610 ChannelV2 1
+592.509 611 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+592.516 612 ChannelV2 1
+592.587 613 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+592.594 614 ChannelV2 1
+592.636 615 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+607.689 616 ChannelV2 1-16, BusV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8
+607.733 617 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8
+607.737 618 ChannelV2 1
+607.786 619 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8
+607.789 620 ChannelV2 1
+607.794 621 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8
+643.885 622 ChannelV2 1-32, BusV2 5, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+643.932 623 ChannelV2 1-3,5,7-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+643.935 624 ChannelV2 1
+643.987 625 ChannelV2 1-3,5,7-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+643.990 626 ChannelV2 1
+643.995 627 ChannelV2 1-3,5,7-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+647.891 628 ChannelV2 1-3,5,7-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+647.894 629 ChannelV2 1
+647.932 630 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+647.935 631 ChannelV2 1
+647.940 632 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+647.943 633 ChannelV2 1
+647.984 634 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+647.987 635 ChannelV2 1
+647.992 636 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+647.995 637 ChannelV2 1
+648.034 638 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.037 639 ChannelV2 1
+648.042 640 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.045 641 ChannelV2 1
+648.083 642 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.086 643 ChannelV2 1
+648.089 644 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.093 645 ChannelV2 1
+648.137 646 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.141 647 ChannelV2 1
+648.144 648 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.147 649 ChannelV2 1
+648.186 650 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.190 651 ChannelV2 1
+648.193 652 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.197 653 ChannelV2 1
+648.233 654 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.236 655 ChannelV2 1
+648.283 656 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.286 657 ChannelV2 1
+648.290 658 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.293 659 ChannelV2 1
+648.337 660 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.341 661 ChannelV2 1
+648.346 662 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.350 663 ChannelV2 1
+648.398 664 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.401 665 ChannelV2 1
+648.452 666 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.457 667 ChannelV2 1
+648.510 668 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.517 669 ChannelV2 1
+648.575 670 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.578 671 ChannelV2 1
+648.644 672 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.647 673 ChannelV2 1
+648.772 674 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.777 675 ChannelV2 1
+648.906 676 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+648.913 677 ChannelV2 1
+649.102 678 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+649.105 679 ChannelV2 1
+649.353 680 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+649.356 681 ChannelV2 1
+649.665 682 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+649.674 683 ChannelV2 1
+650.051 684 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+650.054 685 ChannelV2 1
+650.606 686 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+650.609 687 ChannelV2 1
+651.359 688 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+651.363 689 ChannelV2 1
+652.428 690 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 1-16, Source 1-2,4-5,8,15
+652.431 691 ChannelV2 1
+653.974 692 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+653.978 693 ChannelV2 1
+655.514 694 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+655.517 695 ChannelV2 1
+655.916 696 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+655.920 697 ChannelV2 1
+656.016 698 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.019 699 ChannelV2 1
+656.044 700 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.048 701 ChannelV2 1
+656.086 702 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.090 703 ChannelV2 1
+656.094 704 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.097 705 ChannelV2 1
+656.135 706 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.138 707 ChannelV2 1
+656.144 708 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.147 709 ChannelV2 1
+656.187 710 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.190 711 ChannelV2 1
+656.194 712 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.197 713 ChannelV2 1
+656.237 714 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.240 715 ChannelV2 1
+656.244 716 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.247 717 ChannelV2 1
+656.283 718 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.286 719 ChannelV2 1
+656.290 720 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.293 721 ChannelV2 1
+656.337 722 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.340 723 ChannelV2 1
+656.344 724 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.347 725 ChannelV2 1
+656.392 726 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.396 727 ChannelV2 1
+656.446 728 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.449 729 ChannelV2 1
+656.501 730 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.504 731 ChannelV2 1
+656.552 732 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.555 733 ChannelV2 1
+656.605 734 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.615 735 ChannelV2 1
+656.673 736 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.677 737 ChannelV2 1
+656.732 738 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.736 739 ChannelV2 1
+656.792 740 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.795 741 ChannelV2 1
+656.917 742 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+656.921 743 ChannelV2 1
+657.048 744 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+657.051 745 ChannelV2 1
+657.258 746 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+657.261 747 ChannelV2 1
+657.541 748 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+657.544 749 ChannelV2 1
+657.828 750 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+657.831 751 ChannelV2 1
+657.968 752 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+657.971 753 ChannelV2 1
+658.323 754 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+658.326 755 ChannelV2 1
+658.538 756 ChannelV2 1-3,5,8-12,17-32, BusV2 3, MainV2 1, Fx 2, Source 1-2,4-5,8,15
+658.542 757 ChannelV2 1
+659.059 758 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+659.063 759 ChannelV2 1
+659.450 760 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 2
+659.453 761 ChannelV2 1
+660.260 762 ChannelV2 1, BusV2 1-16
+660.263 763 ChannelV2 1
+660.886 764 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 2
+660.889 765 ChannelV2 1
+662.192 766 ChannelV2 1, BusV2 1-16
+662.195 767 ChannelV2 1
+663.163 768 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 2
+663.166 769 ChannelV2 1
+664.437 770 ChannelV2 1, BusV2 1-16, MainV2 1
+664.440 771 ChannelV2 1
+664.857 772 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 7
+664.861 773 ChannelV2 1
+665.234 774 ChannelV2 1, BusV2 1-12
+665.238 775 ChannelV2 1
+665.348 776 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 7
+665.351 777 ChannelV2 1
+665.502 778 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 7
+665.505 779 ChannelV2 1
+665.558 780 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 7
+665.562 781 ChannelV2 1
+665.583 782 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 7
+665.591 783 ChannelV2 1
+665.632 784 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 7
+829.334 785 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 7, Monitor
+848.843 786 ChannelV2 1-16, BusV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+848.887 787 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+848.890 788 ChannelV2 1
+848.934 789 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+848.938 790 ChannelV2 1
+848.982 791 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+848.985 792 ChannelV2 1
+848.990 793 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+848.993 794 ChannelV2 1
+849.036 795 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+849.040 796 ChannelV2 1
+849.044 797 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+849.048 798 ChannelV2 1
+849.086 799 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+849.090 800 ChannelV2 1
+849.094 801 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+849.097 802 ChannelV2 1
+849.136 803 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor
+852.638 804 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Monitor, Rta
+852.641 805 ChannelV2 1
+852.644 806 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Rta
+852.648 807 ChannelV2 1
+852.686 808 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Rta
+852.689 809 ChannelV2 1
+852.736 810 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Rta
+852.739 811 ChannelV2 1
+852.744 812 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Rta
+852.747 813 ChannelV2 1
+852.786 814 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Rta
+852.790 815 ChannelV2 1
+852.837 816 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Rta
+852.840 817 ChannelV2 1
+852.845 818 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Rta
+852.848 819 ChannelV2 1
+852.885 820 ChannelV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Rta
+941.737 821 ChannelV2 1-16, BusV2 1-16, MainV2 1, Fx 7, Source 1,4-5,8, Rta
+941.782 822 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 7
+941.785 823 ChannelV2 1
+941.837 824 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 7
+948.531 825 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1,7
+948.584 826 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.587 827 ChannelV2 1
+948.637 828 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.640 829 ChannelV2 1
+948.644 830 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.647 831 ChannelV2 1
+948.682 832 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.686 833 ChannelV2 1
+948.689 834 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.692 835 ChannelV2 1
+948.732 836 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.735 837 ChannelV2 1
+948.739 838 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.742 839 ChannelV2 1
+948.786 840 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.789 841 ChannelV2 1
+948.793 842 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.797 843 ChannelV2 1
+948.836 844 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.839 845 ChannelV2 1
+948.843 846 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.847 847 ChannelV2 1
+948.886 848 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.890 849 ChannelV2 1
+948.894 850 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.897 851 ChannelV2 1
+948.937 852 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.941 853 ChannelV2 1
+948.944 854 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+948.948 855 ChannelV2 1
+948.987 856 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1
+968.533 857 ChannelV2 1-16, BusV2 1-16, MainV2 1, Fx 1, Source 1,4-5,8
+968.587 858 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.591 859 ChannelV2 1
+968.635 860 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.638 861 ChannelV2 1
+968.686 862 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.690 863 ChannelV2 1
+968.694 864 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.698 865 ChannelV2 1
+968.734 866 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.737 867 ChannelV2 1
+968.741 868 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.744 869 ChannelV2 1
+968.786 870 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.789 871 ChannelV2 1
+968.794 872 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.797 873 ChannelV2 1
+968.836 874 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.839 875 ChannelV2 1
+968.844 876 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.848 877 ChannelV2 1
+968.883 878 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.887 879 ChannelV2 1
+968.892 880 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+968.895 881 ChannelV2 1
+968.934 882 ChannelV2 1-16, BusV2 1, MainV2 1, Fx 1, Source 1,4-5,8
+969.289 883 ChannelV2 1-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.303 884 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+969.307 885 ChannelV2 1
+969.336 886 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.339 887 ChannelV2 1
+969.365 888 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+969.368 889 ChannelV2 1
+969.402 890 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.409 891 ChannelV2 1
+969.451 892 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.455 893 ChannelV2 1
+969.497 894 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.500 895 ChannelV2 1
+969.549 896 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.552 897 ChannelV2 1
+969.603 898 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.606 899 ChannelV2 1
+969.658 900 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.662 901 ChannelV2 1
+969.679 902 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+969.682 903 ChannelV2 1
+969.731 904 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.736 905 ChannelV2 1
+969.747 906 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+969.751 907 ChannelV2 1
+969.803 908 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.806 909 ChannelV2 1
+969.818 910 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+969.822 911 ChannelV2 1
+969.939 912 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+969.942 913 ChannelV2 1
+969.957 914 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+969.961 915 ChannelV2 1
+970.156 916 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+970.160 917 ChannelV2 1
+970.453 918 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+970.457 919 ChannelV2 1
+970.901 920 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+970.904 921 ChannelV2 1
+971.582 922 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15
+971.601 923 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+971.604 924 ChannelV2 1
+972.592 925 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+972.596 926 ChannelV2 1
+972.690 927 ChannelV2 1,17-32, MainV2 1, Source 1-2,4-5,8,15
+972.694 928 ChannelV2 1
+974.278 929 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+974.282 930 ChannelV2 1
+974.379 931 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+974.382 932 ChannelV2 1
+976.779 933 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+976.782 934 ChannelV2 1
+977.873 935 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+977.877 936 ChannelV2 1
+978.121 937 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.124 938 ChannelV2 1
+978.175 939 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.179 940 ChannelV2 1
+978.195 941 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.198 942 ChannelV2 1
+978.234 943 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.237 944 ChannelV2 1
+978.285 945 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.288 946 ChannelV2 1
+978.292 947 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.295 948 ChannelV2 1
+978.336 949 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.339 950 ChannelV2 1
+978.345 951 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.348 952 ChannelV2 1
+978.384 953 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.387 954 ChannelV2 1
+978.435 955 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.438 956 ChannelV2 1
+978.443 957 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.446 958 ChannelV2 1
+978.485 959 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.489 960 ChannelV2 1
+978.493 961 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.496 962 ChannelV2 1
+978.536 963 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.539 964 ChannelV2 1
+978.542 965 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.546 966 ChannelV2 1
+978.587 967 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.590 968 ChannelV2 1
+978.636 969 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.640 970 ChannelV2 1
+978.689 971 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.693 972 ChannelV2 1
+978.741 973 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.745 974 ChannelV2 1
+978.797 975 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.809 976 ChannelV2 1
+978.865 977 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.868 978 ChannelV2 1
+978.927 979 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+978.931 980 ChannelV2 1
+979.000 981 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+979.003 982 ChannelV2 1
+979.129 983 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+979.132 984 ChannelV2 1
+979.259 985 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+979.263 986 ChannelV2 1
+979.464 987 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+979.468 988 ChannelV2 1
+979.735 989 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+979.739 990 ChannelV2 1
+980.060 991 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+980.064 992 ChannelV2 1
+980.538 993 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+980.542 994 ChannelV2 1
+981.235 995 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+981.238 996 ChannelV2 1
+982.258 997 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+982.269 998 ChannelV2 1
+983.730 999 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+983.734 1000 ChannelV2 1
+985.612 1001 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+985.615 1002 ChannelV2 1
+986.201 1003 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.204 1004 ChannelV2 1
+986.323 1005 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.326 1006 ChannelV2 1
+986.349 1007 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.358 1008 ChannelV2 1
+986.385 1009 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.388 1010 ChannelV2 1
+986.393 1011 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.397 1012 ChannelV2 1
+986.434 1013 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.437 1014 ChannelV2 1
+986.441 1015 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.445 1016 ChannelV2 1
+986.485 1017 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.488 1018 ChannelV2 1
+986.492 1019 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.495 1020 ChannelV2 1
+986.535 1021 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.538 1022 ChannelV2 1
+986.542 1023 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.546 1024 ChannelV2 1
+986.586 1025 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.589 1026 ChannelV2 1
+986.594 1027 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.598 1028 ChannelV2 1
+986.636 1029 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.639 1030 ChannelV2 1
+986.687 1031 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.691 1032 ChannelV2 1
+986.695 1033 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.698 1034 ChannelV2 1
+986.742 1035 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.745 1036 ChannelV2 1
+986.796 1037 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.799 1038 ChannelV2 1
+986.852 1039 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.855 1040 ChannelV2 1
+986.906 1041 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.914 1042 ChannelV2 1
+986.970 1043 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+986.973 1044 ChannelV2 1
+987.028 1045 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+987.031 1046 ChannelV2 1
+987.091 1047 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+987.098 1048 ChannelV2 1
+987.217 1049 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+987.222 1050 ChannelV2 1
+987.350 1051 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+987.353 1052 ChannelV2 1
+987.536 1053 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+987.539 1054 ChannelV2 1
+987.726 1055 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+987.730 1056 ChannelV2 1
+987.995 1057 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+987.998 1058 ChannelV2 1
+988.404 1059 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+988.407 1060 ChannelV2 1
+988.971 1061 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+988.974 1062 ChannelV2 1
+989.755 1063 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+989.758 1064 ChannelV2 1
+990.908 1065 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+990.912 1066 ChannelV2 1
+992.608 1067 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+992.612 1068 ChannelV2 1
+994.066 1069 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+994.069 1070 ChannelV2 1
+994.394 1071 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+994.397 1072 ChannelV2 1
+994.469 1073 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+994.472 1074 ChannelV2 1
+994.491 1075 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+994.494 1076 ChannelV2 1
+994.535 1077 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+1039.189 1078 ChannelV2 1-3,5,8-12,17-32, BusV2 1-16, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+1039.231 1079 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 3, Source 2,8, Monitor
+1039.235 1080 ChannelV2 1
+1039.282 1081 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 3, Source 2,8, Monitor
+1039.285 1082 ChannelV2 1
+1039.290 1083 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 3, Source 2,8, Monitor
+1040.886 1084 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 1,3, Source 2,8, Monitor
+1040.890 1085 ChannelV2 1
+1040.935 1086 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1040.939 1087 ChannelV2 1
+1040.942 1088 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1040.945 1089 ChannelV2 1
+1040.980 1090 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1040.984 1091 ChannelV2 1
+1040.987 1092 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1040.991 1093 ChannelV2 1
+1041.036 1094 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1041.039 1095 ChannelV2 1
+1041.043 1096 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1041.046 1097 ChannelV2 1
+1041.082 1098 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1041.085 1099 ChannelV2 1
+1041.090 1100 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1041.093 1101 ChannelV2 1
+1041.133 1102 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1041.137 1103 ChannelV2 1
+1041.140 1104 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1041.144 1105 ChannelV2 1
+1041.182 1106 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1041.186 1107 ChannelV2 1
+1041.191 1108 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1041.195 1109 ChannelV2 1
+1041.233 1110 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor
+1063.586 1111 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 1, Monitor, Rta
+1088.734 1112 ChannelV2 1-5,17-32, BusV2 1-16, MainV2 1, Fx 1, Source 1-2,4-5,8,15, Monitor, Rta
+1088.785 1113 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15, Monitor, Rta
+1088.788 1114 ChannelV2 1
+1088.837 1115 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15, Monitor, Rta
+1088.840 1116 ChannelV2 1
+1088.845 1117 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1, Source 1-2,4-5,8,15, Monitor, Rta
+1092.990 1118 ChannelV2 1-3,5,8-12,17-32, BusV2 1, MainV2 1, Fx 1,15, Source 1-2,4-5,8,15, Monitor, Rta
+1092.993 1119 ChannelV2 1
+1093.037 1120 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.040 1121 ChannelV2 1
+1093.045 1122 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.048 1123 ChannelV2 1
+1093.087 1124 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.091 1125 ChannelV2 1
+1093.094 1126 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.097 1127 ChannelV2 1
+1093.132 1128 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.135 1129 ChannelV2 1
+1093.140 1130 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.143 1131 ChannelV2 1
+1093.183 1132 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.186 1133 ChannelV2 1
+1093.191 1134 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.194 1135 ChannelV2 1
+1093.232 1136 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.235 1137 ChannelV2 1
+1093.240 1138 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.243 1139 ChannelV2 1
+1093.283 1140 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.287 1141 ChannelV2 1
+1093.336 1142 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.340 1143 ChannelV2 1
+1093.344 1144 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.347 1145 ChannelV2 1
+1093.386 1146 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.389 1147 ChannelV2 1
+1093.427 1148 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.431 1149 ChannelV2 1
+1093.439 1150 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.442 1151 ChannelV2 1
+1093.492 1152 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.496 1153 ChannelV2 1
+1093.545 1154 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.548 1155 ChannelV2 1
+1093.605 1156 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.609 1157 ChannelV2 1
+1093.662 1158 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.665 1159 ChannelV2 1
+1093.726 1160 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.733 1161 ChannelV2 1
+1093.800 1162 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.803 1163 ChannelV2 1
+1093.924 1164 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1093.928 1165 ChannelV2 1
+1094.044 1166 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1094.051 1167 ChannelV2 1
+1094.225 1168 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1094.232 1169 ChannelV2 1
+1094.412 1170 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1094.415 1171 ChannelV2 1
+1094.668 1172 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1094.671 1173 ChannelV2 1
+1094.685 1174 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+1094.689 1175 ChannelV2 1
+1095.011 1176 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1095.015 1177 ChannelV2 1
+1095.027 1178 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+1095.031 1179 ChannelV2 1
+1095.520 1180 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1095.524 1181 ChannelV2 1
+1096.269 1182 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+1096.272 1183 ChannelV2 1
+1097.437 1184 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+1097.440 1185 ChannelV2 1
+1099.247 1186 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 3, Source 1-2,4-5,8,15, Monitor
+1099.250 1187 ChannelV2 1
+1101.173 1188 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1101.176 1189 ChannelV2 1
+1101.198 1190 ChannelV2 1,17-32, MainV2 1, Source 1-2,4-5,8,15
+1101.201 1191 ChannelV2 1
+1101.638 1192 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1101.654 1193 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+1101.657 1194 ChannelV2 1
+1101.751 1195 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1101.763 1196 ChannelV2 1
+1101.795 1197 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1101.798 1198 ChannelV2 1
+1101.832 1199 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1101.835 1200 ChannelV2 1
+1101.839 1201 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1101.842 1202 ChannelV2 1
+1101.886 1203 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1101.889 1204 ChannelV2 1
+1101.892 1205 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1101.896 1206 ChannelV2 1
+1101.935 1207 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1167.552 1208 ChannelV2 1-32, MainV2 1, Fx 15, Source 1-2,4-5,8,15, Monitor
+1167.583 1209 ChannelV2 1-16,25, MainV2 1, Fx 15, Source 1,4-5,8, Monitor
+1167.586 1210 ChannelV2 1
+1167.634 1211 ChannelV2 1-16,25, MainV2 1, Fx 15, Source 1,4-5,8, Monitor
+1167.637 1212 ChannelV2 1
+1167.642 1213 ChannelV2 1-16,25, MainV2 1, Fx 15, Source 1,4-5,8, Monitor
+1243.282 1214 ChannelV2 1-16,25, MainV2 1, Fx 1-16, Source 1,4-5,8, Monitor
+1243.336 1215 ChannelV2 1-16, MainV2 1, Fx 1-16, Source 1,4-5,8
+1243.339 1216 ChannelV2 1
+1243.386 1217 ChannelV2 1-16, MainV2 1, Fx 1-16, Source 1,4-5,8
+1243.390 1218 ChannelV2 1
+1243.394 1219 ChannelV2 1-16, MainV2 1, Fx 1-16, Source 1,4-5,8
+1252.232 1220 ChannelV2 1-16, MainV2 1,4, Fx 1-16, Source 1,4-5,8
+1252.285 1221 ChannelV2 1-16, MainV2 1,4, Fx 11, Source 1,4-5,8
+1252.289 1222 ChannelV2 1
+1252.337 1223 ChannelV2 1-16, MainV2 1,4, Fx 11, Source 1,4-5,8
+1252.341 1224 ChannelV2 1
+1252.345 1225 ChannelV2 1-16, MainV2 1,4, Fx 11, Source 1,4-5,8
+1289.446 1226 ChannelV2 1-16, MainV2 1-4, MatrixV2 1-8, Fx 11, Source 1,4-5,8
+1289.486 1227 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+1289.490 1228 ChannelV2 1
+1289.534 1229 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+1289.538 1230 ChannelV2 1
+1289.542 1231 ChannelV2 1,3,5,8, MainV2 1-4, MatrixV2 1-8, Fx 11
+1315.285 1232 ChannelV2 1,3,5,8, BusV2 1-16, MainV2 1-4, MatrixV2 1-8, Fx 11
+1315.336 1233 ChannelV2 1-5,8, BusV2 1-16, MainV2 1, Fx 11
+1315.339 1234 ChannelV2 1
+1315.385 1235 ChannelV2 1-5,8, BusV2 1-16, MainV2 1, Fx 11
+1315.388 1236 ChannelV2 1
+1315.393 1237 ChannelV2 1-5,8, BusV2 1-16, MainV2 1, Fx 11
+1340.435 1238 ChannelV2 1-5,8, BusV2 1-16, MainV2 1, Fx 11, Rta
+1340.485 1239 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 11, Rta
+1355.097 1240 ChannelV2 1-5,17-32, BusV2 1-16, MainV2 1, Fx 11, Source 1-2,4-5,8,15, Rta
+1355.133 1241 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 11, Source 1-2,4-5,8,15, Rta
+1355.136 1242 ChannelV2 1
+1355.185 1243 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 11, Source 1-2,4-5,8,15, Rta
+1355.189 1244 ChannelV2 1
+1355.193 1245 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 11, Source 1-2,4-5,8,15, Rta
+1358.936 1246 ChannelV2 1-3,5,8-12,17-32, BusV2 1-16, MainV2 1, Fx 11, Source 1-2,4-5,8,15, Rta
+1358.940 1247 ChannelV2 1
+1358.945 1248 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 11, Source 2,8, Rta
+1358.949 1249 ChannelV2 1
+1358.987 1250 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 11, Source 2,8, Rta
+1371.388 1251 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 10-11, Source 2,8, Rta
+1371.436 1252 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+1371.439 1253 ChannelV2 1
+1371.487 1254 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+1371.490 1255 ChannelV2 1
+1371.495 1256 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10
+1439.087 1257 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10, Rta
+1553.236 1258 ChannelV2 1-5, BusV2 1-16, MainV2 1, Fx 10, Monitor, Rta
+1627.603 1259 ChannelV2 1-16, BusV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.634 1260 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.637 1261 ChannelV2 1
+1627.681 1262 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.684 1263 ChannelV2 1
+1627.688 1264 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.691 1265 ChannelV2 1
+1627.733 1266 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.736 1267 ChannelV2 1
+1627.739 1268 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.743 1269 ChannelV2 1
+1627.782 1270 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.785 1271 ChannelV2 1
+1627.790 1272 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.793 1273 ChannelV2 1
+1627.835 1274 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.838 1275 ChannelV2 1
+1627.843 1276 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.846 1277 ChannelV2 1
+1627.882 1278 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.885 1279 ChannelV2 1
+1627.889 1280 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.892 1281 ChannelV2 1
+1627.936 1282 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.939 1283 ChannelV2 1
+1627.943 1284 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.947 1285 ChannelV2 1
+1627.988 1286 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1627.991 1287 ChannelV2 1
+1628.037 1288 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.041 1289 ChannelV2 1
+1628.088 1290 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.091 1291 ChannelV2 1
+1628.136 1292 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.139 1293 ChannelV2 1
+1628.187 1294 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.191 1295 ChannelV2 1
+1628.194 1296 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.198 1297 ChannelV2 1
+1628.249 1298 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.253 1299 ChannelV2 1
+1628.307 1300 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.311 1301 ChannelV2 1
+1628.361 1302 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.365 1303 ChannelV2 1
+1628.374 1304 ChannelV2 1-16, Source 1,4-5,8
+1628.378 1305 ChannelV2 1
+1628.426 1306 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.439 1307 ChannelV2 1-16, Source 1,4-5,8
+1628.443 1308 ChannelV2 1
+1628.504 1309 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.508 1310 ChannelV2 1
+1628.624 1311 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.628 1312 ChannelV2 1
+1628.636 1313 ChannelV2 1,5, Source 4,8
+1628.639 1314 ChannelV2 1
+1628.772 1315 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.775 1316 ChannelV2 1
+1628.970 1317 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1628.973 1318 ChannelV2 1
+1628.980 1319 ChannelV2 1,6-9, Source 4,8
+1628.984 1320 ChannelV2 1
+1629.256 1321 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1629.272 1322 ChannelV2 1-16, Source 1,4-5,8
+1629.276 1323 ChannelV2 1
+1629.717 1324 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1629.720 1325 ChannelV2 1
+1629.737 1326 ChannelV2 1-16, Source 1,4-5,8
+1629.740 1327 ChannelV2 1
+1630.437 1328 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1630.449 1329 ChannelV2 1-16, Source 1,4-5,8
+1630.452 1330 ChannelV2 1
+1631.671 1331 ChannelV2 1-16, BusV2 5, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1631.675 1332 ChannelV2 1
+1631.693 1333 ChannelV2 1-16, Source 1,4-5,8
+1631.697 1334 ChannelV2 1
+1633.718 1335 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1633.722 1336 ChannelV2 1
+1633.743 1337 ChannelV2 1-16, MainV2 1, Source 1,4-5,8
+1633.746 1338 ChannelV2 1
+1636.533 1339 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1636.554 1340 ChannelV2 1-16, Source 1,4-5,8
+1636.558 1341 ChannelV2 1
+1637.365 1342 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.368 1343 ChannelV2 1
+1637.532 1344 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.536 1345 ChannelV2 1
+1637.568 1346 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.572 1347 ChannelV2 1
+1637.585 1348 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.589 1349 ChannelV2 1
+1637.634 1350 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.637 1351 ChannelV2 1
+1637.642 1352 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.645 1353 ChannelV2 1
+1637.686 1354 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.689 1355 ChannelV2 1
+1637.693 1356 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.696 1357 ChannelV2 1
+1637.733 1358 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.736 1359 ChannelV2 1
+1637.740 1360 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.743 1361 ChannelV2 1
+1637.785 1362 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.789 1363 ChannelV2 1
+1637.792 1364 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.796 1365 ChannelV2 1
+1637.839 1366 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.842 1367 ChannelV2 1
+1637.884 1368 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.888 1369 ChannelV2 1
+1637.922 1370 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.926 1371 ChannelV2 1
+1637.940 1372 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1637.943 1373 ChannelV2 1
+1637.996 1374 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.000 1375 ChannelV2 1
+1638.049 1376 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.052 1377 ChannelV2 1
+1638.103 1378 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.106 1379 ChannelV2 1
+1638.163 1380 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.166 1381 ChannelV2 1
+1638.225 1382 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.234 1383 ChannelV2 1
+1638.290 1384 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.293 1385 ChannelV2 1
+1638.424 1386 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.427 1387 ChannelV2 1
+1638.545 1388 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.548 1389 ChannelV2 1
+1638.732 1390 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.736 1391 ChannelV2 1
+1638.955 1392 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1638.958 1393 ChannelV2 1
+1639.257 1394 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1639.260 1395 ChannelV2 1
+1639.653 1396 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1639.657 1397 ChannelV2 1
+1640.198 1398 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1640.202 1399 ChannelV2 1
+1640.968 1400 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1640.971 1401 ChannelV2 1
+1642.048 1402 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1642.051 1403 ChannelV2 1
+1642.217 1404 ChannelV2 1-16, Source 1,4-5,8
+1642.220 1405 ChannelV2 1
+1643.659 1406 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1643.663 1407 ChannelV2 1
+1643.898 1408 ChannelV2 1-16, Source 1,4-5,8
+1643.901 1409 ChannelV2 1
+1645.200 1410 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1645.203 1411 ChannelV2 1
+1645.326 1412 ChannelV2 1-16, Source 1,4-5,8
+1645.330 1413 ChannelV2 1
+1645.745 1414 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1645.748 1415 ChannelV2 1
+1645.934 1416 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1645.938 1417 ChannelV2 1
+1646.032 1418 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.035 1419 ChannelV2 1
+1646.088 1420 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.091 1421 ChannelV2 1
+1646.137 1422 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.140 1423 ChannelV2 1
+1646.143 1424 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.146 1425 ChannelV2 1
+1646.188 1426 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.191 1427 ChannelV2 1
+1646.195 1428 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.198 1429 ChannelV2 1
+1646.237 1430 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.240 1431 ChannelV2 1
+1646.287 1432 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.291 1433 ChannelV2 1
+1646.294 1434 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.297 1435 ChannelV2 1
+1646.339 1436 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.343 1437 ChannelV2 1
+1646.390 1438 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.393 1439 ChannelV2 1
+1646.449 1440 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.452 1441 ChannelV2 1
+1646.500 1442 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.504 1443 ChannelV2 1
+1646.559 1444 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.563 1445 ChannelV2 1
+1646.619 1446 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.622 1447 ChannelV2 1
+1646.681 1448 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.685 1449 ChannelV2 1
+1646.747 1450 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.750 1451 ChannelV2 1
+1646.869 1452 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1646.873 1453 ChannelV2 1
+1647.000 1454 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1647.003 1455 ChannelV2 1
+1647.195 1456 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1647.198 1457 ChannelV2 1
+1647.458 1458 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1647.461 1459 ChannelV2 1
+1647.774 1460 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1647.777 1461 ChannelV2 1
+1648.168 1462 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1648.171 1463 ChannelV2 1
+1648.703 1464 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1648.707 1465 ChannelV2 1
+1649.456 1466 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1649.460 1467 ChannelV2 1
+1650.469 1468 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1650.473 1469 ChannelV2 1
+1651.830 1470 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1651.833 1471 ChannelV2 1
+1653.159 1472 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.162 1473 ChannelV2 1
+1653.589 1474 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.592 1475 ChannelV2 1
+1653.709 1476 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.712 1477 ChannelV2 1
+1653.749 1478 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.753 1479 ChannelV2 1
+1653.786 1480 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.789 1481 ChannelV2 1
+1653.794 1482 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.797 1483 ChannelV2 1
+1653.836 1484 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.839 1485 ChannelV2 1
+1653.844 1486 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.847 1487 ChannelV2 1
+1653.887 1488 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.890 1489 ChannelV2 1
+1653.895 1490 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.898 1491 ChannelV2 1
+1653.937 1492 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.941 1493 ChannelV2 1
+1653.944 1494 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.948 1495 ChannelV2 1
+1653.983 1496 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.986 1497 ChannelV2 1
+1653.989 1498 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1653.997 1499 ChannelV2 1
+1654.035 1500 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.039 1501 ChannelV2 1
+1654.043 1502 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.047 1503 ChannelV2 1
+1654.088 1504 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.091 1505 ChannelV2 1
+1654.144 1506 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.148 1507 ChannelV2 1
+1654.204 1508 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.207 1509 ChannelV2 1
+1654.263 1510 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.266 1511 ChannelV2 1
+1654.328 1512 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.332 1513 ChannelV2 1
+1654.394 1514 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.397 1515 ChannelV2 1
+1654.522 1516 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.525 1517 ChannelV2 1
+1654.650 1518 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.653 1519 ChannelV2 1
+1654.829 1520 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1654.842 1521 ChannelV2 1
+1655.024 1522 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1655.027 1523 ChannelV2 1
+1655.289 1524 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1655.295 1525 ChannelV2 1
+1655.699 1526 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1655.702 1527 ChannelV2 1
+1656.237 1528 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1656.241 1529 ChannelV2 1
+1656.940 1530 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1656.943 1531 ChannelV2 1
+1657.976 1532 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1657.979 1533 ChannelV2 1
+1659.381 1534 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1659.384 1535 ChannelV2 1
+1660.997 1536 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.000 1537 ChannelV2 1
+1661.132 1538 ChannelV2 1-16, Source 1,4-5,8
+1661.136 1539 ChannelV2 1
+1661.509 1540 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.512 1541 ChannelV2 1
+1661.646 1542 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.649 1543 ChannelV2 1
+1661.710 1544 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.713 1545 ChannelV2 1
+1661.736 1546 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.739 1547 ChannelV2 1
+1661.744 1548 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.747 1549 ChannelV2 1
+1661.790 1550 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.793 1551 ChannelV2 1
+1661.831 1552 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.834 1553 ChannelV2 1
+1661.839 1554 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.842 1555 ChannelV2 1
+1661.884 1556 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.887 1557 ChannelV2 1
+1661.892 1558 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.895 1559 ChannelV2 1
+1661.937 1560 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.940 1561 ChannelV2 1
+1661.984 1562 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.987 1563 ChannelV2 1
+1661.990 1564 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1661.993 1565 ChannelV2 1
+1662.038 1566 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.041 1567 ChannelV2 1
+1662.082 1568 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.085 1569 ChannelV2 1
+1662.089 1570 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.092 1571 ChannelV2 1
+1662.143 1572 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.146 1573 ChannelV2 1
+1662.198 1574 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.202 1575 ChannelV2 1
+1662.257 1576 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.260 1577 ChannelV2 1
+1662.322 1578 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.325 1579 ChannelV2 1
+1662.380 1580 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.383 1581 ChannelV2 1
+1662.448 1582 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.452 1583 ChannelV2 1
+1662.577 1584 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.580 1585 ChannelV2 1
+1662.710 1586 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.714 1587 ChannelV2 1
+1662.912 1588 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1662.916 1589 ChannelV2 1
+1663.186 1590 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1663.189 1591 ChannelV2 1
+1663.527 1592 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1663.531 1593 ChannelV2 1
+1664.009 1594 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1664.012 1595 ChannelV2 1
+1664.712 1596 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1664.715 1597 ChannelV2 1
+1665.660 1598 ChannelV2 1-16, Source 1,4-5,8
+1665.663 1599 ChannelV2 1
+1665.730 1600 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1665.733 1601 ChannelV2 1
+1667.118 1602 ChannelV2 1-16, Source 1,4-5,8
+1667.122 1603 ChannelV2 1
+1667.192 1604 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1667.195 1605 ChannelV2 1
+1669.154 1606 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1669.158 1607 ChannelV2 1
+1669.907 1608 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1669.911 1609 ChannelV2 1
+1670.122 1610 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.126 1611 ChannelV2 1
+1670.183 1612 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.186 1613 ChannelV2 1
+1670.214 1614 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.218 1615 ChannelV2 1
+1670.237 1616 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.248 1617 ChannelV2 1
+1670.282 1618 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.285 1619 ChannelV2 1
+1670.289 1620 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.292 1621 ChannelV2 1
+1670.334 1622 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.337 1623 ChannelV2 1
+1670.386 1624 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.389 1625 ChannelV2 1
+1670.394 1626 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.398 1627 ChannelV2 1
+1670.440 1628 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.443 1629 ChannelV2 1
+1670.485 1630 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1670.489 1631 ChannelV2 1
+1670.535 1632 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Rta
+1773.587 1633 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Monitor, Rta
+1773.635 1634 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Monitor
+1773.638 1635 ChannelV2 1
+1773.684 1636 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Monitor
+1773.688 1637 ChannelV2 1
+1773.692 1638 ChannelV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Monitor
+1780.434 1639 ChannelV2 1-16, BusV2 1-16, MainV2 1, Fx 10, Source 1,4-5,8, Monitor
+1780.485 1640 ChannelV2 1-5,12, BusV2 1-16, MainV2 1, Fx 10, Source 4,8, Monitor
+1780.489 1641 ChannelV2 1
+1780.534 1642 ChannelV2 1-5,12, BusV2 1-16, MainV2 1, Fx 10, Source 4,8, Monitor
+1780.537 1643 ChannelV2 1
+1780.541 1644 ChannelV2 1-5,12, BusV2 1-16, MainV2 1, Fx 10, Source 4,8, Monitor
+1781.982 1645 ChannelV2 1-5,12, BusV2 1-16, MainV2 1, Dca 1-16, Fx 10, Source 4,8, Monitor
+1781.985 1646 ChannelV2 1
+1781.990 1647 ChannelV2 1,3-5,12, MainV2 1, Dca 1-16, Fx 10, Source 4,8, Monitor
+1781.993 1648 ChannelV2 1
+1782.031 1649 ChannelV2 1,3-5,12, MainV2 1, Dca 1-16, Fx 10, Source 4,8, Monitor
+1793.932 1650 ChannelV2 1,3-5,12, BusV2 1-16, MainV2 1, Dca 1-16, Fx 10, Source 4,8, Monitor
+1793.982 1651 ChannelV2 1-5,12, BusV2 1-16, MainV2 1, Fx 10, Source 4,8, Monitor
+1793.985 1652 ChannelV2 1
+1794.034 1653 ChannelV2 1-5,12, BusV2 1-16, MainV2 1, Fx 10, Source 4,8, Monitor
+1794.037 1654 ChannelV2 1
+1794.042 1655 ChannelV2 1-5,12, BusV2 1-16, MainV2 1, Fx 10, Source 4,8, Monitor
+1876.633 1656 ChannelV2 1-5,8-12,17-32, BusV2 1-16, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.687 1657 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.690 1658 ChannelV2 1
+1876.733 1659 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.736 1660 ChannelV2 1
+1876.740 1661 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.743 1662 ChannelV2 1
+1876.781 1663 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.785 1664 ChannelV2 1
+1876.788 1665 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.791 1666 ChannelV2 1
+1876.836 1667 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.839 1668 ChannelV2 1
+1876.842 1669 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.846 1670 ChannelV2 1
+1876.884 1671 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.887 1672 ChannelV2 1
+1876.892 1673 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1876.895 1674 ChannelV2 1
+1876.935 1675 ChannelV2 1-3,5,8-12,17-32, BusV2 7, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1888.384 1676 ChannelV2 1-3,5,8-12,17-32, BusV2 1-16, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1888.431 1677 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 10, Source 2,8
+1888.434 1678 ChannelV2 1
+1888.482 1679 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 10, Source 2,8
+1888.485 1680 ChannelV2 1
+1888.490 1681 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 10, Source 2,8
+1891.289 1682 ChannelV2 1-5,9,17-32, BusV2 1-16, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.292 1683 ChannelV2 1
+1891.333 1684 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.337 1685 ChannelV2 1
+1891.341 1686 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.344 1687 ChannelV2 1
+1891.387 1688 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.390 1689 ChannelV2 1
+1891.395 1690 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.398 1691 ChannelV2 1
+1891.435 1692 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.438 1693 ChannelV2 1
+1891.443 1694 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.446 1695 ChannelV2 1
+1891.484 1696 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.487 1697 ChannelV2 1
+1891.492 1698 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.495 1699 ChannelV2 1
+1891.537 1700 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.540 1701 ChannelV2 1
+1891.586 1702 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.589 1703 ChannelV2 1
+1891.635 1704 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.639 1705 ChannelV2 1
+1891.686 1706 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.689 1707 ChannelV2 1
+1891.737 1708 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.740 1709 ChannelV2 1
+1891.745 1710 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.748 1711 ChannelV2 1
+1891.787 1712 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.790 1713 ChannelV2 1
+1891.795 1714 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.798 1715 ChannelV2 1
+1891.845 1716 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.849 1717 ChannelV2 1
+1891.902 1718 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.905 1719 ChannelV2 1
+1891.953 1720 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1891.957 1721 ChannelV2 1
+1892.007 1722 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1892.010 1723 ChannelV2 1
+1892.069 1724 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1892.073 1725 ChannelV2 1
+1892.131 1726 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1892.134 1727 ChannelV2 1
+1892.202 1728 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1892.205 1729 ChannelV2 1
+1892.335 1730 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1892.339 1731 ChannelV2 1
+1892.531 1732 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1892.536 1733 ChannelV2 1
+1892.737 1734 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1892.740 1735 ChannelV2 1
+1893.083 1736 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1893.086 1737 ChannelV2 1
+1893.547 1738 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1893.550 1739 ChannelV2 1
+1894.236 1740 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1894.239 1741 ChannelV2 1
+1895.184 1742 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1895.187 1743 ChannelV2 1
+1896.457 1744 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1896.460 1745 ChannelV2 1
+1898.331 1746 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1898.334 1747 ChannelV2 1
+1899.208 1748 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.211 1749 ChannelV2 1
+1899.326 1750 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+1899.330 1751 ChannelV2 1
+1899.410 1752 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.413 1753 ChannelV2 1
+1899.472 1754 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.475 1755 ChannelV2 1
+1899.494 1756 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.498 1757 ChannelV2 1
+1899.534 1758 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.538 1759 ChannelV2 1
+1899.541 1760 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.545 1761 ChannelV2 1
+1899.587 1762 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.591 1763 ChannelV2 1
+1899.595 1764 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.598 1765 ChannelV2 1
+1899.637 1766 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.640 1767 ChannelV2 1
+1899.645 1768 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.648 1769 ChannelV2 1
+1899.686 1770 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.690 1771 ChannelV2 1
+1899.694 1772 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.698 1773 ChannelV2 1
+1899.736 1774 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.740 1775 ChannelV2 1
+1899.748 1776 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.751 1777 ChannelV2 1
+1899.790 1778 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.793 1779 ChannelV2 1
+1899.842 1780 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.848 1781 ChannelV2 1
+1899.894 1782 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.897 1783 ChannelV2 1
+1899.945 1784 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1899.949 1785 ChannelV2 1
+1900.014 1786 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1900.017 1787 ChannelV2 1
+1900.069 1788 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1900.073 1789 ChannelV2 1
+1900.127 1790 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1900.131 1791 ChannelV2 1
+1900.196 1792 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1900.207 1793 ChannelV2 1
+1900.333 1794 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1900.336 1795 ChannelV2 1
+1900.454 1796 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1900.467 1797 ChannelV2 1
+1900.647 1798 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1900.660 1799 ChannelV2 1
+1900.912 1800 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1900.926 1801 ChannelV2 1
+1901.252 1802 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1901.255 1803 ChannelV2 1
+1901.750 1804 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1901.753 1805 ChannelV2 1
+1902.435 1806 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1902.438 1807 ChannelV2 1
+1902.453 1808 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+1902.457 1809 ChannelV2 1
+1903.422 1810 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1903.426 1811 ChannelV2 1
+1903.439 1812 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+1903.442 1813 ChannelV2 1
+1904.876 1814 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1904.879 1815 ChannelV2 1
+1906.861 1816 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15
+1906.864 1817 ChannelV2 1
+1907.653 1818 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1907.657 1819 ChannelV2 1
+1907.678 1820 ChannelV2 1,17-32, MainV2 1, Source 1-2,4-5,8,15
+1907.685 1821 ChannelV2 1
+1907.880 1822 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1907.883 1823 ChannelV2 1
+1907.916 1824 ChannelV2 1,17-32, Source 1-2,4-5,8,15
+1907.916 1825 ChannelV2 1
+1907.963 1826 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1907.966 1827 ChannelV2 1
+1908.004 1828 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1908.017 1829 ChannelV2 1
+1908.037 1830 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1908.040 1831 ChannelV2 1
+1908.087 1832 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1908.091 1833 ChannelV2 1
+1908.138 1834 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1908.140 1835 ChannelV2 1
+1908.144 1836 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1908.147 1837 ChannelV2 1
+1908.187 1838 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1908.190 1839 ChannelV2 1
+1908.234 1840 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1908.237 1841 ChannelV2 1
+1908.241 1842 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+1908.245 1843 ChannelV2 1
+1908.286 1844 ChannelV2 1-3,5,8-12,17-32, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+2018.237 1845 ChannelV2 1-3,5,8-12,17-32, BusV2 1-16, MainV2 1, Fx 10, Source 1-2,4-5,8,15, Monitor
+2018.283 1846 ChannelV2 1-5,9,21, BusV2 1-16, MainV2 1, Fx 10, Source 2,8, Monitor

@@ -60,6 +60,13 @@ impl MeterKind {
         self as u8
     }
 
+    /// Kinds with one instance (`A9` monitor, `AA` RTA). WING-Edit 3.3.4
+    /// (`nrp::MeterHandler::sendMeterRequest`) writes their type token with no index byte and reads
+    /// one block for them; [`MeterRequestParser`] turns such a selection into index 0 (T086).
+    pub fn single_instance(self) -> bool {
+        matches!(self, MeterKind::Monitor | MeterKind::Rta)
+    }
+
     /// int16 words per selected index, where fixed. `None` for source/output groups, whose size
     /// depends on the group (spec §4.2).
     pub fn words_per_index(self) -> Option<usize> {
@@ -279,7 +286,13 @@ impl MeterRequestParser {
                 None
             }
             MeterToken::End => {
-                let selections = self.collecting.take()?;
+                let mut selections = self.collecting.take()?;
+                // single-instance kinds: WING-Edit sends `A9` / `AA` without an index (T086)
+                for s in &mut selections {
+                    if s.indices.is_empty() && s.kind.single_instance() {
+                        s.indices.push(0);
+                    }
+                }
                 Some(MeterCommand::Define {
                     id: self.last_id?,
                     selections,
@@ -502,6 +515,41 @@ mod tests {
             enc,
             [0xD4, 0, 0, 0, 2, 0xDC, 0xA0, 0x00, 0x01, 0x08, 0xA6, 0x04, 0xDE]
         );
+    }
+
+    /// T086: WING-Edit's `sendMeterRequest` writes `A9` / `AA` with no index byte (types 9 and 10
+    /// skip the index loop) and its `rxMeters` reads one 6 / 120-word block for each.
+    #[test]
+    fn monitor_and_rta_without_index_select_their_block() {
+        // D4 820, DC AB 00 AE 00 A9 AA DE (as WING-Edit sends ch 1, main 1, monitor, RTA)
+        let toks = tokens(&[
+            0xD4, 0, 0, 0x03, 0x34, 0xDC, 0xAB, 0x00, 0xAE, 0x00, 0xA9, 0xAA, 0xDE,
+        ]);
+        let mut p = MeterRequestParser::new();
+        let cmds: Vec<_> = toks.into_iter().filter_map(|t| p.feed(t)).collect();
+        let MeterCommand::Define { id, selections } = &cmds[1] else {
+            panic!("{cmds:?}");
+        };
+        assert_eq!(*id, 820);
+        let idx: Vec<_> = selections
+            .iter()
+            .map(|s| (s.kind, s.indices.clone()))
+            .collect();
+        assert_eq!(
+            idx,
+            [
+                (MeterKind::ChannelV2, vec![0]),
+                (MeterKind::MainV2, vec![0]),
+                (MeterKind::Monitor, vec![0]),
+                (MeterKind::Rta, vec![0]),
+            ]
+        );
+        // an explicit index is kept as sent
+        let toks = tokens(&[0xD4, 0, 0, 0, 1, 0xDC, 0xAA, 0x00, 0xDE]);
+        let mut p = MeterRequestParser::new();
+        let cmds: Vec<_> = toks.into_iter().filter_map(|t| p.feed(t)).collect();
+        assert!(matches!(&cmds[1], MeterCommand::Define { selections, .. }
+            if selections[0].indices == [0]));
     }
 
     #[test]
