@@ -2,7 +2,7 @@
 id: T089
 title: wing-sim test isolation: discovery always binds UDP 2222
 stage: S7
-status: review
+status: done
 owner: agent
 depends: []
 branch: task/T089
