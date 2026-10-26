@@ -4,7 +4,7 @@
 //! ```text
 //! wing-sim [--name WINGSIM] [--ip A.B.C.D] [--fw 3.3.4-0-g0c2b9d4a:release] [--model ngc-full]
 //!          [--serial S] [--scene PATH] [--idle-timeout SECS(0=off)] [--no-meters] [--no-osc]
-//!          [--port 2222] [--osc-port 2223] [--save-on-exit PATH]
+//!          [--port 2222] [--discovery-port 2222 | --no-discovery] [--osc-port 2223] [--save-on-exit PATH]
 //!          [--state-dir DIR] [--no-autosave] [--recall NAME] [--list-scenes]
 //!          [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N]
 //!          [--workers N] [--no-rt] [--no-control]
@@ -92,6 +92,10 @@ struct Args {
     meters: bool,
     osc: bool,
     port: u16,
+    /// `--discovery-port N` (None: follow `--port` when non-default, else 2222).
+    discovery_port: Option<u16>,
+    /// false with `--no-discovery`: no UDP discovery socket at all.
+    discovery: bool,
     osc_port: u16,
     state_dir: PathBuf,
     autosave: bool,
@@ -112,9 +116,24 @@ struct Args {
     control: bool,
 }
 
+impl Args {
+    /// UDP port the discovery responder binds, or `None` with `--no-discovery`. An explicit
+    /// `--discovery-port` wins; otherwise it follows a non-default `--port` so that a private
+    /// `--port` can never touch UDP 2222 (T089: a test run answered the user's WING-Edit).
+    fn discovery_bind_port(&self) -> Option<u16> {
+        self.discovery.then(|| {
+            self.discovery_port.unwrap_or(if self.port != NATIVE_PORT {
+                self.port
+            } else {
+                DISCOVERY_PORT
+            })
+        })
+    }
+}
+
 const USAGE: &str = "usage: wing-sim [--name NAME] [--ip A.B.C.D] [--fw FIRMWARE] [--model MODEL] \
 [--serial SERIAL] [--scene PATH] [--idle-timeout SECS] [--no-meters] [--no-osc] [--port N] \
-[--osc-port N] [--save-on-exit PATH] [--state-dir DIR] [--no-autosave] [--recall NAME|#N] \
+[--discovery-port N | --no-discovery] [--osc-port N] [--save-on-exit PATH] [--state-dir DIR] [--no-autosave] [--recall NAME|#N] \
 [--list-scenes] [--no-audio] [--hostio PATH | --no-hostio] [--shm-name NAME] [--block N] \
 [--workers N] [--no-rt] [--no-control] [--ab-a FILE] [--ab-b FILE] [--export PATH] \
 [--export-on-exit PATH] [--export-header advertised|factory]";
@@ -129,6 +148,8 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         meters: true,
         osc: true,
         port: NATIVE_PORT,
+        discovery_port: None,
+        discovery: true,
         osc_port: OSC_PORT,
         state_dir: persist::default_state_dir(),
         autosave: true,
@@ -163,6 +184,14 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 a.idle = (s > 0.0).then(|| Duration::from_secs_f64(s));
             }
             "--port" => a.port = val()?.parse().map_err(|e| format!("--port: {e}"))?,
+            "--discovery-port" => {
+                a.discovery_port = Some(
+                    val()?
+                        .parse()
+                        .map_err(|e| format!("--discovery-port: {e}"))?,
+                )
+            }
+            "--no-discovery" => a.discovery = false,
             "--osc-port" => a.osc_port = val()?.parse().map_err(|e| format!("--osc-port: {e}"))?,
             "--no-meters" => a.meters = false,
             "--no-osc" => a.osc = false,
@@ -204,6 +233,9 @@ fn parse_args(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         }
     }
     a.identity.validate()?;
+    if !a.discovery && a.discovery_port.is_some() {
+        return Err("--discovery-port and --no-discovery are mutually exclusive".into());
+    }
     if a.scene.is_some() && a.recall.is_some() {
         return Err("--scene and --recall are mutually exclusive".into());
     }
@@ -517,28 +549,37 @@ fn run(args: Args) -> Result<(), String> {
     let library = library::LibraryService::spawn(lib.clone(), store.clone(), logf.clone())
         .map_err(|e| format!("library: {e}"))?;
 
-    // ---- discovery (and the UDP 2222 socket meters are sent from) ----
-    let responder = Responder::bind(ResponderConfig {
-        bind: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DISCOVERY_PORT),
-        identity: args.identity.clone(),
-        advertise_ip: args.ip,
-    })
-    .map_err(|e| format!("discovery bind :{DISCOVERY_PORT}: {e}"))?;
-    let meter_sock = responder
-        .try_clone_socket()
-        .or_else(|_| UdpSocket::bind("0.0.0.0:0"))
-        .map_err(|e| format!("meter socket: {e}"))?;
-    let probes_logged = Arc::new(AtomicBool::new(false));
-    let pl = probes_logged.clone();
-    let discovery = responder
-        .spawn(move |from, reply| {
-            if !pl.swap(true, Ordering::Relaxed) {
-                log(&format!(
-                    "discovery: first probe from {from}, replied {reply:?}"
-                ));
-            }
-        })
-        .map_err(|e| format!("discovery: {e}"))?;
+    // ---- discovery (and the UDP socket meters are sent from: 2222 like a console) ----
+    let (discovery, meter_sock) = match args.discovery_bind_port() {
+        Some(dport) => {
+            let responder = Responder::bind(ResponderConfig {
+                bind: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, dport),
+                identity: args.identity.clone(),
+                advertise_ip: args.ip,
+            })
+            .map_err(|e| format!("discovery bind :{dport}: {e}"))?;
+            let meter_sock = responder
+                .try_clone_socket()
+                .or_else(|_| UdpSocket::bind("0.0.0.0:0"))
+                .map_err(|e| format!("meter socket: {e}"))?;
+            let probes_logged = Arc::new(AtomicBool::new(false));
+            let pl = probes_logged.clone();
+            let discovery = responder
+                .spawn(move |from, reply| {
+                    if !pl.swap(true, Ordering::Relaxed) {
+                        log(&format!(
+                            "discovery: first probe from {from}, replied {reply:?}"
+                        ));
+                    }
+                })
+                .map_err(|e| format!("discovery: {e}"))?;
+            (Some(discovery), meter_sock)
+        }
+        None => (
+            None,
+            UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("meter socket: {e}"))?,
+        ),
+    };
 
     // ---- meters ----
     let subs = Arc::new(MeterSubscriptions::new());
@@ -665,8 +706,10 @@ fn run(args: Args) -> Result<(), String> {
     };
 
     log(&format!(
-        "listening: discovery udp {}, native tcp {}, osc {}, meters {}, idle timeout {:?}",
-        discovery.local_addr(),
+        "listening: discovery {}, native tcp {}, osc {}, meters {}, idle timeout {:?}",
+        discovery
+            .as_ref()
+            .map_or("off".to_string(), |d| format!("udp {}", d.local_addr())),
         server.local_addr(),
         osc.as_ref()
             .map_or("off".to_string(), |o| o.local_addr().to_string()),
@@ -768,7 +811,7 @@ fn run(args: Args) -> Result<(), String> {
         state_dir: args.state_dir.display().to_string(),
         native_clients: server.clients(),
         meter_reports: subs.live_reports(Instant::now()),
-        discovery_replies: discovery.replies(),
+        discovery_replies: discovery.as_ref().map_or(0, |d| d.replies()),
         scene_file: local.scene_file.clone(),
         active_scene: lib.active(),
         hostio_path: local.hostio_path.as_ref().map(|p| p.display().to_string()),
@@ -826,7 +869,7 @@ fn run(args: Args) -> Result<(), String> {
                 server.clients(),
                 subs.live_reports(Instant::now()),
                 streamer.as_ref().map_or(0, |s| s.packets()),
-                discovery.replies()
+                discovery.as_ref().map_or(0, |d| d.replies())
             ));
             if let Some(a) = &audio {
                 log(&a.status_line());
@@ -856,7 +899,9 @@ fn run(args: Args) -> Result<(), String> {
         s.stop();
     }
     rta.stop();
-    discovery.stop();
+    if let Some(d) = discovery {
+        d.stop();
+    }
     library.stop();
     if let Some(a) = autosaver {
         let n = a.stop();
@@ -982,6 +1027,26 @@ mod tests {
 
     fn args(v: &[&str]) -> Result<Args, String> {
         parse_args(v.iter().map(|s| s.to_string()))
+    }
+
+    #[test]
+    fn discovery_port_never_defaults_to_2222_with_private_port() {
+        assert_eq!(args(&[]).unwrap().discovery_bind_port(), Some(2222));
+        assert_eq!(
+            args(&["--port", "34567"]).unwrap().discovery_bind_port(),
+            Some(34567)
+        );
+        assert_eq!(
+            args(&["--port", "0"]).unwrap().discovery_bind_port(),
+            Some(0)
+        );
+        let a = args(&["--port", "34567", "--discovery-port", "34568"]).unwrap();
+        assert_eq!(a.discovery_bind_port(), Some(34568));
+        assert_eq!(
+            args(&["--no-discovery"]).unwrap().discovery_bind_port(),
+            None
+        );
+        assert!(args(&["--no-discovery", "--discovery-port", "1"]).is_err());
     }
 
     #[test]
