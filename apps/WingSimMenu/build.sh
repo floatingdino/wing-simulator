@@ -32,4 +32,7 @@ for tool in wing-sim wing-render wing-diff; do
     fi
 done
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || echo "build.sh: note: ad-hoc codesign failed" >&2
+for tool in wing-sim wing-render wing-diff; do
+    [ -x "$APP/Contents/Resources/bin/$tool" ] && "$APP/Contents/Resources/bin/$tool" --version
+done
 echo "built $APP"

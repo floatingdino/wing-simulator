@@ -61,6 +61,10 @@ pub struct DaemonStatus {
     pub running: bool,
     pub pid: u32,
     pub version: String,
+    /// Source commit the binary was built from (`-dirty` with local changes, T087).
+    pub commit: String,
+    /// Build time, seconds since the Unix epoch (T087).
+    pub built_unix: u64,
     /// Console name (discovery identity).
     pub name: String,
     /// Wall-clock time of this document (seconds since the Unix epoch).
@@ -528,6 +532,8 @@ mod tests {
             running: true,
             pid: 4242,
             version: "0.1.0".into(),
+            commit: "abc1234".into(),
+            built_unix: 1_793_000_000,
             name: "WINGSIM".into(),
             updated_unix: 1_793_000_000.5,
             uptime_s: 12.25,

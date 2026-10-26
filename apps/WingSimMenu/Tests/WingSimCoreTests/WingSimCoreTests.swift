@@ -24,6 +24,7 @@ func tempDir(_ tag: String) throws -> URL {
         let s = try DaemonStatus.decode(fixture("control/status.json"))
         #expect(s.pid == 4242)
         #expect(s.nativeClients == 1)
+        #expect(s.commit == "abc1234" && s.builtUnix == 1_793_000_000)
         #expect(s.sceneFile == "/Users/x/Scenes/Show.snap")
         #expect(s.activeScene == nil)
         let a = try #require(s.audio)
@@ -182,6 +183,28 @@ func tempDir(_ tag: String) throws -> URL {
         let loc = BinaryLocator(searchDirs: [a, b])
         #expect(loc.find("wing-sim")?.path(percentEncoded: false) == exe.path(percentEncoded: false))
         #expect(loc.find("wing-diff") == nil)
+    }
+
+    @Test func `locator reports a newer build in a later directory`() throws {
+        let dir = try tempDir("stale")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let a = dir.appending(path: "a", directoryHint: .isDirectory)
+        let b = dir.appending(path: "b", directoryHint: .isDirectory)
+        for d in [a, b] { try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true) }
+        let old = a.appending(path: "wing-sim"), new = b.appending(path: "wing-sim")
+        for f in [old, new] {
+            try Data("#!/bin/sh\n".utf8).write(to: f)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: f.path(percentEncoded: false))
+        }
+        let now = Date()
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-3600)],
+                                              ofItemAtPath: old.path(percentEncoded: false))
+        let loc = BinaryLocator(searchDirs: [a, b])
+        #expect(loc.newerBuild(of: "wing-sim")?.newer == new)
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-7200)],
+                                              ofItemAtPath: new.path(percentEncoded: false))
+        #expect(loc.newerBuild(of: "wing-sim") == nil)
+        #expect(loc.newerBuild(of: "wing-diff") == nil)
     }
 
     @Test func `diff runs the tool and surfaces its errors`() async throws {

@@ -22,6 +22,15 @@ fn run() -> Result<(), String> {
                 opts.filter = Some(Filter::parse(&v)?);
             }
             "--ignore-ui" => opts.ignore_ui = true,
+            "--version" | "-V" => {
+                println!(
+                    "wing-diff {} (commit {}, built {})",
+                    env!("CARGO_PKG_VERSION"),
+                    env!("WING_GIT_HASH"),
+                    env!("WING_BUILD_TIME")
+                );
+                return Ok(());
+            }
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return Ok(());

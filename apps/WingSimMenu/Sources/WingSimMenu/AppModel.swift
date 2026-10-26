@@ -23,6 +23,10 @@ final class AppModel {
     private(set) var isError = false
     /// Scene file to start the daemon from (chosen with Open while stopped).
     private(set) var pendingScene: URL?
+    /// A fresher wing-sim build than the one the app would run (dev builds only, T087).
+    private(set) var newerBuild: (found: URL, newer: URL)?
+    /// The user chose to run `newerBuild` instead of the bundled binary.
+    private(set) var useNewerBuild = false
 
     /// Routing being edited (the hostio TOML) and the devices to pick from.
     var routing: HostIOConfig
@@ -66,6 +70,7 @@ final class AppModel {
     func refresh() {
         let s = StatusReader(stateDir: paths.stateDir).read()
         status = (s?.isLive() == true) ? s : nil
+        newerBuild = locator.newerBuild(of: "wing-sim")
         if let c = child, !c.isRunning {
             child = nil
             if status == nil, c.terminationStatus != 0 {
@@ -79,7 +84,8 @@ final class AppModel {
 
     func start() {
         guard !isRunning else { return }
-        guard let bin = locator.find("wing-sim") else {
+        let preferred = useNewerBuild ? newerBuild?.newer : nil
+        guard let bin = preferred ?? locator.find("wing-sim") else {
             report("wing-sim not found (looked in \(locator.searchDirs.map { $0.path(percentEncoded: false) }.joined(separator: ", "))). Run `make build` or apps/WingSimMenu/build.sh.", error: true)
             return
         }
@@ -90,6 +96,12 @@ final class AppModel {
         } catch {
             report("Starting wing-sim failed: \(error.localizedDescription)", error: true)
         }
+    }
+
+    /// Run the fresher `target/release` wing-sim from the next start on.
+    func adoptNewerBuild() {
+        useNewerBuild = true
+        report("Using the newer wing-sim build\(isRunning ? "; stop and start wing-sim to switch" : "").")
     }
 
     func stop() {

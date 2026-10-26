@@ -12,6 +12,9 @@ struct MenuContentView: View {
             if let s = model.status {
                 StatusGrid(status: s)
             }
+            if let n = model.newerBuild, !model.useNewerBuild {
+                staleWarning(n.found, n.newer)
+            }
             Divider()
             daemonButtons
             Divider()
@@ -52,7 +55,7 @@ struct MenuContentView: View {
                 .fill(model.isRunning ? Color.green : Color.secondary)
                 .frame(width: 9, height: 9)
             if let s = model.status {
-                Text("wing-sim \(s.version) running").font(.headline)
+                Text("wing-sim \(s.version)\(s.commit.map { " (\($0))" } ?? "") running").font(.headline)
                 Spacer()
                 Text("pid \(String(s.pid))\(model.startedHere ? "" : " (external)")")
                     .font(.caption).foregroundStyle(.secondary)
@@ -60,6 +63,16 @@ struct MenuContentView: View {
                 Text(model.startedHere ? "wing-sim starting…" : "wing-sim stopped").font(.headline)
                 Spacer()
             }
+        }
+    }
+
+    private func staleWarning(_ found: URL, _ newer: URL) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Stale wing-sim: \(found.path(percentEncoded: false)) is older than \(newer.path(percentEncoded: false)).")
+                .font(.caption).foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Use Newer Build") { model.adoptNewerBuild() }
+                .controlSize(.small)
         }
     }
 

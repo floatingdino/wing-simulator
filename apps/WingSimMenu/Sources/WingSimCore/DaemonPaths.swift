@@ -69,4 +69,21 @@ public struct BinaryLocator: Sendable {
             .map { $0.appending(path: name) }
             .first { FileManager.default.isExecutableFile(atPath: $0.path(percentEncoded: false)) }
     }
+
+    /// A build of `name` in a later search directory that is newer than the one `find` returns
+    /// (T087): a bundled copy shadowing a fresher `<repo>/target/release` build. `nil` when the
+    /// found binary is the newest (or there is only one). `slack` ignores copy-time noise.
+    public func newerBuild(of name: String, slack: TimeInterval = 2) -> (found: URL, newer: URL)? {
+        guard let found = find(name), let foundTime = Self.modified(found) else { return nil }
+        let newest = searchDirs.map { $0.appending(path: name) }
+            .filter { $0 != found && FileManager.default.isExecutableFile(atPath: $0.path(percentEncoded: false)) }
+            .compactMap { url in Self.modified(url).map { (url, $0) } }
+            .filter { $0.1.timeIntervalSince(foundTime) > slack }
+            .max { $0.1 < $1.1 }
+        return newest.map { (found, $0.0) }
+    }
+
+    private static func modified(_ url: URL) -> Date? {
+        try? FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))[.modificationDate] as? Date
+    }
 }
