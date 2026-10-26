@@ -654,3 +654,67 @@ fn warm_thd_table() {
         }
     }
 }
+
+// ---- WARM calibration (T090) -------------------------------------------------------------------------------
+
+#[test]
+fn builtin_calibration_parses() {
+    let law = WarmLaw::from_json(WARM_CALIBRATION_JSON).expect("data/calibration/warm.json");
+    assert_eq!(&law, WarmLaw::builtin());
+    assert!(law.drive_len >= 1);
+}
+
+/// The uncalibrated table reproduces the T088 exponential law (log-linear interpolation).
+#[test]
+fn uncalibrated_law_is_the_t088_law() {
+    let law = WarmLaw::uncalibrated();
+    for drv in [10.0f32, 20.0, 33.0, 50.0, 80.0, 100.0, 125.0] {
+        let (a, b) = (law.drive_gain(drv), warm_drive_gain_default(drv));
+        assert!((a / b - 1.0).abs() < 1e-5, "drv {drv}: {a} vs {b}");
+    }
+    assert_eq!(law.t_max, WARM_T_MAX);
+    assert!((law.ref_peak() / WARM_REF_PEAK - 1.0).abs() < 1e-5);
+    // until a fit replaces it, the shipped file is this law
+    let shipped = WarmLaw::from_json(WARM_CALIBRATION_JSON).unwrap();
+    if shipped.points().len() == 3 && shipped.t_max == WARM_T_MAX {
+        for (a, b) in shipped.points().iter().zip(law.points()) {
+            assert!((a.1 / b.1 - 1.0).abs() < 1e-5);
+        }
+    }
+    assert!((warm_makeup_at(4.0, 0.2, law.ref_peak()) / warm_makeup(4.0, 0.2) - 1.0).abs() < 1e-6);
+}
+
+#[test]
+fn warm_law_interpolates_and_validates() {
+    let law = WarmLaw::from_points(&[(100.0, 8.0), (10.0, 0.5), (50.0, 2.0)], 0.3, -20.0).unwrap();
+    assert_eq!(law.points()[0], (10.0, 0.5));
+    assert!((law.drive_gain(30.0) - 1.0).abs() < 1e-5); // geometric mean of 0.5 and 2
+    assert!((law.drive_gain(125.0) - 8.0 * 4f32.powf(0.5)).abs() < 1e-3); // extrapolated
+    assert!((law.bias(-100.0) - 0.3).abs() < 1e-7 && law.bias(100.0).abs() < 1e-9);
+    assert!(WarmLaw::from_points(&[], 0.3, -18.0).is_err());
+    assert!(WarmLaw::from_points(&[(10.0, 0.0)], 0.3, -18.0).is_err());
+    assert!(WarmLaw::from_points(&[(10.0, 1.0), (10.0, 2.0)], 0.3, -18.0).is_err());
+    assert!(WarmLaw::from_json("{\"model\":\"WAVE\"}").is_err());
+}
+
+/// A law handed to the model is the one it runs: more drive gain gives more THD, and the make-up reference
+/// level keeps its level.
+#[test]
+fn warm_with_law_uses_the_law() {
+    let amp = 10f64.powf(-24.0 / 20.0) * 2f64.sqrt();
+    let measure = |law: WarmLaw| {
+        let mut m = setup(WarmthPre::with_law(law), &[(1, f(66.0)), (2, f(0.0))]);
+        let y = tail(&mut m, 1000.0, amp);
+        let h1 = amp_at(&y, 1000.0);
+        let hs: f64 = (2..=10)
+            .map(|k| amp_at(&y, 1000.0 * k as f64).powi(2))
+            .sum();
+        (hs.sqrt() / h1, db(rms(&y) / (amp / 2f64.sqrt())))
+    };
+    let soft = WarmLaw::from_points(&[(10.0, 0.5), (125.0, 2.0)], 0.2, -24.0).unwrap();
+    let hard = WarmLaw::from_points(&[(10.0, 0.5), (125.0, 40.0)], 0.2, -24.0).unwrap();
+    let (ts, gs) = measure(soft);
+    let (th, gh) = measure(hard);
+    assert!(th > 3.0 * ts, "{ts} {th}");
+    assert!(gs.abs() < 0.2 && gh.abs() < 0.2, "{gs} {gh}");
+}

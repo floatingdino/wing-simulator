@@ -7,10 +7,11 @@ publish.workspace = true
 
 [dependencies]
 wing-dsp = { path = "../wing-dsp" }
+# data/calibration/*.json (T090), parsed once off the audio thread
+serde_json.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
-serde_json.workspace = true
 
 [[bench]]
 name = "dynamics"

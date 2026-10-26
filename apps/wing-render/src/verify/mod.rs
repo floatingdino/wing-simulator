@@ -12,6 +12,7 @@
 pub mod analyze;
 pub mod scenes;
 pub mod suite;
+pub mod warm;
 
 use std::path::{Path, PathBuf};
 

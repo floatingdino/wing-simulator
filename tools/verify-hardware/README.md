@@ -50,6 +50,31 @@ with every metric and where it was worst, and (with `--update-doc`) the per-scen
 the parameter mapping differs. First look at `00-thru`: if it is off (level, latency far from the others,
 drift), fix the chain (clip, wrong scene, 44.1 kHz) before trusting anything else.
 
+## WARM calibration (~5 min, T090)
+
+Fits the simulator's SOUL WARMTH PRE (drive curve, 2nd/3rd balance, make-up) to your console. You do not need
+to patch anything: every scene routes USB in 1 -> ch 1 (WARM in the gate slot, MIX 100 %, trim 0) -> MAIN ->
+USB out 1/2. **Recalling a scene replaces the console's state, so save your current show/scene first.**
+
+1. Once: `tools/verify-hardware/verify.sh warm-gen warm-kit` (writes `warm-kit/`: `suite.wav` of 15 s, 8
+   scenes, `run-sheet.md`). Import `warm-kit/scenes/*.snap` into the WING's snapshot library (USB stick, or
+   WING-Edit > Library > import).
+2. For each scene, in order `warm-thru`, `warm-d010`, `warm-d033`, `warm-d066`, `warm-d100`, `warm-d125`,
+   `warm-d125-hm100`, `warm-d125-hp100`: recall it on the WING (all scopes, safes off), then run
+   `tools/verify-hardware/capture.sh warm-kit <scene> warm-rec` (~20 s each; needs `brew install sox`, set
+   `WING_DEVICE` if the console's CoreAudio name is not `WING`).
+3. `tools/verify-hardware/verify.sh fit-warm warm-rec`: prints the fitted law and PASS/FAIL (every point's THD
+   within +-2 dB), writes `warm-report/warm-fit.md` (recording vs fitted vs previous law, per scene and
+   signal) and rewrites `data/calibration/warm.json`. Rebuild (`make build` or `make app`) so the simulator
+   uses it; commit the JSON.
+
+Signals per scene: 1 kHz sines at -36 / -24 / -18 / -12 / -6 dBFS RMS, 100 Hz at -18, SMPTE IMD (60 Hz + 7 kHz,
+4:1) at -18, a vocal-like excerpt at -24. The fit uses the 1 kHz points (THD H2..H10, H2, H3 and the level
+change vs `warm-thru`); 100 Hz, IMD and vocal residual are reported. `verify.sh warm-gen warm-kit all` adds
+HARMONICS +-100 at 66 % and COLOR +-1 at 100 % (reported, colour is not fitted). Another recorder works as in
+step 4 above: play `warm-kit/suite.wav` into USB 1, record USB out 1 at 48 kHz from 1 s before to 3 s after,
+save as `warm-rec/<scene>.wav`.
+
 ## What the kit cannot check
 
 Listed in the docs file (input balance and stereo-pair laws, snapshot/protocol/OSC rows, DS902/DEQ, 3CMP, time-
@@ -62,3 +87,6 @@ variant FX). The simulator's own internal fidelity against WING-Edit data is in
 paths are checked when `gen` runs), `analyze.rs`, `mod.rs` (gen, render, align, metrics, reports). Tests:
 `cargo test -p wing-render --test verify_kit` (synthetic recordings; with `--release -- --include-ignored` every
 scene is rendered and compared with a delayed copy of itself).
+WARM calibration: `warm.rs` (suite, scenes, measurement, fit, report); the law it fits is `WarmLaw` in
+`crates/wing-blocks/src/models/dyn_special.rs`, loaded from `data/calibration/warm.json` at build time. Tests:
+`cargo test -p wing-render --test verify_warm` (a synthetic console with another law is fitted back).

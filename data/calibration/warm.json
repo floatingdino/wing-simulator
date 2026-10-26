@@ -1,0 +1,13 @@
+{
+  "model": "WARM",
+  "version": 1,
+  "source": "uncalibrated: the T088 law (no recordings from a real WING yet); `wing-verify fit-warm` rewrites this file",
+  "drive_points": [
+    [10.0, 0.2102241],
+    [33.0, 0.5],
+    [125.0, 16.0]
+  ],
+  "t_max": 0.46,
+  "makeup_ref_dbfs_rms": -18.0103,
+  "fit": null
+}

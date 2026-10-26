@@ -14,7 +14,8 @@ DEV=${WING_DEVICE:-WING}
 command -v sox >/dev/null 2>&1 || { echo "sox not found: brew install sox" >&2; exit 1; }
 [ -f "$KIT/scenes/$SCENE.snap" ] || { echo "no such scene: $KIT/scenes/$SCENE.snap" >&2; exit 1; }
 SECS=$(sed -n 's/.*"suite_seconds": *\([0-9]*\).*/\1/p' "$KIT/manifest.json")
-DUR=$((SECS + 14))
+PAD=$(sed -n 's/.*"capture_pad_seconds": *\([0-9]*\).*/\1/p' "$KIT/manifest.json")
+DUR=$((SECS + ${PAD:-14}))
 mkdir -p "$REC"
 echo "recording $DUR s from $DEV -> $REC/$SCENE.wav (scene must already be recalled on the WING)"
 sox -q -t coreaudio "$DEV" -r 48000 -b 24 -c 2 "$REC/$SCENE.wav" trim 0 "$DUR" &
