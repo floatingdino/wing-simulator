@@ -5,8 +5,8 @@
 //!   document, rewritten atomically (temp file + rename) about once a second by the daemon's
 //!   main loop, and once more with `"running": false` on exit. Readers check `pid` and
 //!   `updated_unix` for liveness.
-//! * **Control socket** `<state-dir>/control.sock` ([`SOCKET_FILE`]): Unix stream socket, line
-//!   protocol. Each request line gets one reply line, `ok <text>` or `err <text>`:
+//! * **Control socket** `<state-dir>/control.sock` ([`SOCKET_FILE`]): Unix stream socket (on
+//!   Windows the file holds a loopback TCP address instead), line protocol. Each request line gets one reply line, `ok <text>` or `err <text>`:
 //!
 //! ```text
 //! ping                  -> ok wing-sim <version> pid <pid>
@@ -35,7 +35,6 @@
 //! answers through [`Request::respond`].
 
 use std::io::{self, BufRead, BufReader, Write};
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
 use std::sync::mpsc::{self, Receiver, SyncSender};
@@ -260,6 +259,49 @@ impl Request {
     }
 }
 
+/// Socket transport: a Unix stream socket at the path. std has no Unix sockets on Windows, so
+/// there the daemon listens on loopback TCP and writes the address into the same file.
+#[cfg(unix)]
+mod sock {
+    use std::io;
+    use std::path::Path;
+
+    pub use std::os::unix::net::UnixListener as Listener;
+    pub use std::os::unix::net::UnixStream as Stream;
+
+    pub fn bind(path: &Path) -> io::Result<Listener> {
+        Listener::bind(path)
+    }
+
+    pub fn connect(path: &Path) -> io::Result<Stream> {
+        Stream::connect(path)
+    }
+}
+
+#[cfg(not(unix))]
+mod sock {
+    use std::io;
+    use std::net::SocketAddr;
+    use std::path::Path;
+
+    pub use std::net::TcpListener as Listener;
+    pub use std::net::TcpStream as Stream;
+
+    pub fn bind(path: &Path) -> io::Result<Listener> {
+        let l = Listener::bind("127.0.0.1:0")?;
+        std::fs::write(path, l.local_addr()?.to_string())?;
+        Ok(l)
+    }
+
+    pub fn connect(path: &Path) -> io::Result<Stream> {
+        let addr: SocketAddr = std::fs::read_to_string(path)?
+            .trim()
+            .parse()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "bad control address"))?;
+        Stream::connect(addr)
+    }
+}
+
 /// The control socket server (one thread; serves connections one at a time).
 pub struct ControlServer {
     path: PathBuf,
@@ -272,7 +314,7 @@ impl ControlServer {
     /// start serving. Requests arrive on the returned receiver.
     pub fn spawn(path: &Path) -> io::Result<(Self, Receiver<Request>)> {
         if path.exists() {
-            if UnixStream::connect(path).is_ok() {
+            if sock::connect(path).is_ok() {
                 return Err(io::Error::new(
                     io::ErrorKind::AddrInUse,
                     format!("{} is served by another process", path.display()),
@@ -280,7 +322,7 @@ impl ControlServer {
             }
             std::fs::remove_file(path)?;
         }
-        let listener = UnixListener::bind(path)?;
+        let listener = sock::bind(path)?;
         listener.set_nonblocking(true)?;
         let (tx, rx) = mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
@@ -335,7 +377,7 @@ impl Drop for ControlServer {
     }
 }
 
-fn serve(conn: UnixStream, tx: &mpsc::Sender<Request>, stop: &AtomicBool) -> io::Result<()> {
+fn serve(conn: sock::Stream, tx: &mpsc::Sender<Request>, stop: &AtomicBool) -> io::Result<()> {
     conn.set_nonblocking(false)?;
     conn.set_read_timeout(Some(IDLE_TIMEOUT))?;
     let mut out = conn.try_clone()?;
@@ -376,7 +418,7 @@ fn one_line(s: &str) -> String {
 
 /// Client side: send one command line and return the reply (`Ok` for `ok ...`).
 pub fn request(path: &Path, line: &str, timeout: Duration) -> Result<String, String> {
-    let mut conn = UnixStream::connect(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut conn = sock::connect(path).map_err(|e| format!("{}: {e}", path.display()))?;
     conn.set_read_timeout(Some(timeout))
         .map_err(|e| e.to_string())?;
     conn.write_all(format!("{}\n", line.trim()).as_bytes())
@@ -480,7 +522,7 @@ mod tests {
         let dir = tmp("sock");
         let path = dir.join(SOCKET_FILE);
         // a stale socket file (nobody listening) is replaced
-        drop(UnixListener::bind(&path).unwrap());
+        drop(sock::bind(&path).unwrap());
         assert!(path.exists());
         let (server, rx) = ControlServer::spawn(&path).unwrap();
         // a second server on the same live socket is refused
@@ -517,7 +559,7 @@ mod tests {
             .unwrap_err()
             .contains("unsupported"));
         // several commands on one connection
-        let mut c = UnixStream::connect(&path).unwrap();
+        let mut c = sock::connect(&path).unwrap();
         c.write_all(b"ping\nquit\n").unwrap();
         let mut r = BufReader::new(c);
         let (mut a, mut b) = (String::new(), String::new());
@@ -558,7 +600,7 @@ mod tests {
             scene_file: Some("/Users/x/Scenes/Show.snap".into()),
             active_scene: None,
             hostio_path: Some(format!("{dir}/hostio.toml")),
-            hostio: "host outputs: mon/1 -> \"Scarlett 2i4 USB\" [1, 2]".into(),
+            hostio: "host outputs: mon/1 -> \"My Interface\" [1, 2]".into(),
             audio: Some(AudioReport {
                 attached: true,
                 rate: 48_000,
@@ -572,7 +614,7 @@ mod tests {
                 overruns: 1,
                 slow_cycles: 0,
                 bridges: vec![BridgeReport {
-                    device: "Scarlett 2i4 USB".into(),
+                    device: "My Interface".into(),
                     state: "Running".into(),
                     fill_ms: 21.0,
                     target_ms: 21.0,

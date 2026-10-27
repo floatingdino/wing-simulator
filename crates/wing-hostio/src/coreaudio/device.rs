@@ -218,9 +218,33 @@ pub fn list_output_devices() -> Result<Vec<DeviceInfo>, CaError> {
         .collect())
 }
 
-/// Find an output device by exact UID, exact name, then case-insensitive name, then
-/// case-insensitive substring of the name.
+/// The system default output device, or, if that is the simulator's own device, the first
+/// other output device (routing the simulator into itself would feed back).
+pub fn default_output_device() -> Result<Option<DeviceInfo>, CaError> {
+    let id: AudioObjectID = get(
+        kAudioObjectSystemObject,
+        kAudioHardwarePropertyDefaultOutputDevice,
+        kAudioObjectPropertyScopeGlobal,
+    )?;
+    let devs = list_output_devices()?;
+    let usable = |d: &&DeviceInfo| !d.name.eq_ignore_ascii_case(SIMULATOR_DEVICE);
+    Ok(devs
+        .iter()
+        .filter(usable)
+        .find(|d| d.id == id)
+        .or_else(|| devs.iter().find(usable))
+        .cloned())
+}
+
+/// Name of the simulator's own (driver) device.
+const SIMULATOR_DEVICE: &str = "Wing Simulator";
+
+/// Find an output device: [`crate::DEFAULT_OUTPUT`] is [`default_output_device`]; otherwise by
+/// exact UID, exact name, then case-insensitive name, then case-insensitive substring of the name.
 pub fn find_output_device(key: &str) -> Result<Option<DeviceInfo>, CaError> {
+    if key == crate::DEFAULT_OUTPUT {
+        return default_output_device();
+    }
     let devs = list_output_devices()?;
     let lower = key.to_lowercase();
     let pick = devs
@@ -423,6 +447,10 @@ mod tests {
             assert!(d.sample_rate >= 0.0);
         }
         let _ = find_output_device("definitely-not-a-device-name-xyz").unwrap();
+        if let Some(d) = find_output_device(crate::DEFAULT_OUTPUT).unwrap() {
+            assert_ne!(d.name, SIMULATOR_DEVICE);
+            assert!(d.output_channels > 0);
+        }
     }
 
     #[test]

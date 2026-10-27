@@ -30,6 +30,7 @@ pub const kAudioObjectPropertyScopeInput: u32 = fourcc(b"inpt");
 pub const kAudioObjectPropertyElementMain: u32 = 0;
 
 pub const kAudioHardwarePropertyDevices: u32 = fourcc(b"dev#");
+pub const kAudioHardwarePropertyDefaultOutputDevice: u32 = fourcc(b"dOut");
 pub const kAudioHardwarePropertyRunLoop: u32 = fourcc(b"rnlp");
 pub const kAudioObjectPropertyName: u32 = fourcc(b"lnam");
 pub const kAudioDevicePropertyDeviceUID: u32 = fourcc(b"uid ");

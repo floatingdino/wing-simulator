@@ -1,7 +1,7 @@
 //! Play a quiet 440 Hz tone through the full bridge (ring + drift-compensating resampler +
 //! HAL IO proc) on a host device.
 //!
-//! `cargo run -p wing-hostio --example tone_to_device -- "Scarlett 2i4 USB" 1 2`
+//! `cargo run -p wing-hostio --example tone_to_device -- "My Interface" 1 2`
 //!
 //! Args: device name or UID, then 1-based device channels (default 1 2). Options:
 //! `--seconds N` (default 3), `--dbfs X` (default -30, clamped to <= -12).

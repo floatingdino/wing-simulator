@@ -77,9 +77,21 @@ static OFF_STACK: [AtomicUsize; OFFENDERS * DEPTH] =
     [const { AtomicUsize::new(0) }; OFFENDERS * DEPTH];
 static OFF_INFO: [AtomicUsize; OFFENDERS] = [const { AtomicUsize::new(0) }; OFFENDERS];
 
+#[cfg(unix)]
 extern "C" {
     fn backtrace(buf: *mut *mut c_void, size: c_int) -> c_int;
     fn backtrace_symbols(buf: *const *mut c_void, size: c_int) -> *mut *mut c_char;
+}
+
+// No execinfo elsewhere: offenders are counted but reported without stacks.
+#[cfg(not(unix))]
+unsafe fn backtrace(_buf: *mut *mut c_void, _size: c_int) -> c_int {
+    0
+}
+
+#[cfg(not(unix))]
+unsafe fn backtrace_symbols(_buf: *const *mut c_void, _size: c_int) -> *mut *mut c_char {
+    std::ptr::null_mut()
 }
 
 thread_local! {
@@ -95,10 +107,14 @@ fn on_rt_thread() -> bool {
             1 => true,
             2 => false,
             _ => {
+                #[cfg_attr(not(unix), allow(unused_mut))]
                 let mut buf = [0 as c_char; 64];
                 // SAFETY: valid buffer of the stated length.
+                #[cfg(unix)]
                 let r =
                     unsafe { libc::pthread_getname_np(libc::pthread_self(), buf.as_mut_ptr(), 64) };
+                #[cfg(not(unix))]
+                let r = 1;
                 if r != 0 {
                     return false;
                 }

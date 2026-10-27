@@ -9,7 +9,8 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
-version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+# WINGSIM_VERSION (the release workflow passes the tag without "v") overrides Cargo.toml's version.
+version="${WINGSIM_VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)}"
 out="$root/dist/WingSimulator-$version"
 
 echo "== release binaries"
@@ -23,12 +24,12 @@ else
 fi
 
 echo "== menu-bar app (bundles wing-sim, wing-render, wing-diff in Contents/Resources/bin)"
-WINGSIM_REPO_ROOT="" apps/WingSimMenu/build.sh
+WINGSIM_REPO_ROOT="" VERSION="$version" apps/WingSimMenu/build.sh
 
 echo "== assembling $out"
 rm -rf "$out"
 mkdir -p "$out/bin" "$out/docs" "$out/integrations"
-for t in wing-sim wing-render wing-diff; do
+for t in wing-sim wing-render wing-diff wing-record-setup; do
     cp "target/release/$t" "$out/bin/$t"
     codesign --force --sign - "$out/bin/$t"
 done
@@ -36,7 +37,7 @@ cp -R driver/build/WingSimulator.driver "$out/WingSimulator.driver"
 codesign --force --deep --sign - "$out/WingSimulator.driver"
 cp -R apps/WingSimMenu/build/WingSimMenu.app "$out/WingSimMenu.app"
 codesign --force --deep --sign - "$out/WingSimMenu.app"
-cp -R integrations/reaper "$out/integrations/reaper"
+cp -R integrations/reaper integrations/recording "$out/integrations/"
 cp -R docs/user "$out/docs/user"
 cp README.md "$out/README.md"
 cp tools/dist/install.sh tools/dist/uninstall.sh "$out/"
@@ -56,4 +57,4 @@ bash -n "$out/uninstall.sh"
 
 echo "== done: $out"
 du -sh "$out"
-echo "Zip for sharing: (cd dist && ditto -c -k --keepParent WingSimulator-$version WingSimulator-$version.zip)"
+echo "Zip for sharing: (cd dist && ditto -c -k --keepParent WingSimulator-$version WingSimulator-macos-arm64.zip)"

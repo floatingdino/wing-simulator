@@ -468,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "wing-blocks"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "serde_json",
@@ -477,21 +477,21 @@ dependencies = [
 
 [[package]]
 name = "wing-diff"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "wing-model",
 ]
 
 [[package]]
 name = "wing-dsp"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
 ]
 
 [[package]]
 name = "wing-engine"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "libc",
@@ -503,7 +503,7 @@ dependencies = [
 
 [[package]]
 name = "wing-hostio"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "serde",
@@ -513,14 +513,14 @@ dependencies = [
 
 [[package]]
 name = "wing-model"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
 ]
 
 [[package]]
 name = "wing-proto"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "serde_json",
  "socket2",
@@ -529,7 +529,7 @@ dependencies = [
 
 [[package]]
 name = "wing-render"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "serde_json",
@@ -543,14 +543,14 @@ dependencies = [
 
 [[package]]
 name = "wing-shm"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "wing-sim"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "serde",

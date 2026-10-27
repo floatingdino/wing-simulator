@@ -39,6 +39,11 @@ fn answers_probe_with_interface_ip() {
     // The probe arrived on loopback, so that is the advertised address.
     assert_eq!(info.ip, "127.0.0.1");
     assert_eq!(info.identity, Identity::default());
+    // The responder counts a reply after sending it: give its thread a moment.
+    let t0 = std::time::Instant::now();
+    while h.replies() == 0 && t0.elapsed() < Duration::from_secs(2) {
+        std::thread::sleep(Duration::from_millis(1));
+    }
     assert_eq!(h.replies(), 1);
     // Non-probes are ignored.
     assert!(probe(port, b"HELLO").is_none());

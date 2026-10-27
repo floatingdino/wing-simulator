@@ -5,14 +5,14 @@
 #
 # Everything except the audio driver installs into your home folder and needs no privileges:
 #   WingSimMenu.app -> ~/Applications        (the menu-bar app; it carries its own copy of the daemon)
-#   wing-sim, wing-render, wing-diff -> ~/.local/bin   (optional command-line copies)
-#   REAPER scripts -> left in place; see docs/user/reaper-integration.md
+#   wing-sim, wing-render, wing-diff, wing-record-setup -> ~/.local/bin   (command-line copies)
+#   DAW scripts and the recording kit (integrations/) -> left in place; see docs/user/
 # The audio driver is a CoreAudio plug-in and macOS only loads those from
 #   /Library/Audio/Plug-Ins/HAL
 # which is root-owned. This script never escalates silently: it tells you exactly what it is about to
 # run with sudo, asks, and you type your password into sudo itself (not into this script). Say no and
 # you get the commands to run later yourself. Installing the driver restarts coreaudiod, so all
-# audio apps (REAPER, Music, browsers) lose their devices for a second or two: quit them first.
+# audio apps (your DAW, Music, browsers) lose their devices for a second or two: quit them first.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -69,9 +69,9 @@ if [ "$do_user" = 1 ]; then
     # would refuse the first launch. Clearing the flag on our own copy is what right-click > Open does.
     run xattr -dr com.apple.quarantine "$app_dir/WingSimMenu.app" 2>/dev/null || true
     if [ "$do_cli" = 1 ]; then
-        echo "   wing-sim wing-render wing-diff -> $bin_dir"
+        echo "   wing-sim wing-render wing-diff wing-record-setup -> $bin_dir"
         run mkdir -p "$bin_dir"
-        for t in wing-sim wing-render wing-diff; do
+        for t in wing-sim wing-render wing-diff wing-record-setup; do
             run cp "$here/bin/$t" "$bin_dir/$t"
             run xattr -dr com.apple.quarantine "$bin_dir/$t" 2>/dev/null || true
         done
@@ -94,7 +94,7 @@ if [ "$do_driver" = 1 ]; then
        sudo chown -R root:wheel /Library/Audio/Plug-Ins/HAL/WingSimulator.driver
        sudo launchctl kickstart -k system/com.apple.audio.coreaudiod     # restarts macOS audio
 
-   Restarting coreaudiod interrupts all audio on this Mac for a moment: quit REAPER and other
+   Restarting coreaudiod interrupts all audio on this Mac for a moment: quit your DAW and other
    audio apps first. The driver is ad-hoc signed (no Apple developer identity). Uninstall:
    ./uninstall.sh
 MSG
@@ -121,6 +121,7 @@ cat <<MSG
 Next steps
   1. Open WingSimMenu (in $app_dir, or via Spotlight). If macOS says it cannot verify the developer,
      right-click the app > Open once (the build is ad-hoc signed, not notarised).
-  2. Choose Start in the menu-bar app, then follow the first-run walk-through in README.md.
-  3. Check the install: docs/user/install-checklist.md
+  2. Choose Start in the menu-bar app, then follow the first-run walk-through in
+     ${WINGSIM_DOCS_DIR:-$here}/README.md
+  3. Check the install: ${WINGSIM_DOCS_DIR:-$here}/docs/user/install-checklist.md
 MSG

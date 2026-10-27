@@ -5,6 +5,11 @@ playback crosses them, scripts store/recall scenes from REAPER, and (optionally)
 volume/mute automation drives WING channel faders/mutes. Everything goes over the simulator's
 OSC port (UDP 2223) on the same machine. Files: `integrations/reaper/` (T065).
 
+Other DAWs: nothing here is REAPER-only on the simulator side. Any DAW or controller that can send OSC
+(or a small helper script) can recall scenes with `/wingsim/scene/recall ,s <name>` or forward marker
+names to `/wingsim/marker`; see the OSC reference below. For recording a WING multitrack and replaying
+it into the simulator, see [recording-workflow.md](recording-workflow.md).
+
 | file | what it is |
 |---|---|
 | `WingSim-Markers.ReaperOSC` | OSC control-surface pattern config: marker/region names only |

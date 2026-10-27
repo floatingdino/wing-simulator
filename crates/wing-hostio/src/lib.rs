@@ -1,4 +1,4 @@
-//! Host output bridge: plays simulator outputs on a real CoreAudio device (e.g. a Scarlett),
+//! Host output bridge: plays simulator outputs on a real CoreAudio device (any audio interface or the built-in speakers),
 //! absorbing the clock drift between the virtual "Wing Simulator" device and the hardware.
 //!
 //! ```text
@@ -15,7 +15,7 @@
 //!   bounded, deadbanded phase correction; clamped and slew-limited.
 //! * [`bridge`]: ring + resampler + controller + lock-free [`BridgeStats`]; portable and
 //!   tested with simulated drifting clocks (`tests/drift.rs`).
-//! * [`config`]: route mapping from console taps (`mon/1 -> "Scarlett 2i4 USB" 1/2`,
+//! * [`config`]: route mapping from console taps (`mon/1 -> "default" 1/2`,
 //!   `main/1`, `bus/n`, `usb_out/45-46`) to device channels, and TOML parsing.
 //! * [`coreaudio`] (macOS): device enumeration and [`coreaudio::HostOutput`], a HAL IO-proc
 //!   client with automatic reconnect and sample-rate / buffer-size change handling.
@@ -26,7 +26,7 @@
 //! arbitrary channel mapping, and the device's IO thread is already in its `os_workgroup`.
 //!
 //! Examples: `cargo run -p wing-hostio --example list_devices`,
-//! `cargo run -p wing-hostio --example tone_to_device -- "Scarlett 2i4 USB" 1 2`.
+//! `cargo run -p wing-hostio --example tone_to_device -- "My Interface" 1 2`.
 
 pub mod bridge;
 pub mod config;
@@ -39,7 +39,9 @@ pub mod ring;
 pub use bridge::{
     bridge, BridgeConfig, BridgeConsumer, BridgeProducer, BridgeState, BridgeStats, StatsSnapshot,
 };
-pub use config::{ConfigError, DevicePlan, HostIoConfig, Route, Tap, TapChannel, EXAMPLE_TOML};
+pub use config::{
+    ConfigError, DevicePlan, HostIoConfig, Route, Tap, TapChannel, DEFAULT_OUTPUT, EXAMPLE_TOML,
+};
 pub use control::DriftConfig;
 pub use resampler::{Resampler, ResamplerConfig};
 

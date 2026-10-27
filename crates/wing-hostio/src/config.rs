@@ -5,12 +5,15 @@
 //! once T038 lands), mains, busses, matrices, USB outs or local outs.
 //!
 //! ```text
-//! mon/1         -> "Scarlett 2i4 USB" 1/2      monitor A, L/R (follows solo, T038)
+//! mon/1         -> "default" 1/2               monitor A, L/R (follows solo, T038)
 //! main/1        -> "MacBook Pro Speakers" 1/2   main 1 L/R
-//! bus/3.L       -> "Scarlett 2i4 USB" 3        one side of a stereo tap
-//! usb_out/45-46 -> "Scarlett 2i4 USB" 1/2      USB out channels (lists: 1,3,5 / ranges: 1-8)
-//! usb_out 45/46 -> BuiltInSpeakerDevice 1/2   legacy form for channel taps; unquoted = UID
+//! bus/3.L       -> "My Interface" 3             one side of a stereo tap
+//! usb_out/45-46 -> "My Interface" 1/2           USB out channels (lists: 1,3,5 / ranges: 1-8)
+//! usb_out 45/46 -> BuiltInSpeakerDevice 1/2    legacy form for channel taps; unquoted = UID
 //! ```
+//!
+//! The device name [`DEFAULT_OUTPUT`] (`"default"`) means the system's default output device
+//! when the bridge starts (never the simulator's own device).
 //!
 //! Taps ([`Tap`]): `mon/1..2` (A, B), `main/1..4`, `bus/1..16`, `mtx/1..8` are stereo
 //! (lanes L, R; append `.L`/`.R` for one side); `usb_out/<channels>` (1-48) and
@@ -19,18 +22,18 @@
 //! engine port is the engine's job (T024/T038); this module only parses and validates.
 //!
 //! TOML (a `[hostio]` table in the daemon config, or a standalone document); see
-//! [`EXAMPLE_TOML`] for the default config (monitor A -> Scarlett 1/2):
+//! [`EXAMPLE_TOML`] for the default config (monitor A -> default output 1/2):
 //!
 //! ```toml
 //! [hostio]
 //! latency_ms = 5.0                 # default extra latency for every device
 //!
 //! [[hostio.route]]
-//! map = 'mon/1 -> "Scarlett 2i4 USB" 1/2'
+//! map = 'mon/1 -> "default" 1/2'
 //!
 //! [[hostio.route]]                 # structured form; per-route latency override
 //! source = "usb_out/45-46"
-//! device = "Scarlett 2i4 USB"
+//! device = "My Interface"
 //! channels = "3/4"
 //! latency_ms = 8.0
 //! ```
@@ -43,8 +46,11 @@ use std::time::Duration;
 use serde::Deserialize;
 
 /// Default host-output config (`crates/wing-hostio/hostio.example.toml`): monitor A (follows
-/// solo) on the Scarlett's outputs 1/2.
+/// solo) on outputs 1/2 of the system default output device.
 pub const EXAMPLE_TOML: &str = include_str!("../hostio.example.toml");
+
+/// Route device name for "the system's default output device" (resolved when a bridge starts).
+pub const DEFAULT_OUTPUT: &str = "default";
 
 /// A signal tap in the simulated console. Stable: the engine maps each variant to a port
 /// (T024 for USB/local outs, mains, busses, matrices; T038 for the monitor section).
@@ -260,7 +266,7 @@ fn flat_lanes(tap: Tap, chans: &[u16]) -> Result<Vec<TapChannel>, ConfigError> {
 }
 
 impl Route {
-    /// Parse a route line `mon/1 -> "Scarlett 2i4 USB" 1/2`.
+    /// Parse a route line `mon/1 -> "My Interface" 1/2`.
     pub fn parse(line: &str) -> Result<Self, ConfigError> {
         let (src, dst) = line
             .split_once("->")
@@ -370,7 +376,7 @@ fn ms(v: f64) -> Result<Duration, ConfigError> {
 }
 
 impl HostIoConfig {
-    /// The default config ([`EXAMPLE_TOML`]: monitor A -> Scarlett 2i4 USB 1/2).
+    /// The default config ([`EXAMPLE_TOML`]: monitor A -> default output 1/2).
     pub fn example() -> Self {
         Self::from_toml_str(EXAMPLE_TOML).expect("example config parses")
     }
@@ -472,8 +478,8 @@ mod tests {
 
     #[test]
     fn parses_tap_references() {
-        let r = Route::parse(r#"mon/1 -> "Scarlett 2i4 USB" 1/2"#).unwrap();
-        assert_eq!(r.device, "Scarlett 2i4 USB");
+        let r = Route::parse(r#"mon/1 -> "My Interface" 1/2"#).unwrap();
+        assert_eq!(r.device, "My Interface");
         assert_eq!(r.device_channels, vec![1, 2]);
         assert_eq!(
             r.sources,
@@ -494,7 +500,7 @@ mod tests {
             vec![tc(Tap::LocalOut, 1), tc(Tap::LocalOut, 3)]
         );
         // Legacy channel form from the task description.
-        let r = Route::parse(r#"usb_out 45/46 -> "Scarlett 2i4 USB" 1/2"#).unwrap();
+        let r = Route::parse(r#"usb_out 45/46 -> "My Interface" 1/2"#).unwrap();
         assert_eq!(r.sources, vec![tc(Tap::UsbOut, 45), tc(Tap::UsbOut, 46)]);
         let r = Route::parse("bus/1 -> SomeUID:1 3,4").unwrap();
         assert_eq!(r.device, "SomeUID:1");
@@ -523,11 +529,11 @@ mod tests {
     }
 
     #[test]
-    fn example_config_maps_monitor_a_to_scarlett() {
+    fn example_config_maps_monitor_a_to_default_output() {
         let cfg = HostIoConfig::example();
         let plans = cfg.devices().unwrap();
         assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].device, "Scarlett 2i4 USB");
+        assert_eq!(plans[0].device, DEFAULT_OUTPUT);
         assert_eq!(
             plans[0].channels,
             vec![
@@ -545,11 +551,11 @@ mod tests {
             latency_ms = 4.0
 
             [[hostio.route]]
-            map = 'mon/1 -> "Scarlett 2i4 USB" 1/2'
+            map = 'mon/1 -> "My Interface" 1/2'
 
             [[hostio.route]]
             source = "usb_out/45-46"
-            device = "Scarlett 2i4 USB"
+            device = "My Interface"
             channels = "3/4"
             latency_ms = 8.0
 
@@ -560,7 +566,7 @@ mod tests {
         assert_eq!(cfg.routes.len(), 3);
         let plans = cfg.devices().unwrap();
         assert_eq!(plans.len(), 2);
-        assert_eq!(plans[0].device, "Scarlett 2i4 USB");
+        assert_eq!(plans[0].device, "My Interface");
         assert_eq!(plans[0].channels.len(), 4);
         assert_eq!(plans[0].latency, Duration::from_millis(8));
         assert_eq!(plans[1].latency, Duration::from_millis(4));

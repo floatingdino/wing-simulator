@@ -5,8 +5,9 @@ mod output;
 mod sys;
 
 pub use device::{
-    buffer_frames, find_output_device, host_ticks_to_ns, host_time_ns, is_alive, list_devices,
-    list_output_devices, nominal_rate, output_latency_frames, CaError, DeviceInfo, DeviceWorkgroup,
+    buffer_frames, default_output_device, find_output_device, host_ticks_to_ns, host_time_ns,
+    is_alive, list_devices, list_output_devices, nominal_rate, output_latency_frames, CaError,
+    DeviceInfo, DeviceWorkgroup,
 };
 pub use output::{HostOutput, HostOutputConfig};
 pub use sys::AudioObjectID;

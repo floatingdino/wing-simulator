@@ -48,7 +48,7 @@ fi
 
 echo "-- removing app and tools"
 run rm -rf "$app_dir/WingSimMenu.app"
-for t in wing-sim wing-render wing-diff; do run rm -f "$bin_dir/$t"; done
+for t in wing-sim wing-render wing-diff wing-record-setup; do run rm -f "$bin_dir/$t"; done
 
 dst=/Library/Audio/Plug-Ins/HAL/WingSimulator.driver
 if [ "$keep_driver" = 0 ] && [ -d "$dst" ]; then

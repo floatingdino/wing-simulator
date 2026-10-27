@@ -121,7 +121,7 @@ impl Drop for WorkInterval {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
 

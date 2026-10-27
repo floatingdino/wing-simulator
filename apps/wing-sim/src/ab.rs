@@ -562,7 +562,8 @@ mod tests {
         let wait = |what: &str, f: &dyn Fn() -> bool| {
             let t = Instant::now();
             while !f() {
-                assert!(t.elapsed() < Duration::from_secs(5), "timeout: {what}");
+                // generous: each A/B switch re-serialises a full scene, slow in debug on CI
+                assert!(t.elapsed() < Duration::from_secs(30), "timeout: {what}");
                 std::thread::sleep(Duration::from_millis(5));
             }
         };
@@ -604,7 +605,7 @@ mod tests {
         wait("toggle to A", &|| {
             store.get(fdr) == Some(Value::Float(-5.0))
         });
-        while !seen.contains(&(hash, -5.0)) && t.elapsed() < Duration::from_secs(5) {
+        while !seen.contains(&(hash, -5.0)) && t.elapsed() < Duration::from_secs(30) {
             pump(&mut native, &mut dec, &mut seen);
         }
         assert!(

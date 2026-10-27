@@ -1,0 +1,2 @@
+# Generated kit files are compared byte-for-byte (wing-diff shipped_kit_is_current): no EOL conversion.
+integrations/recording/* -text

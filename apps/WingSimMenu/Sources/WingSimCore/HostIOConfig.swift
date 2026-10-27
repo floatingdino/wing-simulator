@@ -212,7 +212,7 @@ public struct HostRoute: Equatable, Sendable, Identifiable {
             && a.latencyMs == b.latencyMs
     }
 
-    /// `mon/1 -> "Scarlett 2i4 USB" 1/2`
+    /// `mon/1 -> "My Interface" 1/2`
     public var mapLine: String {
         "\(source.text) -> \"\(device)\" \(ChannelList.format(deviceChannels))"
     }
@@ -261,9 +261,12 @@ public struct HostIOConfig: Equatable, Sendable {
         self.routes = routes
     }
 
-    /// The daemon's built-in default: monitor A -> Scarlett 2i4 USB 1/2.
+    /// Route device name meaning the system default output device (`wing_hostio::DEFAULT_OUTPUT`).
+    public static let defaultOutputDevice = "default"
+
+    /// The daemon's built-in default: monitor A -> default output device 1/2.
     public static let defaultConfig = HostIOConfig(routes: [
-        HostRoute(source: TapRef(kind: .monitor), device: "Scarlett 2i4 USB", deviceChannels: [1, 2]),
+        HostRoute(source: TapRef(kind: .monitor), device: defaultOutputDevice, deviceChannels: [1, 2]),
     ])
 
     /// Same checks as `HostIoConfig::devices`: lane counts, and no device channel used twice.

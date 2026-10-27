@@ -20,6 +20,7 @@
 use std::ffi::c_void;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering::SeqCst;
+#[cfg(unix)]
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -38,6 +39,12 @@ struct OsSync {
     wake: WakeFn,
 }
 
+#[cfg(not(unix))]
+fn os_sync() -> Option<OsSync> {
+    None
+}
+
+#[cfg(unix)]
 fn os_sync() -> Option<OsSync> {
     static SYMS: OnceLock<Option<OsSync>> = OnceLock::new();
     *SYMS.get_or_init(|| {
