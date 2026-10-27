@@ -357,8 +357,12 @@ impl FxMeter {
         self.bank.peak(self.base + fx_word::OUT_R, abs_max(r));
         self.bank
             .peak(self.base + fx_word::GR, model.gain_reduction_db());
+        // raw state words (PCORR, V-IMG, ...) take the band cells of models that report them
         let mut b = [0.0f32; wing_blocks::meter::MAX_METER_BANDS];
-        let n = model.meter_bands(&mut b);
+        let n = match model.fx_meter_words(&mut b) {
+            0 => model.meter_bands(&mut b),
+            n => n,
+        };
         for (k, v) in b.iter().enumerate() {
             self.bank
                 .set(self.base + fx_word::BAND0 + k, if k < n { *v } else { 0.0 });

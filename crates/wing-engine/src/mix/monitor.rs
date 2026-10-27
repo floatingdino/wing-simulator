@@ -495,7 +495,7 @@ impl MonitorNode {
                     let f = self.flags[i];
                     let (pfl, afl, key) = if f & bit == 0 {
                         (0.0, 0.0, 0.0)
-                    } else if f & (flag::KEY_GATE | flag::KEY_DYN) != 0 {
+                    } else if f & flag::LISTEN != 0 {
                         (0.0, 0.0, 1.0)
                     } else if f & flag::AFL != 0 {
                         (0.0, 1.0, 0.0)
@@ -659,10 +659,15 @@ impl Processor for MonitorNode {
                         let (kl, kr) = (&mut self.kl[..b], &mut self.kr[..b]);
                         match &self.keys {
                             Some(bank) => {
-                                let k = if self.flags[i] & flag::KEY_GATE != 0 {
+                                let f = self.flags[i];
+                                let k = if f & flag::KEY_GATE != 0 {
                                     key_slot::LISTEN_GATE
-                                } else {
+                                } else if f & flag::KEY_DYN != 0 {
                                     key_slot::LISTEN_DYN
+                                } else if f & flag::KEY_EQ != 0 {
+                                    key_slot::LISTEN_EQ
+                                } else {
+                                    key_slot::LISTEN_XO
                                 };
                                 bank.read(ctx.cycle, i, k, kl, kr);
                             }

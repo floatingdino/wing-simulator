@@ -561,7 +561,8 @@ struct Slot {
     base: u16,
     p: SendParams,
     dirty: bool,
-    /// Main send cut by a DCA mute of the sender (`cfg/dcamgrp` off, T03F); mains only.
+    /// The sender's post-fader sends are cut by a DCA mute (`cfg/dcamgrp` off, T03F): every main
+    /// send, and POST/GRP sends into busses and matrices (PRE sends keep running).
     cut: bool,
     /// One matrix per input signal (`Input`: Pre, PreLinked, Afl, Post; `Mix`: Pre, Post).
     ramps: [Ramp<4>; 4],
@@ -690,8 +691,8 @@ impl MixStripNode {
         self.strip
     }
 
-    /// Read a newly published logic state: the external gain/mute, and (mains) which senders'
-    /// main sends a DCA mute cuts ([`flag::MAIN_MUTE`]). Marks what changed dirty; returns
+    /// Read a newly published logic state: the external gain/mute, and which senders' sends a
+    /// DCA mute cuts ([`flag::MAIN_MUTE`]). Marks what changed dirty; returns
     /// whether anything did (apply a `Commit` then). RT-safe.
     fn poll_logic(&mut self) -> bool {
         let Some(l) = self.logic.as_mut() else {
@@ -704,17 +705,15 @@ impl MixStripNode {
         l.seen = g;
         let mut changed = l.read(&mut self.fader);
         self.dirty |= changed;
-        if self.dest == Dest::Main {
-            for (src, &k) in self.slot_of.iter().enumerate() {
-                let Some(s) = self.slots.get_mut(k as usize) else {
-                    continue;
-                };
-                let cut = l.shared.flags(src) & flag::MAIN_MUTE != 0;
-                if cut != s.cut {
-                    s.cut = cut;
-                    s.dirty = true;
-                    changed = true;
-                }
+        for (src, &k) in self.slot_of.iter().enumerate() {
+            let Some(s) = self.slots.get_mut(k as usize) else {
+                continue;
+            };
+            let cut = l.shared.flags(src) & flag::MAIN_MUTE != 0;
+            if cut != s.cut {
+                s.cut = cut;
+                s.dirty = true;
+                changed = true;
             }
         }
         changed
@@ -763,7 +762,8 @@ impl MixStripNode {
     fn slot_targets(&self, s: &Slot) -> [Matrix; 4] {
         let mut t = [ZERO; 4];
         let p = &s.p;
-        if !p.on || s.cut {
+        // a DCA mute cuts main sends whatever their tap, other sends unless PRE (T03F)
+        if !p.on || (s.cut && (self.dest == Dest::Main || p.mode != SendMode::Pre)) {
             return t;
         }
         let g = law::fader_gain(p.lvl_db);

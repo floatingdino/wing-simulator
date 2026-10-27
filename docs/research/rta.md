@@ -80,6 +80,25 @@ on a console). What the console must provide, and the simulator now does:
 
 Test: `apps/wing-sim/src/rta.rs` `wing_edit_rta_overlay_condition` (a model of `paint` and of the claims).
 
+## 1b. The spectrum is drawn whatever the overlay says; strip claims (T089) [H unless marked]
+
+Correction to §1a: `RtaGraph::paint` (`0x1000e38a0`) always draws the bars from the one shared `AA` buffer
+(`AE[+0x698]+0x128`); the three "RTA in use…" texts are drawn *on top*. With a stale `rtasrc` every strip graph
+therefore shows the same spectrum (user report T089: "the RTA shows global values, should be per channel"). The
+protocol has no per-strip spectrum: `AA` has no index and no other meter type carries one.
+
+A strip graph claims (`rtasrc` = its strip, then `rtatap`) only from `listener_callback` (`0x1000e460c`), while it
+is showing and `$ctl/cfg/rta/eqdisp` is not OFF, on event 0 (WING-Edit's *local* selection `CE.selidx` changed)
+or event 2 (`eqdisp` changed). On the INS1/INS2 pages (`CE.pageidx` 5/6) it calls `setFxRta` instead (GEQ insert
+claim). Nothing in WING-Edit expects the console to move `rtasrc`, and there is no "RTA follows select" setting.
+
+In the user's logs `rtasrc` only ever became 12 and 14 (FX-page claims, `rtatap` FXIN), never a channel, although
+channel EQ RTAs were in use; the persisted state holds `rtasrc` 12 / FXIN, so every channel EQ shows FX 12's
+input. Why the strip claims never arrive is not visible statically [L] (candidates: `isShowing()` false at
+callback time, coalesced selection notifications, WING-Edit's local `CE` state). The daemon now logs every client
+change of `cfg/rta/rtasrc`, `rtatap` and `$ctl/$stat/selidx` (`rta: client set ...`) to settle it live: on a
+channel EQ page toggle the RTA display OFF -> on (event 2 forces a claim), then select another channel.
+
 ## 2. RTA meter data [M]
 
 `nrp::MeterHandler::sendMeterRequest` builds `D4 id DC <type idx...> DE` from its slot table: type

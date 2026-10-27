@@ -294,3 +294,69 @@ fn key_listen_solos_the_key() {
     assert!(off < -100.0, "listen off: {off:.1} dB");
     assert_eq!(getf(&t.store, "$stat/solo"), 0.0);
 }
+
+/// EQ band solo (`eq/$solo` + `$solobd`) and crossover solo (`dynxo/$solo`) play the soloed band of the
+/// strip on the monitor (user report: neither did anything). USB 2 = 209 Hz (0.24) + 24 Hz (0.16) sines:
+/// a band-pass on 209 Hz keeps the first only (-1.6 dB of the total RMS).
+#[test]
+fn eq_band_and_crossover_solo_play_the_band() {
+    let mut t = T::new(|s| {
+        setf(s, "cfg/mon/1/lvl", 0.0);
+        setf(s, "cfg/mon/1/pfldim", 0.0);
+        // a channel and a bus EQ band 1 on the programme's upper tone, Q 4 (EQ itself off)
+        for (p, f) in [("ch/2", 209.3), ("bus/8", 104.7)] {
+            setf(s, &format!("{p}/eq/6"), f);
+            setf(s, &format!("{p}/eq/7"), 4.0);
+        }
+    });
+    let mon: Probe = &|r| r.port(r.nodes.monitor_port(1, Side::L));
+    let ch2: Probe = &|r| r.input(1, I::Pfl, Side::L);
+    let bus8: Probe = &|r| r.mix(Strip::Bus(8), M::Pfl, Side::L);
+    t.set("ch/2/eq/$solobd", "2");
+    t.set("ch/2/eq/$solo", "1");
+    let [band, all] = t.measure(&[2], [mon, ch2]);
+    assert!(
+        (-2.5..-0.8).contains(&(band - all)),
+        "band 2 at 209 Hz: monitor {band:.1} dB, ch2 {all:.1} dB"
+    );
+    assert_eq!(getf(&t.store, "$stat/solo"), 1.0, "band solo is a solo");
+    // the band follows its frequency
+    t.set("ch/2/eq/6", "5000");
+    let [off_band] = t.measure(&[2], [mon]);
+    assert!(all - off_band > 20.0, "band 2 at 5 kHz: {off_band:.1} dB");
+    // band 1 (low shelf at 80 Hz): the region below it, mostly the 24 Hz tone
+    t.set("ch/2/eq/$solobd", "1");
+    let [low] = t.measure(&[2], [mon]);
+    assert!(
+        (-7.0..-2.5).contains(&(low - all)),
+        "low band: {:.1} dB",
+        low - all
+    );
+    t.set("ch/2/eq/$solo", "0");
+
+    // crossover solo: HI at 15 kHz removes the programme, FLAT plays it all
+    t.set("ch/2/dynxo/type", "HI");
+    t.set("ch/2/dynxo/f", "15000");
+    t.set("ch/2/dynxo/$solo", "1");
+    let [hi] = t.measure(&[2], [mon]);
+    assert!(all - hi > 30.0, "XO HI 15 kHz: {hi:.1} dB vs {all:.1} dB");
+    t.set("ch/2/dynxo/type", "OFF");
+    let [flat] = t.measure(&[2], [mon]);
+    assert!(
+        (flat - all).abs() < 0.5,
+        "XO FLAT: {flat:.1} dB vs {all:.1} dB"
+    );
+    t.set("ch/2/dynxo/$solo", "0");
+
+    // a bus band (USB 1 = 105 Hz + 8 Hz tones through ch3 into bus 8)
+    t.set("bus/8/eq/$solobd", "2");
+    t.set("bus/8/eq/$solo", "1");
+    let [bband, ball] = t.measure(&[1], [mon, bus8]);
+    assert!(
+        (-2.5..-0.8).contains(&(bband - ball)),
+        "bus band 2: monitor {bband:.1} dB, bus 8 {ball:.1} dB"
+    );
+    t.set("bus/8/eq/$solo", "0");
+    t.logic.refresh(&t.store);
+    assert_eq!(getf(&t.store, "$stat/solo"), 0.0);
+}

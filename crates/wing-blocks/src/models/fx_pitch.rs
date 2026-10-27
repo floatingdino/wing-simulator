@@ -1325,6 +1325,21 @@ impl PitchFix {
         self.note
     }
 
+    /// FX meter words 4..6 (WING-Edit `FxPitchFix::listener_callback`, `crate::meter`): applied pitch ratio
+    /// `2048 * out/in`, target pitch class `2048 * (pc + 1)` (C = 1), detected period `64 * 48000 / f0` (WING-Edit
+    /// assumes 48 kHz whatever the rate). Unvoiced: note and period 0.
+    pub fn meter_words(&self) -> [f32; 3] {
+        let r = 2048.0 * 2f64.powf(self.correction_cents() / 1200.0);
+        match (self.detected_hz(), self.note) {
+            (Some(f0), Some(n)) if f0 > 0.0 => [
+                r as f32,
+                (2048 * (n.rem_euclid(12) + 1)) as f32,
+                (64.0 * 48_000.0 / f0).round().min(32_767.0) as f32,
+            ],
+            _ => [r as f32, 0.0, 0.0],
+        }
+    }
+
     fn update(&mut self) {
         self.dirty = false;
         let p = self.p;
@@ -1511,6 +1526,13 @@ impl PitchFix {
 impl Model for PitchFix {
     fn id(&self) -> &'static str {
         "PCORR"
+    }
+
+    fn fx_meter_words(&self, out: &mut [f32]) -> usize {
+        let w = self.meter_words();
+        let n = w.len().min(out.len());
+        out[..n].copy_from_slice(&w[..n]);
+        n
     }
 
     fn prepare(&mut self, fs: f64, _max_block: usize) {

@@ -40,9 +40,19 @@
 //! | *EVEN*, *SOUL*, *VINTAGE*, *BUS* | `Fx{Even,Soul,Vintage,Bus}Channel` | words 4, 6 = `2048 g` of the 1st / 2nd dynamics stage (LED ladder at 20 log10 g <= -3/-6/-10/-14/-19 dB) |
 //! | DEQ3 | `DynEqGraph::updateCurve` | words 4, 6, 8 = `2048 (g_k - 1)` of band k (dynamic gain drawn, ±15 dB) |
 //! | C5-CMB | `FxCombinator::Ccurves::paint` | words 4..8 = band k gain change `dB * 2048 / 6` (protocol.md "FX band GR") |
-//! | LIMITER, *MASTER*, DE-S2 | `FxPrecisionLimiter` / `FxMastering` / `FxDeEsser` | word 4 = GR; scale **[H]** `GR * 2048 / 6` (the pages scale it by 320/2048 px and a 10..1000 LED ladder; the dB unit is not visible statically) |
-//! | PCORR, SPKMAN, SUB-M, V-IMG | pitch, speaker-manager, sub-monster and imager pages | not populated (0): need pitch / level / correlation telemetry the models do not expose yet |
-//! | others | - | no state words read |
+//! | LIMITER, *MASTER* | `FxPrecisionLimiter` / `FxMastering` | word 4 = GR; scale **[H]** `GR * 2048 / 6` (the pages scale it by 320/2048 px; the dB unit is not visible statically) |
+//!
+//! Raw state words ([`FxMeterLaw::Raw`], the model writes words 4..9 itself through
+//! [`crate::model::Model::fx_meter_words`]; T087 static analysis, `lin2048` = linear amplitude/gain, 2048 = 1):
+//!
+//! | model | page | state words |
+//! |---|---|---|
+//! | PCORR | `FxPitchFix` | 4 = pitch ratio out/in (lin2048), 5 = `2048 (pitch class + 1)` of the target note (C = 1), 6 = detected period `64 * 48000 / f0` (WING-Edit assumes 48 kHz; 0 = unvoiced, hides the dial) |
+//! | V-IMG | `FxVelvetImg` | 6 / 7 = output MID / SIDE peaks `2048 |L+R|`, `2048 |L-R|` (drawn 6 dB lower), 8 = correlation `1024 (1 + rho)` |
+//! | SUB-M | `FxSubMonster` | 4..8 = band 1..5 level (lin2048, bars -72..0 dB): the synthesised sub of each band [I] |
+//! | SPKMAN | `FxSpeakerPro` | 4 = dynamic-EQ gain `2048 (g - 1)` (with `dyneq` on), 6 = limiter input peak (lin2048), 8 = limiter gain (lin2048, 2048 idle) |
+//! | DE-S2 | `FxDeEsser` | 4..7 = GR of LOW, HIGH, LOW (SIDE), HIGH (SIDE): LED brightness ladder on the raw word (10..1000); scale `GR * 2048 / 6` [H] |
+//! | others | - | no state words read (P-BASS reads only the output levels) |
 
 use std::f32::consts::LN_10;
 
@@ -160,8 +170,10 @@ pub enum FxMeterLaw {
     TripleDeq,
     /// C5-CMB: words 4..8 = band gain change `dB * 2048 / 6`.
     Combinator,
-    /// LIMITER / *MASTER* / DE-S2: word 4 = `GR * 2048 / 6` [H].
+    /// LIMITER / *MASTER*: word 4 = `GR * 2048 / 6` [H].
     Gr,
+    /// The model's own words 4..9 ([`crate::model::Model::fx_meter_words`]), saturated.
+    Raw,
 }
 
 impl FxMeterLaw {
@@ -171,7 +183,8 @@ impl FxMeterLaw {
             "*EVEN*" | "*SOUL*" | "*VINTAGE*" | "*BUS*" => FxMeterLaw::StripLeds,
             "DEQ3" => FxMeterLaw::TripleDeq,
             "C5-CMB" => FxMeterLaw::Combinator,
-            "LIMITER" | "*MASTER*" | "DE-S2" => FxMeterLaw::Gr,
+            "LIMITER" | "*MASTER*" => FxMeterLaw::Gr,
+            "PCORR" | "V-IMG" | "SUB-M" | "SPKMAN" | "DE-S2" => FxMeterLaw::Raw,
             _ => FxMeterLaw::None,
         }
     }
@@ -197,9 +210,22 @@ impl FxMeterLaw {
                 }
             }
             FxMeterLaw::Gr => w[0] = sat(gr_db.max(0.0) * 2048.0 / 6.0),
+            FxMeterLaw::Raw => {
+                for (k, v) in w.iter_mut().enumerate() {
+                    *v = sat(b(k));
+                }
+            }
         }
         w
     }
+}
+
+/// Peak hold for level-type FX state words: the previous value decays with a 100 ms time constant over the
+/// `n` samples of a block (at `fs`), then takes the block's `peak`.
+#[inline]
+pub fn hold_peak(prev: f32, peak: f32, n: usize, fs: f64) -> f32 {
+    let decay = (-(n as f64) / (0.1 * fs)).exp() as f32;
+    (prev * decay).max(peak)
 }
 
 /// Round and saturate to an i16 word.
@@ -244,5 +270,8 @@ mod tests {
         assert_eq!((c[0], c[4]), (-1024, -2048));
         assert_eq!(FxMeterLaw::for_model("LIMITER").words(3.0, &[])[0], 1024);
         assert_eq!(FxMeterLaw::for_model("HALL").words(3.0, &[1.0]), [0; 6]);
+        let r = FxMeterLaw::for_model("PCORR").words(0.0, &[2048.4, 4096.0, 40_000.0]);
+        assert_eq!(r, [2048, 4096, 32767, 0, 0, 0]);
+        assert_eq!(FxMeterLaw::for_model("DE-S2"), FxMeterLaw::Raw);
     }
 }

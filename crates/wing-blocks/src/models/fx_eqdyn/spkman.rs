@@ -186,6 +186,8 @@ pub struct SpeakerManager {
     lim_gr: f64,
     lim_rel_c: f64,
     rms_c: f64,
+    /// Limiter input peak, peak-held for the meter words.
+    lim_in: f32,
 }
 
 impl Default for SpeakerManager {
@@ -212,6 +214,7 @@ impl SpeakerManager {
             lim_gr: 0.0,
             lim_rel_c: 0.0,
             rms_c: 0.0,
+            lim_in: 0.0,
         };
         m.prepare(48_000.0, 64);
         m
@@ -310,6 +313,11 @@ impl Model for SpeakerManager {
         if self.v[10] != 0.0 {
             self.deq.process(left, right, None);
         }
+        let pk = left[..n]
+            .iter()
+            .chain(&right[..n])
+            .fold(0.0f32, |a, &x| a.max(x.abs()));
+        self.lim_in = crate::meter::hold_peak(self.lim_in, pk, n, self.ctx.fs);
         if self.v[20] != 0.0 {
             let thr = self.v[21] as f64;
             let rms = self.v[22] != 0.0;
@@ -356,6 +364,7 @@ impl Model for SpeakerManager {
         self.deq.reset();
         self.lim_ms = 0.0;
         self.lim_gr = 0.0;
+        self.lim_in = 0.0;
     }
 
     fn set_param(&mut self, slot: u16, value: ParamValue) {
@@ -403,6 +412,26 @@ impl Model for SpeakerManager {
         if self.dirty {
             self.update();
         }
+    }
+
+    /// Words 4..8 (`crate::meter`): dynamic-EQ gain `2048 (g - 1)` while `dyneq` is on, limiter input peak and
+    /// limiter gain (lin2048).
+    fn fx_meter_words(&self, out: &mut [f32]) -> usize {
+        let deq = if self.v[10] != 0.0 {
+            2048.0 * (10f32.powf(self.deq.dynamic_gain_db() / 20.0) - 1.0)
+        } else {
+            0.0
+        };
+        let w = [
+            deq,
+            0.0,
+            2048.0 * self.lim_in,
+            0.0,
+            2048.0 * 10f32.powf(-(self.lim_gr as f32) / 20.0),
+        ];
+        let n = w.len().min(out.len());
+        out[..n].copy_from_slice(&w[..n]);
+        n
     }
 
     fn telemetry(&self) -> ModelTelemetry {

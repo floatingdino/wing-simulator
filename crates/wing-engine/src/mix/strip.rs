@@ -15,7 +15,9 @@
 //!   type/f/q`, crossover `dynxo`. The key is the strip itself (SELF) or, for `dynsc.src` != SELF, the
 //!   `dynsc.tap` of another bus/main/matrix/aux read from the key bank one block late (T080,
 //!   [`crate::mix::keys`]); `dynsc.$solo` (key listen) publishes the detected key for the monitor. The
-//!   strip publishes its own taps (IN, INS1, EQ, DYN, PFL) for other strips' keys.
+//!   strip publishes its own taps (IN, INS1, EQ, DYN, PFL) for other strips' keys. EQ band solo
+//!   (`eq/$solo` + `$solobd`) and crossover solo (`dynxo/$solo`) publish the band-filtered EQ / dynamics
+//!   input the same way ([`crate::channel::Listen`]).
 //! * **Inserts** (`preins`/`postins` `on ins`) run their FX slot inline through the strip's
 //!   [`InsertHost`] (the FX rack handle, [`crate::fx`]; T050/T044).
 //! * **Output delay** (`dly on`, model group `dly/mode` M/FT/MS/SMP with target `dly`) runs on the
@@ -39,8 +41,9 @@ use wing_blocks::input::{DelayMode, InputParams, InputStage, SourceMode};
 use wing_blocks::sidechain::XoverKind;
 
 use crate::channel::{
-    claimed_latency, listen_post, listen_pre, rta_at, slot_key_peak, sync_inserts, InsertHost,
-    InsertPoint, InsertPos, NoInserts, SideChain, PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT,
+    band_listen_coeffs, claimed_latency, listen_post, listen_pre, rta_at, slot_key_peak,
+    sync_inserts, xo_listen_coeffs, InsertHost, InsertPoint, InsertPos, Listen, NoInserts,
+    SideChain, EQ_SOLO, EQ_SOLOBD, PREINS_LAYOUT, SC_LAYOUT, XO_LAYOUT, XO_SOLO,
 };
 use crate::graph::NodeId;
 use crate::latency::StripAlign;
@@ -80,7 +83,12 @@ pub const MIX_INPUT_LAYOUT: BlockLayout = BlockLayout {
 
 /// `<strip>/N/eq`: on, mix + the 27 bus STD slots (other models use a prefix of them).
 pub const MIX_EQ_LAYOUT: BlockLayout = BlockLayout {
-    params: &[("on", 0), ("mix", 1)],
+    params: &[
+        ("on", 0),
+        ("mix", 1),
+        ("$solo", EQ_SOLO),
+        ("$solobd", EQ_SOLOBD),
+    ],
     targets: &[
         "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
         "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27",
@@ -146,6 +154,9 @@ pub struct MixStrip {
     key_in: Option<KeyIn>,
     /// Key bank outputs (taps, key listen).
     key_out: Option<KeyOut>,
+    /// EQ band solo / crossover solo.
+    eq_listen: Listen<Option<wing_blocks::eq::BandSolo>>,
+    xo_listen: Listen<wing_blocks::sidechain::XoverParams>,
     postins: InsertPoint,
     dly: InputStage,
     dly_p: InputParams,
@@ -210,6 +221,8 @@ impl MixStrip {
             dyn_sc: SideChain::default(),
             key_in: None,
             key_out: None,
+            eq_listen: Listen::new(fs, max_block),
+            xo_listen: Listen::new(fs, max_block),
             postins: InsertPoint::default(),
             dly,
             dly_p,
@@ -373,6 +386,9 @@ impl MixStrip {
                 }
                 self.trim_dirty = true;
             }
+            hook::EQ if param == EQ_SOLO => self.eq_listen.on = v != 0.0,
+            hook::EQ if param == EQ_SOLOBD => self.eq_listen.band = v.max(1.0) as usize,
+            hook::DYN_XO if param == XO_SOLO => self.xo_listen.on = v != 0.0,
             hook::EQ | hook::DYN => {
                 let s = if blk == hook::EQ {
                     &mut self.eq
@@ -508,6 +524,10 @@ impl MixStrip {
         }
         self.tap(MixTap::Ins1, l, r);
         rta_at(&self.rta, want, RtaTap::PreEq, l, r);
+        let b = self.eq.solo_band(self.eq_listen.band);
+        let ks = key_slot::LISTEN_EQ;
+        self.eq_listen
+            .run(&self.key_out, ks, b, band_listen_coeffs, l, r);
         self.eq.process(l, r);
         rta_at(&self.rta, want, RtaTap::PostEq, l, r);
         self.tap(MixTap::Eq, l, r);
@@ -527,6 +547,10 @@ impl MixStrip {
         if listen {
             listen_pre(&self.key_out, key_slot::LISTEN_DYN, key, l, r);
         }
+        let xo = *self.dyn_.xover();
+        let ks = key_slot::LISTEN_XO;
+        self.xo_listen
+            .run(&self.key_out, ks, xo, xo_listen_coeffs, l, r);
         self.dyn_.process_keyed(l, r, key);
         if listen {
             listen_post(&self.key_out, key_slot::LISTEN_DYN, &self.dyn_);

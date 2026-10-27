@@ -59,6 +59,14 @@ impl RtModel for Box<dyn Model> {
         Model::meter_bands(&**self, out)
     }
 
+    fn fx_meter_words(&self, out: &mut [f32]) -> usize {
+        Model::fx_meter_words(&**self, out)
+    }
+
+    fn solo_band(&self, band: usize) -> Option<wing_blocks::eq::BandSolo> {
+        Model::solo_band(&**self, band)
+    }
+
     fn latency(&self) -> usize {
         Model::latency(&**self)
     }

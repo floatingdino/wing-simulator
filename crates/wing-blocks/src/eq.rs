@@ -304,6 +304,60 @@ impl EqParams {
     }
 }
 
+/// Listen filter of an EQ band solo (`eq/$solo` + `$solobd`): what the solo bus plays instead of the strip
+/// while a band is soloed [I: WING's band-solo filter shape is not documented; X32-style band listen].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BandSolo {
+    /// Peaking band: band-pass (0 dB at `freq`) with the band's Q.
+    BandPass { freq: f32, q: f32 },
+    /// Low band as shelf or cut: the region below its corner (12 dB/oct Butterworth low-pass).
+    LowPass { freq: f32 },
+    /// High band as shelf or cut: the region above its corner (12 dB/oct Butterworth high-pass).
+    HighPass { freq: f32 },
+}
+
+impl BandSolo {
+    /// Biquad at sample rate `fs` (frequencies clamped below 0.45 fs).
+    pub fn coeffs(self, fs: f64) -> Coeffs {
+        let f = |f: f32| (f as f64).clamp(FREQ_MIN_HZ as f64, 0.45 * fs);
+        match self {
+            BandSolo::BandPass { freq, q } => {
+                Coeffs::bandpass(fs, f(freq), (q as f64).clamp(Q_MIN as f64, Q_MAX as f64))
+            }
+            BandSolo::LowPass { freq } => {
+                Coeffs::lowpass(fs, f(freq), std::f64::consts::FRAC_1_SQRT_2)
+            }
+            BandSolo::HighPass { freq } => {
+                Coeffs::highpass(fs, f(freq), std::f64::consts::FRAC_1_SQRT_2)
+            }
+        }
+    }
+}
+
+impl EqParams {
+    /// Listen filter of solo band `band` (`$solobd`, 1-based: 1 = low band, 2.. = peaking bands, last = high
+    /// band); `None` out of range.
+    pub fn solo_band(&self, variant: EqVariant, band: usize) -> Option<BandSolo> {
+        let n = variant.peak_bands();
+        let peq = |b: &BandParams| BandSolo::BandPass {
+            freq: b.freq,
+            q: b.q,
+        };
+        Some(match band {
+            1 if self.low_type == BandType::Peq => peq(&self.low),
+            1 => BandSolo::LowPass {
+                freq: self.low.freq,
+            },
+            k if (2..=n + 1).contains(&k) => peq(&self.bands[k - 2]),
+            k if k == n + 2 && self.high_type == BandType::Peq => peq(&self.high),
+            k if k == n + 2 => BandSolo::HighPass {
+                freq: self.high.freq,
+            },
+            _ => return None,
+        })
+    }
+}
+
 /// Channel PRE EQ (`peq`) parameters.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PreEqParams {

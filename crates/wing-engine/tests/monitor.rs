@@ -213,18 +213,19 @@ fn mute_groups_and_dca_mutes() {
     assert_gain(&t.pfl(0), &afl1(&t), 0.0, "DCA mute");
 }
 
-/// T03F (user-confirmed WING behaviour): a DCA mute always mutes its members' main sends;
-/// `cfg/dcamgrp` on additionally mutes everything else (bus sends incl. PRE sends: a full mute).
-/// Regression: with `cfg/dcamgrp` off (the user's scene) DCA mutes did nothing.
+/// T03F (user-confirmed WING behaviour): a DCA mute always mutes its members' post-fader outputs
+/// (main sends, POST and GRP bus sends); `cfg/dcamgrp` on additionally mutes everything else (PRE
+/// sends too: a full mute). Regressions: with `cfg/dcamgrp` off (the user's scene) DCA mutes did
+/// nothing; then they left POST/GRP bus sends running (ch 10 in DCA 3 -> GRP bus 7, user report).
 #[test]
 fn dca_mute_mutes_main_sends_and_dcamgrp_makes_it_a_full_mute() {
     let mut t = T::new();
-    // ch1 (member of DCA 5) -> main 1 and PRE + POST sends to busses 1/2; bus 3 (member of
-    // DCA 5) <- ch2 PRE send, bus 3 -> main 1
+    // ch1 (member of DCA 5) -> main 1 and PRE + POST + GRP sends to busses 1/2/4; bus 3 (member
+    // of DCA 5) <- ch2 PRE send, bus 3 -> main 1
     t.set("ch/2/fdr", "-144");
     t.set("ch/1/tags", "#D5");
     t.set("dca/5/fdr", "0");
-    for (b, mode) in [(1, "PRE"), (2, "POST")] {
+    for (b, mode) in [(1, "PRE"), (2, "POST"), (4, "GRP")] {
         t.set(&format!("ch/1/send/{b}/on"), "1");
         t.set(&format!("ch/1/send/{b}/lvl"), "0");
         t.set(&format!("ch/1/send/{b}/mode"), mode);
@@ -238,12 +239,14 @@ fn dca_mute_mutes_main_sends_and_dcamgrp_makes_it_a_full_mute() {
     assert_gain(&t.pfl(0), &t.main(Side::L), pan_c(), "unmuted: main");
     let (g_pre, _) = fit(&pre1(&t), &bus(&t, 1));
     let (g_post, _) = fit(&afl1(&t), &bus(&t, 2));
+    let post1 = |t: &T| t.r.input(0, I::Post, Side::L);
+    let (g_grp, _) = fit(&post1(&t), &bus(&t, 4));
     assert!(
-        g_pre > 0.1 && g_post > 0.1,
-        "unmuted sends {g_pre} {g_post}"
+        g_pre > 0.1 && g_post > 0.1 && g_grp > 0.1,
+        "unmuted sends {g_pre} {g_post} {g_grp}"
     );
 
-    // dcamgrp off: main send muted, the strip itself and its bus sends are not
+    // dcamgrp off: main and post-fader bus sends muted, the strip itself and PRE sends are not
     t.set("dca/5/mute", "1");
     t.run(SETTLE);
     assert_gain(
@@ -254,7 +257,8 @@ fn dca_mute_mutes_main_sends_and_dcamgrp_makes_it_a_full_mute() {
     );
     assert_gain(&t.pfl(0), &afl1(&t), 1.0, "dcamgrp off: fader not muted");
     assert_gain(&pre1(&t), &bus(&t, 1), g_pre, "dcamgrp off: PRE bus send");
-    assert_gain(&afl1(&t), &bus(&t, 2), g_post, "dcamgrp off: POST bus send");
+    assert_gain(&afl1(&t), &bus(&t, 2), 0.0, "dcamgrp off: POST bus send");
+    assert_gain(&post1(&t), &bus(&t, 4), 0.0, "dcamgrp off: GRP bus send");
     assert!(t.logic.state().flags[0] & wing_engine::mix::logic::flag::MUTE == 0);
 
     // a bus member: its main send is muted, the bus output is not
@@ -296,6 +300,8 @@ fn dca_mute_mutes_main_sends_and_dcamgrp_makes_it_a_full_mute() {
     t.run(SETTLE);
     assert_gain(&t.pfl(0), &t.main(Side::L), pan_c(), "unmuted again: main");
     assert_gain(&pre1(&t), &bus(&t, 1), g_pre, "unmuted again: PRE send");
+    assert_gain(&afl1(&t), &bus(&t, 2), g_post, "unmuted again: POST send");
+    assert_gain(&post1(&t), &bus(&t, 4), g_grp, "unmuted again: GRP send");
 }
 
 // ---- solo ---------------------------------------------------------------------------------------
