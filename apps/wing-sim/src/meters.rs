@@ -36,7 +36,7 @@
 //! | output groups (A8) | USB 1..48 live; other groups are resolved by routing but not rendered: silent |
 //! | monitor (A9) | T038 monitor section: solo bus L/R (louder of the two monitors' solo busses), mon 1/2 L/R outputs |
 //! | fx 1..16 | FX slot in/out, model state words ([`FxMeterLaw`]) |
-//! | dca | silent (DCA meters not derived yet) |
+//! | dca 1..16 | pre L/R = loudest member's PFL, post L/R = loudest member's OUT (strip `tags` `#Dn`) [I] |
 //! | rta (AA) | `crate::rta::RtaService` (T084): the analyser of the `cfg/rta` source/tap |
 
 use std::sync::Arc;
@@ -48,6 +48,7 @@ use wing_engine::meters::{
     strip_cell, word, LevelBank, CELLS,
 };
 use wing_engine::meters::{DynMeterLaw, FxMeterLaw, MAX_METER_BANDS};
+use wing_engine::mix::logic::parse_tags;
 use wing_engine::routing::{OutAddr, OutGroup, SourceAddr, SrcGroup, Strip, STRIP_COUNT};
 use wing_model::{NodeId, ParamStore};
 use wing_proto::nrp::meter::db_to_meter;
@@ -71,12 +72,14 @@ const STRIP_KINDS: [(MeterKind, MeterKind, usize); 5] = [
 ];
 const STRIPS_PER_KIND: [usize; 5] = [40, 8, 16, 4, 8];
 
-/// Model blocks whose selected model sets a meter law: per strip (gate, dyn) and per FX slot.
+/// Model blocks whose selected model sets a meter law: per strip (gate, dyn) and per FX slot; and each
+/// strip's `tags` (DCA membership for the DCA meters).
 struct ModelBlocks {
     store: Arc<ParamStore>,
     gate: Vec<Option<NodeId>>,
     dyn_: Vec<Option<NodeId>>,
     fx: Vec<Option<NodeId>>,
+    tags: Vec<Option<NodeId>>,
 }
 
 impl ModelBlocks {
@@ -92,6 +95,7 @@ impl ModelBlocks {
             store.lookup(&p)
         };
         let gate = (0..STRIP_COUNT).map(|s| path(s, "gate")).collect();
+        let tags = (0..STRIP_COUNT).map(|s| path(s, "tags")).collect();
         let dyn_ = (0..STRIP_COUNT).map(|s| path(s, "dyn")).collect();
         let fx = (1..=FX_SLOTS)
             .map(|n| store.lookup(&format!("fx/{n}")))
@@ -101,7 +105,18 @@ impl ModelBlocks {
             gate,
             dyn_,
             fx,
+            tags,
         }
+    }
+
+    /// DCA membership mask of strip `s` (bit k = DCA k + 1, `#Dn` tags).
+    fn dcas(&self, s: usize) -> u16 {
+        self.tags
+            .get(s)
+            .copied()
+            .flatten()
+            .and_then(|id| self.store.with_str(id, |t| parse_tags(t).0))
+            .unwrap_or(0)
     }
 
     fn model(&self, block: Option<NodeId>) -> Option<&'static str> {
@@ -272,8 +287,10 @@ impl RealMeters {
                 mon(4),
             ],
         );
+        let dcas = self.dca_levels();
         for i in 0..lay.count(MeterKind::Dca) {
-            bank.set_block(MeterKind::Dca, i, &[floor; 4]);
+            let w = dcas.get(i).map_or([FLOOR_DB; 4], |d| *d).map(db_to_meter);
+            bank.set_block(MeterKind::Dca, i, &w);
         }
         for i in 0..lay.count(MeterKind::Fx).min(FX_SLOTS) {
             let c = |w| fx_cell(i, w);
@@ -291,6 +308,36 @@ impl RealMeters {
             bank.set_block(MeterKind::Fx, i, &w);
         }
         // RTA (AA): written by the RTA service (T084, crate::rta), not here
+    }
+
+    /// DCA meters (pre L/R, post L/R in dB) of DCA 1..16: the loudest member strip's pre-fader (PFL) and
+    /// post-fader (OUT, incl. its DCA offsets and mutes) levels [I]. Silent without a store (no membership).
+    pub fn dca_levels(&self) -> [[f32; 4]; 16] {
+        let mut d = [[FLOOR_DB; 4]; 16];
+        let Some(m) = &self.models else {
+            return d;
+        };
+        for s in 0..STRIP_COUNT {
+            let mask = m.dcas(s);
+            if mask == 0 {
+                continue;
+            }
+            let c = |w| self.value(strip_cell(s, w));
+            let lv = [
+                c(word::PRE_L),
+                c(word::PRE_R),
+                c(word::OUT_L),
+                c(word::OUT_R),
+            ];
+            for (k, dk) in d.iter_mut().enumerate() {
+                if mask >> k & 1 != 0 {
+                    for (a, b) in dk.iter_mut().zip(lv) {
+                        *a = a.max(b);
+                    }
+                }
+            }
+        }
+        d
     }
 
     /// One sender tick at `now`: update (dt since the previous tick) and fill.
@@ -372,6 +419,38 @@ mod tests {
         }
         rm.fill(&bank);
         assert_eq!(w(MeterKind::ChannelV2, 1, 0), i16::MIN);
+    }
+
+    /// DCA meters: the loudest member's PFL / OUT levels (user report: DCA meters were silent).
+    #[test]
+    fn dca_meters_follow_members() {
+        let store = Arc::new(ParamStore::new());
+        let tag = |p: &str, t: &str| {
+            let id = store.lookup(p).unwrap();
+            store.set_str(id, t, wing_model::ORIGIN_LOCAL).unwrap();
+        };
+        tag("ch/2/tags", "#D3,#M1");
+        tag("bus/1/tags", "#D3");
+        tag("ch/5/tags", "#D4");
+        let lv = LevelBank::shared();
+        let mut rm = RealMeters::new(lv.clone()).with_store(store);
+        let bank = MeterBank::for_schema();
+        let ch2 = StripMeter::at(lv.clone(), 1);
+        ch2.level(word::PRE_L, 0.5);
+        ch2.level(word::PRE_R, 0.5);
+        ch2.level(word::OUT_L, 0.25);
+        let bus1 = StripMeter::at(lv.clone(), 48);
+        bus1.level(word::OUT_L, 0.1);
+        bus1.level(word::OUT_R, 0.1);
+        rm.update(0.05);
+        rm.fill(&bank);
+        let w = |i, j| meter_to_db(bank.get(MeterKind::Dca, i, j).unwrap());
+        assert!((w(2, 0) + 6.02).abs() < 0.01 && (w(2, 1) + 6.02).abs() < 0.01);
+        assert!((w(2, 2) + 12.04).abs() < 0.01, "post L = ch2 OUT");
+        assert!((w(2, 3) + 20.0).abs() < 0.01, "post R = bus 1 OUT");
+        // DCA 4's only member is silent, DCA 1 has none
+        assert_eq!(bank.get(MeterKind::Dca, 3, 0).unwrap(), i16::MIN);
+        assert_eq!(bank.get(MeterKind::Dca, 0, 2).unwrap(), i16::MIN);
     }
 
     /// T082: GR words follow the selected model's law; FX blocks carry slot levels and state words.

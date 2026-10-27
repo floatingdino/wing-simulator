@@ -145,6 +145,20 @@ pub trait Model: Send {
         0
     }
 
+    /// FX models whose WING-Edit page reads FX meter words 4..9 as raw state (pitch, correlation, amplitudes,
+    /// ratios; see [`crate::meter`]): writes those words (unsaturated `i16` values as `f32`) into `out` (at most
+    /// 6) and returns how many. Takes precedence over [`Model::meter_bands`]. Level-type words should hold
+    /// their peak for a meter tick (~50 ms). Default: none. RT-safe.
+    fn fx_meter_words(&self, _out: &mut [f32]) -> usize {
+        0
+    }
+
+    /// EQ models: the listen filter of solo band `band` (`$solobd`, 1-based; see
+    /// [`crate::eq::EqParams::solo_band`]). Default: none (the band solo then plays the unfiltered input).
+    fn solo_band(&self, _band: usize) -> Option<crate::eq::BandSolo> {
+        None
+    }
+
     /// True for placeholder models that pass audio through unchanged.
     fn is_stub(&self) -> bool {
         false

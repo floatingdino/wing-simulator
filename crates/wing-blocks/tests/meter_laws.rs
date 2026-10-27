@@ -62,7 +62,10 @@ fn drive(m: &mut (dyn Model + 'static), x: &[f32], word: &impl Fn(&dyn Model) ->
 
 fn bands(m: &dyn Model) -> [f32; MAX_METER_BANDS] {
     let mut b = [0.0; MAX_METER_BANDS];
-    m.meter_bands(&mut b);
+    // raw FX state words take precedence, as in the engine's FX meter cells
+    if m.fx_meter_words(&mut b) == 0 {
+        m.meter_bands(&mut b);
+    }
     b
 }
 
@@ -163,6 +166,7 @@ fn fx_models_with_state_words_drive_them() {
         }
         checked += 1;
     }
-    assert_eq!(checked, 9);
+    // 9 dB/band laws + PCORR, V-IMG, SUB-M, SPKMAN (raw words; DE-S2 moved from the GR law)
+    assert_eq!(checked, 13);
     assert!(silent.is_empty(), "FX state words never move: {silent:?}");
 }

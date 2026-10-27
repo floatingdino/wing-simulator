@@ -75,11 +75,12 @@
 //!
 //! Real-time: `prepare` allocates; `process`, `set_param`, `commit`, `reset` do not.
 
+use crate::meter::hold_peak;
 use crate::model::{Model, ParamValue};
 use wing_dsp::biquad::{BiquadF64, Coeffs};
 use wing_dsp::delay::DelayLine;
 use wing_dsp::oversample::Oversampler4x;
-use wing_dsp::smooth::OnePoleSmoother;
+use wing_dsp::smooth::{one_pole_coeff, OnePoleSmoother};
 
 /// Dry-path delay (and reported latency) of the 4x oversampler: its 45.5-sample round trip rounded up.
 pub const OS_LATENCY: usize = 46;
@@ -1010,6 +1011,8 @@ pub struct SubMonster {
     rel: f64,
     lvl: [f64; SUB_BANDS],
     mix: OnePoleSmoother,
+    /// Per-band synthesised sub level, peak-held for the meter words.
+    meter: [f32; SUB_BANDS],
 }
 
 impl Default for SubMonster {
@@ -1029,6 +1032,7 @@ impl SubMonster {
             rel: 0.001,
             lvl: [0.0; SUB_BANDS],
             mix: smoother(0.5, 48_000.0),
+            meter: [0.0; SUB_BANDS],
         }
     }
 
@@ -1076,10 +1080,11 @@ impl Model for SubMonster {
         }
         let n = left.len().min(right.len());
         let (att, rel) = (self.att, self.rel);
+        let mut pk = [0.0f64; SUB_BANDS];
         for i in 0..n {
             let x = 0.5 * (left[i] as f64 + right[i] as f64);
             let mut sub = 0.0;
-            for (b, lvl) in self.bands.iter_mut().zip(self.lvl) {
+            for ((b, lvl), pk) in self.bands.iter_mut().zip(self.lvl).zip(pk.iter_mut()) {
                 let y = b.bp.tick(x);
                 let a = y.abs();
                 b.env += (a - b.env) * if a > b.env { att } else { rel };
@@ -1094,7 +1099,9 @@ impl Model for SubMonster {
                     b.hi = false;
                 }
                 let gate = b.env / (b.env + 0.003);
-                sub += b.lp.tick(b.ff * b.env * gate * lvl * 0.8);
+                let a = b.env * gate * lvl * 0.8;
+                *pk = pk.max(a);
+                sub += b.lp.tick(b.ff * a);
             }
             let s = (sub * self.mix.tick() as f64) as f32;
             left[i] += s;
@@ -1103,10 +1110,23 @@ impl Model for SubMonster {
         for b in &mut self.bands {
             flush(&mut [b.bp, b.lp]);
         }
+        let mix = self.mix.target() as f64;
+        for (m, p) in self.meter.iter_mut().zip(pk) {
+            *m = hold_peak(*m, (p * mix) as f32, n, self.fs);
+        }
+    }
+
+    fn fx_meter_words(&self, out: &mut [f32]) -> usize {
+        let n = SUB_BANDS.min(out.len());
+        for (o, m) in out.iter_mut().zip(self.meter) {
+            *o = 2048.0 * m;
+        }
+        n
     }
 
     fn reset(&mut self) {
         self.update();
+        self.meter = [0.0; SUB_BANDS];
         for b in &mut self.bands {
             b.bp.reset();
             b.lp.reset();
@@ -1172,6 +1192,11 @@ pub struct VelvetImager {
     d_target: f32,
     /// width, stereo amount, gain
     sm: [OnePoleSmoother; 3],
+    /// Output MID (|L+R|) / SIDE (|L-R|) peaks, peak-held for the meter words.
+    ms_peak: [f32; 2],
+    /// Leaky sums of L*R, L*L, R*R of the output (correlation meter).
+    corr: [f64; 3],
+    corr_c: f64,
 }
 
 impl Default for VelvetImager {
@@ -1194,6 +1219,20 @@ impl VelvetImager {
             d: 1.0,
             d_target: 1.0,
             sm: [smoother(0.0, 48_000.0); 3],
+            ms_peak: [0.0; 2],
+            corr: [0.0; 3],
+            corr_c: one_pole_coeff(0.2, 48_000.0),
+        }
+    }
+
+    /// Output correlation (-1..1; 0 for silence) over about 200 ms.
+    pub fn correlation(&self) -> f32 {
+        let [lr, ll, rr] = self.corr;
+        let d = (ll * rr).sqrt();
+        if d > 1e-12 {
+            (lr / d).clamp(-1.0, 1.0) as f32
+        } else {
+            0.0
         }
     }
 
@@ -1235,6 +1274,7 @@ impl Model for VelvetImager {
         self.fs = sample_rate;
         self.dl = DelayLine::new((0.004 * sample_rate) as usize + 4);
         self.sm = [smoother(0.0, sample_rate); 3];
+        self.corr_c = one_pole_coeff(0.2, sample_rate);
         self.dirty = true;
         self.reset();
     }
@@ -1246,6 +1286,8 @@ impl Model for VelvetImager {
         let n = left.len().min(right.len());
         let velvet = self.v[vimg_slot::MODE as usize - 1] >= 0.5;
         let deep = self.v[vimg_slot::DEEP as usize - 1] >= 0.5;
+        let (mut pm, mut ps) = (0.0f32, 0.0f32);
+        let c = self.corr_c;
         for i in 0..n {
             let (wid, st, g) = (self.sm[0].tick(), self.sm[1].tick(), self.sm[2].tick());
             self.d += 0.002 * (self.d_target - self.d);
@@ -1267,10 +1309,35 @@ impl Model for VelvetImager {
             self.dl.push(a);
             let a = self.dl.read_linear(self.d);
             let s_out = s_w + VI_AMB * st * a;
-            left[i] = g * (m + s_out);
-            right[i] = g * (m - s_out);
+            let (yl, yr) = (g * (m + s_out), g * (m - s_out));
+            left[i] = yl;
+            right[i] = yr;
+            pm = pm.max((yl + yr).abs());
+            ps = ps.max((yl - yr).abs());
+            let (yl, yr) = (yl as f64, yr as f64);
+            for (acc, v) in self.corr.iter_mut().zip([yl * yr, yl * yl, yr * yr]) {
+                *acc = v + c * (*acc - v);
+            }
         }
         flush(&mut [self.hp_s, self.hp_a, self.hp_m, self.ap[0], self.ap[1]]);
+        if self.corr[1] + self.corr[2] < 1e-20 {
+            self.corr = [0.0; 3];
+        }
+        self.ms_peak[0] = hold_peak(self.ms_peak[0], pm, n, self.fs);
+        self.ms_peak[1] = hold_peak(self.ms_peak[1], ps, n, self.fs);
+    }
+
+    fn fx_meter_words(&self, out: &mut [f32]) -> usize {
+        let w = [
+            0.0,
+            0.0,
+            2048.0 * self.ms_peak[0],
+            2048.0 * self.ms_peak[1],
+            1024.0 * (1.0 + self.correlation()),
+        ];
+        let n = w.len().min(out.len());
+        out[..n].copy_from_slice(&w[..n]);
+        n
     }
 
     fn reset(&mut self) {
@@ -1280,6 +1347,8 @@ impl Model for VelvetImager {
         }
         self.ap.iter_mut().for_each(BiquadF64::reset);
         self.dl.reset();
+        self.ms_peak = [0.0; 2];
+        self.corr = [0.0; 3];
         self.d = self.d_target;
         let t = self.targets();
         for (sm, t) in self.sm.iter_mut().zip(t) {

@@ -12,7 +12,7 @@
 //! next `commit`, `process` or `reset`, so loading 20 slots costs one coefficient update.
 
 use crate::dynamics::{Detector, DynParams, Dynamics, Envelope, RATIOS};
-use crate::eq::{BandType, EqParams, EqVariant, StdEq};
+use crate::eq::{BandSolo, BandType, EqParams, EqVariant, StdEq};
 use crate::filter::{FilterBlock, FilterParams, HcSlope, LcSlope};
 use crate::gate::{Gate, GateParams, GateRatio, ScSource};
 use crate::input::{DelayMode, InputParams, InputStage, SourceMode};
@@ -462,6 +462,9 @@ impl Model for StdEqModel {
     fn set_gain_scale(&mut self, mix_pct: f32) {
         self.mix_pct = mix_pct;
         self.dirty = true;
+    }
+    fn solo_band(&self, band: usize) -> Option<BandSolo> {
+        self.p.solo_band(self.eq.variant(), band)
     }
     fn commit(&mut self) {
         self.apply();

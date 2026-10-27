@@ -26,6 +26,9 @@
 //!   detects on (filtered external key, or its own filtered/unfiltered input) to [`slot::LISTEN_GATE`] /
 //!   [`slot::LISTEN_DYN`] every cycle; the monitor section (which runs after every strip) reads it in the
 //!   same cycle and plays it on the solo bus instead of the strip's PFL ([`super::logic::flag::KEY_GATE`]).
+//!   EQ band solo (`eq/$solo` + `$solobd`) and crossover solo (`dynxo/$solo`) work the same way through
+//!   [`slot::LISTEN_EQ`] / [`slot::LISTEN_XO`] (the band-filtered EQ / dynamics input,
+//!   [`crate::channel::Listen`]).
 //!
 //! # `src` / `tap` enums (wing-tree.json)
 //!
@@ -41,7 +44,7 @@ use std::sync::Arc;
 use crate::routing::{Strip, STRIP_COUNT};
 
 /// Key taps per source strip.
-pub const KEY_SLOTS: usize = 10;
+pub const KEY_SLOTS: usize = 12;
 
 /// Key tap slots of a source strip.
 pub mod slot {
@@ -64,6 +67,10 @@ pub mod slot {
     // key listen (any strip)
     pub const LISTEN_GATE: usize = 8;
     pub const LISTEN_DYN: usize = 9;
+    /// EQ band solo.
+    pub const LISTEN_EQ: usize = 10;
+    /// Dynamics crossover solo.
+    pub const LISTEN_XO: usize = 11;
 }
 
 /// Which `src`/`tap` enums a keyed slot uses.

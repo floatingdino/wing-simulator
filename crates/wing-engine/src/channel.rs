@@ -31,6 +31,11 @@
 //!   2/3 = gate key, 4/5 = dyn key). Without an external key the slot keys from itself. With a
 //!   [`KeyOut`] attached the strip publishes its taps IN..PFL to the key bank for other strips' keys, and
 //!   the key its gate/dyn slot detects on while `$solo` (key listen) is on.
+//! * **Band listen** ([`Listen`]): while `eq/$solo` is on, the EQ slot input through the listen filter of band
+//!   `$solobd` (band-pass for peaking bands, low/high-pass for shelf/cut low/high bands; unfiltered for EQ
+//!   models without band solo) goes to the key bank's [`key_slot::LISTEN_EQ`]; while `dynxo/$solo` is on, the
+//!   dynamics slot input through the crossover filter goes to [`key_slot::LISTEN_XO`]. The monitor plays it
+//!   instead of the strip (`crate::mix::logic::flag::KEY_EQ` / `KEY_XO`).
 //! * **Telemetry** ([`StripTelemetry`]): peak level per tap point (peak-hold until polled), gate/dyn gain
 //!   reduction; published through [`Processor::telemetry`] as `TAP_PEAK` (block = tap) and
 //!   `GAIN_REDUCTION_DB` (block = [`block::GATE`] / [`block::DYN`]).
@@ -48,10 +53,12 @@
 //! * **Tap capture**: the signal at `ptap` is copied into [`ChannelStrip::tap_signal`] (and graph outputs
 //!   2/3 when the node has 4 outputs) for PRE sends.
 
-use wing_blocks::eq::{BandParams, PreEq, PreEqParams};
+use wing_blocks::eq::{BandParams, BandSolo, PreEq, PreEqParams};
 use wing_blocks::gate::ScFilter;
 use wing_blocks::model::{BlockKind, Model, ParamValue};
+use wing_blocks::sidechain::{xover_listen_coeffs, XoverParams};
 use wing_blocks::std_models::{flt_slot, in_slot, FilterModel, InputModel};
+use wing_dsp::{BiquadF64, Coeffs};
 
 use crate::graph::{NodeId, NodeIo, ProcessCtx, Processor};
 use crate::latency::StripAlign;
@@ -163,11 +170,91 @@ impl SideChain {
     }
 }
 
-/// `ch/N/dynxo`: dynamics crossover (T03C) `type` (OFF LO HI S6 S12 PEAK), `f`, `q`, `depth`.
+/// `ch/N/dynxo`: dynamics crossover (T03C) `type` (OFF LO HI S6 S12 PEAK), `f`, `q`, `depth`, crossover solo
+/// `$solo`.
 pub const XO_LAYOUT: BlockLayout = BlockLayout {
-    params: &[("type", 0), ("f", 1), ("q", 2), ("depth", 3)],
+    params: &[("type", 0), ("f", 1), ("q", 2), ("depth", 3), ("$solo", 4)],
     targets: &[],
 };
+
+/// `eq` parameters handled by the strip, not the slot wrapper: band solo `$solo`, `$solobd`.
+pub const EQ_SOLO: u16 = 3;
+pub const EQ_SOLOBD: u16 = 4;
+/// `dynxo/$solo`.
+pub const XO_SOLO: u16 = 4;
+
+/// A band listen (EQ band solo, crossover solo): publishes a filtered copy of a block's input to a key-listen
+/// slot while `on` (module doc). The filter is redesigned only when its `K` (band shape, crossover settings)
+/// changes; switching on starts from clean state. Allocates in [`Listen::new`] only.
+pub struct Listen<K> {
+    /// The solo button (`eq/$solo`, `dynxo/$solo`).
+    pub on: bool,
+    /// Selected band (`eq/$solobd`, 1-based).
+    pub band: usize,
+    fs: f64,
+    key: Option<K>,
+    f: [BiquadF64; 2],
+    l: Box<[f32]>,
+    r: Box<[f32]>,
+}
+
+impl<K: Copy + PartialEq> Listen<K> {
+    pub fn new(fs: f64, max_block: usize) -> Self {
+        Self {
+            on: false,
+            band: 1,
+            fs,
+            key: None,
+            f: Default::default(),
+            l: vec![0.0; max_block.max(1)].into(),
+            r: vec![0.0; max_block.max(1)].into(),
+        }
+    }
+
+    /// While on: filter `l`/`r` by `design(key)` and publish the result to `slot` of `keys`. RT-safe.
+    #[inline]
+    pub fn run(
+        &mut self,
+        keys: &Option<KeyOut>,
+        slot: usize,
+        key: K,
+        design: impl FnOnce(K, f64) -> Coeffs,
+        l: &[f32],
+        r: &[f32],
+    ) {
+        let Some(out) = keys.as_ref().filter(|_| self.on) else {
+            self.key = None;
+            return;
+        };
+        if self.key != Some(key) {
+            let c = design(key, self.fs);
+            for f in &mut self.f {
+                if self.key.is_none() {
+                    f.reset();
+                }
+                f.set_coeffs(c);
+            }
+            self.key = Some(key);
+        }
+        let n = l.len().min(r.len()).min(self.l.len());
+        for (k, (x, y)) in [(l, &mut self.l), (r, &mut self.r)].into_iter().enumerate() {
+            y[..n].copy_from_slice(&x[..n]);
+            self.f[k].process_block(&mut y[..n]);
+            self.f[k].flush_denormals();
+        }
+        out.put(slot, &self.l[..n], &self.r[..n]);
+    }
+}
+
+/// Design of an EQ band listen ([`BandSolo`]; `None` = pass the input unfiltered).
+pub fn band_listen_coeffs(b: Option<BandSolo>, fs: f64) -> Coeffs {
+    b.map_or(Coeffs::IDENTITY, |b| b.coeffs(fs))
+}
+
+/// Design of a crossover listen.
+pub fn xo_listen_coeffs(p: XoverParams, fs: f64) -> Coeffs {
+    xover_listen_coeffs(&p, fs)
+}
 
 /// `ch/N/peq`: on + 3 bands g/f/q (param = 1 + 3*band + {0 g, 1 f, 2 q}).
 pub const PEQ_LAYOUT: BlockLayout = BlockLayout {
@@ -186,9 +273,15 @@ pub const PEQ_LAYOUT: BlockLayout = BlockLayout {
     targets: &[],
 };
 
-/// `ch/N/eq`, `aux/N/eq`: on, mix + the 20 STD slots (other models use a prefix of them).
+/// `ch/N/eq`, `aux/N/eq`: on, mix, band solo `$solo` / `$solobd` + the 20 STD slots (other models use a
+/// prefix of them).
 pub const EQ_LAYOUT: BlockLayout = BlockLayout {
-    params: &[("on", 0), ("mix", 1)],
+    params: &[
+        ("on", 0),
+        ("mix", 1),
+        ("$solo", EQ_SOLO),
+        ("$solobd", EQ_SOLOBD),
+    ],
     targets: &[
         "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
         "17", "18", "19", "20",
@@ -544,6 +637,9 @@ pub struct ChannelStrip {
     dyn_sc: SideChain,
     /// Key bank outputs (taps for other strips' keys, key listen); `None` standalone.
     keys: Option<KeyOut>,
+    /// EQ band solo / crossover solo.
+    eq_listen: Listen<Option<BandSolo>>,
+    xo_listen: Listen<XoverParams>,
     tap_l: Vec<f32>,
     tap_r: Vec<f32>,
     tap_len: usize,
@@ -713,6 +809,8 @@ impl ChannelStrip {
             gate_sc: SideChain::default(),
             dyn_sc: SideChain::default(),
             keys: None,
+            eq_listen: Listen::new(fs, max_block),
+            xo_listen: Listen::new(fs, max_block),
             tap_l: vec![0.0; max_block.max(1)],
             tap_r: vec![0.0; max_block.max(1)],
             tap_len: 0,
@@ -902,6 +1000,9 @@ impl ChannelStrip {
                     self.tool.set_wrapper(0, v);
                 }
             }
+            block::EQ if param == EQ_SOLO => self.eq_listen.on = v != 0.0,
+            block::EQ if param == EQ_SOLOBD => self.eq_listen.band = v.max(1.0) as usize,
+            block::DYN_XO if param == XO_SOLO => self.xo_listen.on = v != 0.0,
             block::GATE | block::EQ | block::DYN => {
                 let s = match blk {
                     block::GATE => &mut self.gate,
@@ -1122,6 +1223,10 @@ impl ChannelStrip {
                         ProcBlock::Eq => {
                             rta_at(&self.rta, want, RtaTap::PreEq, l, r);
                             self.peq.process(l, r);
+                            let b = self.eq.solo_band(self.eq_listen.band);
+                            let ks = key_slot::LISTEN_EQ;
+                            self.eq_listen
+                                .run(&self.keys, ks, b, band_listen_coeffs, l, r);
                             let pr = probe_in(&self.probe, ProbeBlock::Eq, l, r);
                             self.eq.process(l, r);
                             probe_out(pr, l, r, &self.eq);
@@ -1136,6 +1241,10 @@ impl ChannelStrip {
                             if dyn_listen {
                                 listen_pre(&self.keys, key_slot::LISTEN_DYN, dyn_key, l, r);
                             }
+                            let xo = *self.dyn_.xover();
+                            let ks = key_slot::LISTEN_XO;
+                            self.xo_listen
+                                .run(&self.keys, ks, xo, xo_listen_coeffs, l, r);
                             let pr = probe_in(&self.probe, ProbeBlock::Dyn, l, r);
                             self.dyn_.process_keyed(l, r, dyn_key);
                             probe_out(pr, l, r, &self.dyn_);
@@ -1162,6 +1271,10 @@ impl ChannelStrip {
                 }
                 self.tap(Tap::T3 as usize, l, r);
                 rta_at(&self.rta, want, RtaTap::PreEq, l, r);
+                let b = self.eq.solo_band(self.eq_listen.band);
+                let ks = key_slot::LISTEN_EQ;
+                self.eq_listen
+                    .run(&self.keys, ks, b, band_listen_coeffs, l, r);
                 let pr = probe_in(&self.probe, ProbeBlock::Eq, l, r);
                 self.eq.process(l, r);
                 probe_out(pr, l, r, &self.eq);

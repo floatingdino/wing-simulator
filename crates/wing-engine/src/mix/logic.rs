@@ -12,9 +12,10 @@
 //!   fader ramp.
 //! * **Mutes**: effective mute = own mute OR an active mute group it belongs to.
 //! * **DCA mute** (T03F, confirmed by the user on a real WING): a muted DCA always mutes its
-//!   members' *main sends* (ch/aux/bus -> main 1-4, whatever their `pre` tap) — the strip itself,
-//!   its bus/matrix sends and its PFL/AFL solo keep running ([`flag::MAIN_MUTE`], applied by the
-//!   main nodes). With `cfg/dcamgrp` "DCA MUTEGROUPS" on (factory default) the DCA mute acts as a
+//!   members' *post-fader outputs*: their main sends (ch/aux/bus -> main 1-4, whatever their `pre`
+//!   tap) and their POST/GRP sends into busses and matrices (e.g. ch 10 in DCA 3 feeding bus 7 as a
+//!   GRP send is cut from bus 7 when DCA 3 mutes, user report). The strip itself, its PRE sends and
+//!   its PFL/AFL solo keep running ([`flag::MAIN_MUTE`], applied by the receiving nodes). With `cfg/dcamgrp` "DCA MUTEGROUPS" on (factory default) the DCA mute acts as a
 //!   mute group: a full strip mute ([`flag::MUTE`], incl. PRE sends). Main/matrix members have
 //!   no main send and are muted outright either way [I].
 //! * **Solo** (`cfg/solo`): a strip is soloed by its own `$solo`, by the `$solo` of a DCA it
@@ -88,13 +89,19 @@ pub mod flag {
     pub const SOLO_MON2: u32 = 4;
     /// Solo tap is AFL (post fader) instead of PFL.
     pub const AFL: u32 = 8;
-    /// The strip's main sends are muted (DCA mute with `cfg/dcamgrp` off, T03F); applied by the
-    /// main nodes to the sends they receive.
+    /// The strip's post-fader sends are muted (DCA mute with `cfg/dcamgrp` off, T03F): main sends
+    /// and POST/GRP bus/matrix sends; applied by the receiving nodes.
     pub const MAIN_MUTE: u32 = 16;
     /// Key listen of the gate slot (`ch/N/gatesc/$solo`, T080): the solo signal is the gate key.
     pub const KEY_GATE: u32 = 32;
     /// Key listen of the dynamics slot (`*/dynsc/$solo`): the solo signal is the dynamics key.
     pub const KEY_DYN: u32 = 64;
+    /// EQ band solo (`*/eq/$solo` + `$solobd`): the solo signal is the soloed band of the EQ input.
+    pub const KEY_EQ: u32 = 128;
+    /// Crossover solo (`*/dynxo/$solo`): the solo signal is the dynamics input through the crossover.
+    pub const KEY_XO: u32 = 256;
+    /// Any listen flag: the solo signal comes from a strip's listen slot instead of its PFL/AFL.
+    pub const LISTEN: u32 = KEY_GATE | KEY_DYN | KEY_EQ | KEY_XO;
 }
 
 /// Per-strip state shared with the RT nodes (indexed by [`Strip::index`]).
@@ -159,8 +166,9 @@ struct StripIds {
     solo: ParamId,
     sololed: ParamId,
     solosafe: Option<ParamId>,
-    /// Key listen `gatesc/$solo` (channels only), `dynsc/$solo`.
-    key_listen: [Option<ParamId>; 2],
+    /// Listen buttons in priority order: key listen `gatesc/$solo` (channels only), `dynsc/$solo`,
+    /// EQ band solo `eq/$solo`, crossover solo `dynxo/$solo` (not on aux).
+    key_listen: [Option<ParamId>; 4],
 }
 
 struct Ids {
@@ -210,6 +218,8 @@ impl Ids {
                     key_listen: [
                         store.lookup(&format!("{p}/gatesc/$solo")),
                         store.lookup(&format!("{p}/dynsc/$solo")),
+                        store.lookup(&format!("{p}/eq/$solo")),
+                        store.lookup(&format!("{p}/dynxo/$solo")),
                     ],
                 }
             })
@@ -511,16 +521,16 @@ impl MixLogic {
                 0
             };
         }
-        // key listen (T080): the strip's key goes to the solo bus (no indicator, no SIP muting)
+        // key listen (T080), EQ band / crossover solo: the strip's listen signal goes to the solo bus
+        // (no indicator, no SIP muting); the first button on (in [`StripIds::key_listen`] order) wins
         let key: [u32; STRIP_COUNT] = std::array::from_fn(|i| {
-            let [g, d] = ids.strips[i].key_listen;
-            if g.is_some_and(on) {
-                flag::KEY_GATE
-            } else if d.is_some_and(on) {
-                flag::KEY_DYN
-            } else {
-                0
-            }
+            let bits = [flag::KEY_GATE, flag::KEY_DYN, flag::KEY_EQ, flag::KEY_XO];
+            ids.strips[i]
+                .key_listen
+                .iter()
+                .zip(bits)
+                .find(|(p, _)| p.is_some_and(on))
+                .map_or(0, |(_, b)| b)
         });
         let any_solo = soloed.iter().any(|&s| s != 0) || key.iter().any(|&k| k != 0);
         let input_solo = soloed[..48].iter().any(|&s| s != 0);

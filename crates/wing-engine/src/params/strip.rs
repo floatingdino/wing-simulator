@@ -221,6 +221,14 @@ pub trait RtModel: Send {
     fn meter_bands(&self, _out: &mut [f32]) -> usize {
         0
     }
+    /// Raw FX meter state words (`wing_blocks::model::Model::fx_meter_words`). Default: none.
+    fn fx_meter_words(&self, _out: &mut [f32]) -> usize {
+        0
+    }
+    /// EQ band-solo listen filter (`wing_blocks::model::Model::solo_band`). Default: none.
+    fn solo_band(&self, _band: usize) -> Option<wing_blocks::eq::BandSolo> {
+        None
+    }
     /// Processing latency in samples.
     fn latency(&self) -> usize {
         0
@@ -571,6 +579,12 @@ impl ModelSlot {
         self.instances.get(self.logical as usize).map(|b| &**b)
     }
 
+    /// Listen filter of EQ solo band `band` of the selected model (`None`: no model, or a model without
+    /// band solo).
+    pub fn solo_band(&self, band: usize) -> Option<wing_blocks::eq::BandSolo> {
+        self.model()?.solo_band(band)
+    }
+
     /// Enum index -> instance index of the audible model (the fade-in side while crossfading).
     pub fn audible_instance(&self) -> Option<usize> {
         (self.cur != BYPASS).then_some(self.cur as usize)
@@ -787,6 +801,16 @@ impl ModelSlot {
         self.instances
             .get(self.cur as usize)
             .map_or(0, |m| m.meter_bands(out))
+    }
+
+    /// Raw FX meter state words of the audible model ([`RtModel::fx_meter_words`]); 0 while idle.
+    pub fn fx_meter_words(&self, out: &mut [f32]) -> usize {
+        if self.idle {
+            return 0;
+        }
+        self.instances
+            .get(self.cur as usize)
+            .map_or(0, |m| m.fx_meter_words(out))
     }
 
     /// Process a stereo block in place (RT-safe), keying from the input.

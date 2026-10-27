@@ -526,6 +526,24 @@ fn run(args: Args) -> Result<(), String> {
     let hub = Hub::attach(&mut store);
     let osc_att = args.osc.then(|| OscAttachment::attach(&mut store));
     let changes = persist::ChangeCounter::attach(&mut store);
+    // RTA source claims (docs/research/rta.md §1b): every client change of the RTA source/tap and the
+    // selection, un-aggregated (the "N sets ... last" lines hide them)
+    {
+        let ids: Vec<_> = ["cfg/rta/rtasrc", "cfg/rta/rtatap", "$ctl/$stat/selidx"]
+            .iter()
+            .filter_map(|p| store.lookup(p))
+            .collect();
+        let schema = store.schema();
+        store.add_hook(Box::new(move |c| {
+            if c.origin != wing_model::ORIGIN_LOCAL && ids.contains(&c.node()) {
+                log(&format!(
+                    "rta: client set {} = {}",
+                    schema.path(c.node()),
+                    c.raw
+                ));
+            }
+        }));
+    }
     let routing = args.audio.then(|| audio::prepare(&mut store));
     // monitor level knobs (T03F): control socket, OSC and status.json
     let knobs = routing.as_ref().map(|r| r.monitor.clone());

@@ -307,6 +307,18 @@ impl Model for DeEsser2 {
         }
     }
 
+    /// Words 4..7 (`crate::meter`): GR of LOW, HIGH, LOW (SIDE), HIGH (SIDE) as `GR * 2048 / 6`; the side
+    /// words only in M/S mode.
+    fn fx_meter_words(&self, out: &mut [f32]) -> usize {
+        let r = self.reductions_db();
+        let side = if self.ms() { 1.0 } else { 0.0 };
+        let w =
+            [r[0][0], r[0][1], side * r[1][0], side * r[1][1]].map(|g| g.max(0.0) * 2048.0 / 6.0);
+        let n = w.len().min(out.len());
+        out[..n].copy_from_slice(&w[..n]);
+        n
+    }
+
     fn telemetry(&self) -> ModelTelemetry {
         let g = self.paths.iter().flat_map(|p| p.red).fold(0.0f64, f64::max) as f32;
         ModelTelemetry {

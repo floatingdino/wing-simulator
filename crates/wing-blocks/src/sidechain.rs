@@ -187,6 +187,12 @@ pub fn xover_coeffs(c: &Ctx, p: &XoverParams) -> Bq {
     }
 }
 
+/// Crossover solo (`dynxo/$solo`): the band the dynamics act on, `H` applied to the slot input (identity for
+/// FLAT) [I: WING's XO listen is not documented].
+pub fn xover_listen_coeffs(p: &XoverParams, fs: f64) -> Coeffs {
+    coeffs(&xover_coeffs(&Ctx::new(fs), &p.clamped()))
+}
+
 /// Stereo dynamics crossover: routes a model's change through `H` (see module doc).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DynXover {
